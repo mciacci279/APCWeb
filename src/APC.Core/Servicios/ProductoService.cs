@@ -74,7 +74,8 @@ public class ProductoService
 
     // ------------------------------------------------------------ alta / edición / baja
 
-    public async Task<string> CrearAsync(string cs, Guid usuarioId, ProductoDetalle p)
+    /// <param name="sucursalId">Sucursal a la que entra el stock inicial. Null = sin sucursales.</param>
+    public async Task<string> CrearAsync(string cs, Guid usuarioId, ProductoDetalle p, Guid? sucursalId = null)
     {
         var err = Validar(p);
         if (err != null) return err;
@@ -93,6 +94,16 @@ public class ProductoService
             Limpio(p), tx);
         await RegistrarHistorialAsync(cn, tx, p.Id, usuarioId, p.Stock, p.PrecioCosto, p.PrecioVenta1, p.PrecioVenta2, p.PrecioVenta3,
             "[Alta desde APC Web]");
+
+        // El producto nuevo aparece en todas las sucursales; el stock inicial entra en la del usuario.
+        if (sucursalId != null)
+            await cn.ExecuteAsync(
+                @"IF OBJECT_ID(N'dbo.StockSucursal', N'U') IS NOT NULL
+                  INSERT INTO dbo.StockSucursal (SucursalId, ProductoId, Stock, StockMinimo)
+                  SELECT s.Id, @producto, CASE WHEN s.Id = @sucursal THEN @stock ELSE 0 END, @minimo
+                  FROM dbo.Sucursal s",
+                new { producto = p.Id, sucursal = sucursalId, stock = p.Stock, minimo = p.StockMinimo }, tx);
+
         tx.Commit();
         return null;
     }
@@ -116,7 +127,9 @@ public class ProductoService
     }
 
     /// <summary>Cambio de stock y/o precios de un producto (ingreso de mercadería, nuevo precio, ajuste).</summary>
-    public async Task<string> CambiarPrecioStockAsync(string cs, Guid usuarioId, Guid productoId, CambioProducto c)
+    /// <param name="sucursalId">Sucursal donde entra (o sale) el stock. Null = sin sucursales.</param>
+    public async Task<string> CambiarPrecioStockAsync(string cs, Guid usuarioId, Guid productoId, CambioProducto c,
+        Guid? sucursalId = null)
     {
         if (c.PrecioCosto < 0 || c.PrecioVenta1 < 0 || c.PrecioVenta2 < 0 || c.PrecioVenta3 < 0)
             return "Los precios no pueden ser negativos.";
@@ -128,6 +141,11 @@ public class ProductoService
               WHERE Id = @id",
             new { id = productoId, cant = c.CantidadStock, costo = c.PrecioCosto, pv1 = c.PrecioVenta1, pv2 = c.PrecioVenta2, pv3 = c.PrecioVenta3 }, tx);
         if (filas == 0) return "El producto no existe.";
+
+        if (sucursalId != null && c.CantidadStock != 0)
+            await SucursalService.MoverAsync(cn, tx, sucursalId.Value, productoId, c.CantidadStock,
+                TipoMovimientoStock.Ajuste, usuarioId, null, c.Observaciones, registrar: false, actualizarTotal: false);
+
         await RegistrarHistorialAsync(cn, tx, productoId, usuarioId, c.CantidadStock, c.PrecioCosto,
             c.PrecioVenta1, c.PrecioVenta2, c.PrecioVenta3, c.Observaciones);
         tx.Commit();

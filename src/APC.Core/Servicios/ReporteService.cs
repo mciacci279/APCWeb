@@ -13,12 +13,13 @@ public class ReporteService
     /// <summary>Comprobante fiscal: tiene CAE de ARCA.</summary>
     private const string EsFiscal = "f.CAE IS NOT NULL AND LTRIM(f.CAE) <> ''";
     private const string EsNotaPedido = "f.CAE IS NULL AND ISNULL(f.Impresa, 0) = 1";
-    private const string Periodo = "f.Fecha >= @desde AND f.Fecha < @hasta";
+    private const string Periodo =
+        "f.Fecha >= @desde AND f.Fecha < @hasta AND (@puntoVenta IS NULL OR f.Terminal = @puntoVenta)";
 
-    private static object Rango(DateTime desde, DateTime hasta) =>
-        new { desde = desde.Date, hasta = hasta.Date.AddDays(1) };
+    private static object Rango(DateTime desde, DateTime hasta, int? puntoVenta) =>
+        new { desde = desde.Date, hasta = hasta.Date.AddDays(1), puntoVenta };
 
-    public async Task<ResumenVentas> ResumenAsync(string cs, DateTime desde, DateTime hasta)
+    public async Task<ResumenVentas> ResumenAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         var r = await cn.QueryFirstAsync<ResumenVentas>(
@@ -31,11 +32,11 @@ public class ReporteService
                  (SELECT COUNT(*) FROM dbo.NotaCredito f WHERE {Periodo} AND {EsFiscal}) AS CantidadNotasCredito,
                  (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.NotaCredito f WHERE {Periodo} AND {EsFiscal}) AS TotalNotasCredito,
                  (SELECT ISNULL(SUM(f.MontoIva), 0) FROM dbo.NotaCredito f WHERE {Periodo} AND {EsFiscal}) AS IvaNotasCredito",
-            Rango(desde, hasta));
+            Rango(desde, hasta, puntoVenta));
         return r;
     }
 
-    public async Task<List<FilaReporte>> PorDiaAsync(string cs, DateTime desde, DateTime hasta)
+    public async Task<List<FilaReporte>> PorDiaAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
@@ -43,10 +44,10 @@ public class ReporteService
                FROM dbo.Factura f
                WHERE {Periodo} AND {EsFiscal}
                GROUP BY CONVERT(VARCHAR(10), f.Fecha, 103), CAST(f.Fecha AS DATE)
-               ORDER BY CAST(f.Fecha AS DATE)", Rango(desde, hasta))).ToList();
+               ORDER BY CAST(f.Fecha AS DATE)", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
-    public async Task<List<FilaReporte>> PorFormaPagoAsync(string cs, DateTime desde, DateTime hasta)
+    public async Task<List<FilaReporte>> PorFormaPagoAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
@@ -54,10 +55,10 @@ public class ReporteService
                FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
                WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
                GROUP BY fp.Nombre
-               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta))).ToList();
+               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
-    public async Task<List<FilaReporte>> PorUsuarioAsync(string cs, DateTime desde, DateTime hasta)
+    public async Task<List<FilaReporte>> PorUsuarioAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
@@ -66,11 +67,11 @@ public class ReporteService
                FROM dbo.Factura f LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
                WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
                GROUP BY u.NombreUsuario, u.Nombre
-               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta))).ToList();
+               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
     /// <summary>Lo vendido por producto. Lo devuelto con nota de crédito se resta.</summary>
-    public async Task<List<FilaProducto>> PorProductoAsync(string cs, DateTime desde, DateTime hasta, int top = 100)
+    public async Task<List<FilaProducto>> PorProductoAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null, int top = 100)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaProducto>(
@@ -90,11 +91,11 @@ public class ReporteService
                ) v
                GROUP BY v.Codigo, v.Producto
                ORDER BY SUM(v.Total) DESC",
-            new { desde = desde.Date, hasta = hasta.Date.AddDays(1), top })).ToList();
+            new { desde = desde.Date, hasta = hasta.Date.AddDays(1), puntoVenta, top })).ToList();
     }
 
     /// <summary>Libro IVA Ventas: facturas y notas de crédito con CAE, ordenadas por fecha.</summary>
-    public async Task<List<FilaLibroIva>> LibroIvaVentasAsync(string cs, DateTime desde, DateTime hasta)
+    public async Task<List<FilaLibroIva>> LibroIvaVentasAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         var filas = (await cn.QueryAsync<FilaLibroIva>(
@@ -111,7 +112,7 @@ public class ReporteService
                       -f.MontoIvaTipoAfip4, -f.MontoIvaTipoAfip5, -f.MontoIvaTipoAfip6, f.Iva
                FROM dbo.NotaCredito f LEFT JOIN dbo.Iva i ON i.Id = f.IvaId
                WHERE {Periodo} AND {EsFiscal}",
-            Rango(desde, hasta))).ToList();
+            Rango(desde, hasta, puntoVenta))).ToList();
 
         return filas.OrderBy(f => f.Fecha).ThenBy(f => f.Numero).ToList();
     }

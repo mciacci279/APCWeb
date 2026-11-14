@@ -1,5 +1,6 @@
 @using APC.Core.Tenants
 @inject UsuarioService UsuarioSrv
+@inject SucursalService SucursalSrv
 
 @if (mensaje != null)
 {
@@ -29,7 +30,7 @@
 
 <section class="@(Compacto ? "" : "panel") tabla-scroll">
     <table class="tabla">
-        <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Tipo</th><th>Estado</th><th>Último ingreso</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Tipo</th><th>Sucursal</th><th>Estado</th><th>Último ingreso</th><th><span class="sr-only">Acciones</span></th></tr></thead>
         <tbody>
             @if (lista.Count == 0)
             {
@@ -54,6 +55,24 @@
                         }
                     </td>
                     <td><span class="etiqueta @(u.EsAdmin ? "etiqueta-admin" : "etiqueta-empleado")">@(u.EsAdmin ? "Administrador" : "Empleado")</span></td>
+                    <td>
+                        @if (sucursales.Count > 1)
+                        {
+                            <label class="sr-only" for="suc-@u.Id">Sucursal de @u.NombreUsuario</label>
+                            <select id="suc-@u.Id" class="input input-chico" value="@(u.SucursalId?.ToString() ?? "")"
+                                    @onchange="e => CambiarSucursal(u, e.Value?.ToString())">
+                                <option value="">(la primera)</option>
+                                @foreach (var s in sucursales)
+                                {
+                                    <option value="@s.Id">@s.Nombre</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="sub">@(sucursales.FirstOrDefault()?.Nombre)</span>
+                        }
+                    </td>
                     <td>
                         @if (!u.Activo) { <span>De baja</span> }
                         else if (u.Bloqueado) { <span class="etiqueta etiqueta-falta">Bloqueado</span> }
@@ -110,13 +129,26 @@
     private string emailNuevo;
     private string claveReset;
 
+    private List<Sucursal> sucursales = new();
+
     protected override async Task OnParametersSetAsync()
     {
         if (Tenant == null || tenantCargado == Tenant.Id) return;
         tenantCargado = Tenant.Id;
         nuAdmin = AdminPorDefecto;
         mensaje = null;
+        try { sucursales = await SucursalSrv.ListarAsync(Tenant.ConnectionString, incluirInactivas: false); }
+        catch (Exception) { sucursales = new(); }   // la empresa todavía no corrió el script de sucursales
         await Cargar();
+    }
+
+    private async Task CambiarSucursal(UsuarioListado u, string valor)
+    {
+        var id = Guid.TryParse(valor, out var g) ? g : (Guid?)null;
+        await UsuarioSrv.CambiarSucursalAsync(u.Id, id);
+        u.SucursalId = id;
+        mensaje = $"{u.NombreUsuario} ahora factura en {(id == null ? "la primera sucursal" : sucursales.First(s => s.Id == id).Etiqueta)}. Tiene que volver a entrar para que tome el cambio.";
+        mensajeOk = true;
     }
 
     private async Task Cargar() => lista = await UsuarioSrv.ListarAsync(Tenant.Id);

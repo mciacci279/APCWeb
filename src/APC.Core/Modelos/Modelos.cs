@@ -37,6 +37,8 @@ public class UsuarioListado
     public bool Activo { get; set; }
     public DateTime? UltimoIngreso { get; set; }
     public DateTime? BloqueadoHasta { get; set; }
+    /// <summary>Sucursal en la que trabaja. Vacío = la casa central.</summary>
+    public Guid? SucursalId { get; set; }
     public bool EsAdmin => Rol == RolUsuario.Admin;
     public bool Bloqueado => BloqueadoHasta > DateTime.Now;
 }

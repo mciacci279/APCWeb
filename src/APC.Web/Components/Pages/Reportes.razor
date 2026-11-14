@@ -3,6 +3,7 @@
 @using APC.Core.Datos
 @inject SesionService SesionSrv
 @inject ReporteService Reportes
+@inject SucursalService SucursalSrv
 @inject IJSRuntime JS
 
 <PageTitle>Reportes · APC Web</PageTitle>
@@ -13,6 +14,19 @@
         <div class="fila-campos">
             <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
             <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
+            @if (sucursales.Count > 1)
+            {
+                <div class="campo">
+                    <label for="sucursal">Sucursal</label>
+                    <select id="sucursal" class="input" @bind="puntoVentaTexto">
+                        <option value="">Todas</option>
+                        @foreach (var s in sucursales)
+                        {
+                            <option value="@s.PuntoVenta">@s.Nombre</option>
+                        }
+                    </select>
+                </div>
+            }
             <button type="button" class="btn" @onclick="Buscar">Buscar</button>
         </div>
     </header>
@@ -198,6 +212,15 @@
     private bool cargando = true;
     private string error;
 
+    private List<Sucursal> sucursales = new();
+    private int? puntoVenta;
+
+    private string puntoVentaTexto
+    {
+        get => puntoVenta?.ToString() ?? "";
+        set => puntoVenta = int.TryParse(value, out var v) ? v : null;
+    }
+
     private ResumenVentas resumen;
     private List<FilaReporte> porDia = new();
     private List<FilaReporte> porFormaPago = new();
@@ -205,11 +228,14 @@
     private List<FilaProducto> porProducto = new();
     private List<FilaLibroIva> libro = new();
 
-    private string Periodo => $"Del {desde:dd/MM/yyyy} al {hasta:dd/MM/yyyy}";
+    private string Periodo => $"Del {desde:dd/MM/yyyy} al {hasta:dd/MM/yyyy}" +
+        (puntoVenta == null ? "" : " · " + (sucursales.FirstOrDefault(s => s.PuntoVenta == puntoVenta)?.Nombre ?? ""));
 
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        try { sucursales = await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: false); }
+        catch (Exception) { sucursales = new(); }   // la empresa todavía no corrió el script de sucursales
         await Buscar();
     }
 
@@ -238,12 +264,12 @@
         try
         {
             if (hasta < desde) (desde, hasta) = (hasta, desde);
-            resumen = await Reportes.ResumenAsync(sesion.Cs, desde, hasta);
-            porDia = await Reportes.PorDiaAsync(sesion.Cs, desde, hasta);
-            porFormaPago = await Reportes.PorFormaPagoAsync(sesion.Cs, desde, hasta);
-            porUsuario = await Reportes.PorUsuarioAsync(sesion.Cs, desde, hasta);
-            porProducto = await Reportes.PorProductoAsync(sesion.Cs, desde, hasta);
-            libro = await Reportes.LibroIvaVentasAsync(sesion.Cs, desde, hasta);
+            resumen = await Reportes.ResumenAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porDia = await Reportes.PorDiaAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porFormaPago = await Reportes.PorFormaPagoAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porUsuario = await Reportes.PorUsuarioAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porProducto = await Reportes.PorProductoAsync(sesion.Cs, desde, hasta, puntoVenta);
+            libro = await Reportes.LibroIvaVentasAsync(sesion.Cs, desde, hasta, puntoVenta);
         }
         catch (Exception ex)
         {

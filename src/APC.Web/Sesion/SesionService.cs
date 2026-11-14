@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using APC.Core.Modelos;
+using APC.Core.Servicios;
 using APC.Core.Tenants;
 using Microsoft.AspNetCore.Components.Authorization;
 
@@ -16,6 +18,13 @@ public class SesionActual
     /// <summary>Empresa del usuario; null para los usuarios de CM Tech.</summary>
     public TenantConfig Tenant { get; init; }
     public string Cs => Tenant?.ConnectionString;
+
+    /// <summary>Sucursal en la que trabaja el usuario. Null solo para los usuarios de CM Tech.</summary>
+    public Sucursal Sucursal { get; set; }
+
+    /// <summary>Punto de venta con el que factura: el de su sucursal.</summary>
+    public int PuntoVenta => Sucursal?.PuntoVenta ?? Tenant?.PuntoVenta ?? 0;
+    public Guid SucursalId => Sucursal?.Id ?? Guid.Empty;
 }
 
 /// <summary>Datos del usuario logueado y de su empresa, leídos de la cookie.</summary>
@@ -27,12 +36,17 @@ public class SesionService
 
     private readonly AuthenticationStateProvider _auth;
     private readonly TenantRegistry _tenants;
+    private readonly UsuarioService _usuarios;
+    private readonly SucursalService _sucursales;
     private SesionActual _cache;
 
-    public SesionService(AuthenticationStateProvider auth, TenantRegistry tenants)
+    public SesionService(AuthenticationStateProvider auth, TenantRegistry tenants,
+        UsuarioService usuarios, SucursalService sucursales)
     {
         _auth = auth;
         _tenants = tenants;
+        _usuarios = usuarios;
+        _sucursales = sucursales;
     }
 
     /// <summary>
@@ -67,6 +81,37 @@ public class SesionService
             EsAdmin = user.IsInRole(RolAdmin),
             Tenant = tenant
         };
+        _cache.Sucursal = await ResolverSucursalAsync(tenant, id);
         return _cache;
     }
+
+    /// <summary>
+    /// La sucursal asignada al usuario. Si no tiene (o la dieron de baja) usa la primera activa,
+    /// y si la empresa todavía no tiene ninguna, se crea «Casa central» con su punto de venta.
+    /// </summary>
+    private async Task<Sucursal> ResolverSucursalAsync(TenantConfig tenant, Guid usuarioId)
+    {
+        try
+        {
+            var asignada = await _usuarios.SucursalDeAsync(usuarioId);
+            if (asignada != null)
+            {
+                var s = await _sucursales.ObtenerAsync(tenant.ConnectionString, asignada.Value);
+                if (s is { Activa: true }) return s;
+            }
+
+            var activas = await _sucursales.ListarAsync(tenant.ConnectionString, incluirInactivas: false);
+            if (activas.Count > 0) return activas[0];
+
+            return await _sucursales.AsegurarCasaCentralAsync(tenant);
+        }
+        catch (Exception)
+        {
+            // Si todavía no se corrieron los scripts de sucursales, se sigue con el punto de venta de la empresa.
+            return null;
+        }
+    }
+
+    /// <summary>Vuelve a leer la sucursal (después de cambiarla desde el panel).</summary>
+    public void Olvidar() => _cache = null;
 }

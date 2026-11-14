@@ -25,7 +25,7 @@ else
         <header class="fact-head">
             <div class="fact-titulo">
                 <h1>Factura @Letra</h1>
-                <span class="sub">Pto. Vta. @sesion.Tenant.PuntoVenta.ToString("0000") · @(string.IsNullOrWhiteSpace(factura.ClienteNombre) ? "Consumidor final" : factura.ClienteNombre)</span>
+                <span class="sub">@(sesion.Sucursal != null ? sesion.Sucursal.Nombre + " · " : "")Pto. Vta. @sesion.PuntoVenta.ToString("0000") · @(string.IsNullOrWhiteSpace(factura.ClienteNombre) ? "Consumidor final" : factura.ClienteNombre)</span>
             </div>
             <div class="fila-btns">
                 @if (!empresa.EsMonotributo)
@@ -471,7 +471,7 @@ else
         try
         {
             factura.FormaPagoId = formaPago.Id;
-            resultado = await Facturacion.EmitirAsync(sesion.Tenant, sesion.UsuarioId, factura, fiscal);
+            resultado = await Facturacion.EmitirAsync(sesion.Tenant, sesion.UsuarioId, factura, fiscal, sesion.Sucursal);
             if (resultado.FacturaId != null && presupuestoOrigenId != null)
             {
                 await Presupuestos.MarcarFacturadoAsync(sesion.Cs, presupuestoOrigenId.Value);

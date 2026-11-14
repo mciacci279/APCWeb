@@ -235,7 +235,7 @@ else
         datos.DescuentoTotalPorc = fp?.PorcentajeDescuento ?? 0;
         datos.RecargoTotalPorc = fp?.PorcentajeRecargo ?? 0;
     }
-    private string NumeroTexto => $"{sesion.Tenant.PuntoVenta:00000}-{(guardado ?? numeroOriginal):00000000}";
+    private string NumeroTexto => $"{sesion.PuntoVenta:00000}-{(guardado ?? numeroOriginal):00000000}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -381,7 +381,7 @@ else
         try
         {
             datos.FormaPagoId = formaPago?.Id ?? Guid.Empty;
-            var (id, numero, err) = await PresupuestoSrv.GuardarAsync(sesion.Tenant, sesion.UsuarioId, datos, idActual);
+            var (id, numero, err) = await PresupuestoSrv.GuardarAsync(sesion.Tenant, sesion.UsuarioId, datos, idActual, sesion.Sucursal);
             if (err != null) { error = err; return; }
             idActual = id;
             guardado = numero;

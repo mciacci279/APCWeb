@@ -16,7 +16,8 @@ public class PresupuestoService
     public PresupuestoService(CatalogoService catalogo) => _catalogo = catalogo;
 
     /// <param name="idExistente">null = presupuesto nuevo; con valor = modifica ese presupuesto (si sigue pendiente).</param>
-    public async Task<(Guid Id, int Numero, string Error)> GuardarAsync(TenantConfig tenant, Guid usuarioId, NuevaFactura f, Guid? idExistente = null)
+    public async Task<(Guid Id, int Numero, string Error)> GuardarAsync(TenantConfig tenant, Guid usuarioId, NuevaFactura f,
+        Guid? idExistente = null, Sucursal sucursal = null)
     {
         if (f.Renglones.Count == 0) return (Guid.Empty, 0, "El presupuesto no tiene renglones.");
         if (f.Renglones.Any(r => r.PrecioUnitario <= 0)) return (Guid.Empty, 0, "Hay renglones sin precio.");
@@ -57,7 +58,7 @@ public class PresupuestoService
 
         var cab = new
         {
-            id, terminal = tenant.PuntoVenta, cant = f.Renglones.Count, total,
+            id, terminal = sucursal?.PuntoVenta ?? tenant.PuntoVenta, cant = f.Renglones.Count, total,
             descPorc = f.DescuentoTotalPorc, recPorc = f.RecargoTotalPorc,
             obs = PresupuestoCliente.Armar(f), fp = fp?.Id, cliente = f.ClienteId, usuario = usuarioId, desc, rec
         };

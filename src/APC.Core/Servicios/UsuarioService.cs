@@ -110,6 +110,21 @@ public class UsuarioService
 
     // ------------------------------------------------------------------ instalación (CM Tech)
 
+    /// <summary>Sucursal asignada al usuario (null si todavía no tiene).</summary>
+    public async Task<Guid?> SucursalDeAsync(Guid usuarioId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        return await cn.ExecuteScalarAsync<Guid?>(
+            "SELECT SucursalId FROM dbo.Usuario WHERE Id = @id", new { id = usuarioId });
+    }
+
+    public async Task CambiarSucursalAsync(Guid usuarioId, Guid? sucursalId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        await cn.ExecuteAsync("UPDATE dbo.Usuario SET SucursalId = @sucursalId WHERE Id = @id",
+            new { id = usuarioId, sucursalId });
+    }
+
     public async Task<bool> ExisteSuperAdminAsync()
     {
         using var cn = await Db.AbrirAsync(Central);
@@ -136,7 +151,7 @@ public class UsuarioService
     {
         using var cn = await Db.AbrirAsync(Central);
         return (await cn.QueryAsync<UsuarioListado>(
-            @"SELECT Id, NombreUsuario, Nombre, Apellido, Email, Rol, Activo, UltimoIngreso, BloqueadoHasta
+            @"SELECT Id, NombreUsuario, Nombre, Apellido, Email, Rol, Activo, UltimoIngreso, BloqueadoHasta, SucursalId
               FROM dbo.Usuario WHERE EmpresaId = @empresaId
               ORDER BY CASE Rol WHEN 'Admin' THEN 0 ELSE 1 END, NombreUsuario",
             new { empresaId })).ToList();

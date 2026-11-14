@@ -1,0 +1,353 @@
+@page "/sucursales"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@inject SesionService SesionSrv
+@inject SucursalService SucursalSrv
+@inject CatalogoService Catalogo
+
+<PageTitle>Sucursales · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Sucursales</h1>
+            <span class="sub">Cada sucursal tiene su punto de venta de ARCA y su propio stock</span>
+        </div>
+        <button type="button" class="btn btn-primario" @onclick="Nueva">+ Nueva sucursal</button>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <nav class="pestanias" aria-label="Secciones">
+        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Sucursales</button>
+        <button type="button" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Mover stock</button>
+        <button type="button" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="VerMovimientos">Movimientos</button>
+    </nav>
+
+    @if (pestania == 0)
+    {
+        <div class="arqueo-cols">
+            <section class="panel crece tabla-scroll">
+                <table class="tabla">
+                    <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @if (lista.Count == 0)
+                        {
+                            <tr><td colspan="5" class="sub">Todavía no hay sucursales cargadas.</td></tr>
+                        }
+                        @foreach (var s in lista)
+                        {
+                            <tr class="@(edit?.Id == s.Id ? "fila-sel" : "") @(s.Activa ? "" : "fila-baja")">
+                                <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
+                                <td><button type="button" class="link-fila" @onclick="() => Seleccionar(s)">@s.Nombre</button></td>
+                                <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
+                                <td>@s.Telefono</td>
+                                <td>
+                                    @if (s.Activa) { <span>Activa</span> }
+                                    else { <span class="etiqueta etiqueta-falta">Inactiva</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+
+            @if (edit != null)
+            {
+                <aside class="panel cierre panel-ancho">
+                    <h2>@(edit.EsNueva ? "Nueva sucursal" : edit.Nombre)</h2>
+
+                    <div class="campo"><label for="s-nombre">Nombre</label><input id="s-nombre" class="input" maxlength="100" @bind="edit.Nombre" placeholder="ej. Sucursal Centro" /></div>
+                    <div class="campo">
+                        <label for="s-pv">Punto de venta</label>
+                        <input id="s-pv" class="input mono" type="number" min="1" max="99999" @bind="edit.PuntoVenta" />
+                        <span class="sub">Tiene que estar dado de alta en ARCA para factura electrónica por webservice.</span>
+                    </div>
+                    <div class="fila-campos">
+                        <div class="campo crece"><label for="s-dom">Domicilio</label><input id="s-dom" class="input" maxlength="150" @bind="edit.Domicilio" /></div>
+                        <div class="campo crece"><label for="s-loc">Localidad</label><input id="s-loc" class="input" maxlength="100" @bind="edit.Localidad" /></div>
+                    </div>
+                    <div class="campo"><label for="s-tel">Teléfono</label><input id="s-tel" class="input" maxlength="50" @bind="edit.Telefono" /></div>
+                    <div class="campo">
+                        <label for="s-ley">Leyenda del ticket</label>
+                        <input id="s-ley" class="input" maxlength="200" @bind="edit.LeyendaTicket" placeholder="Vacío: se usa la de la empresa" />
+                    </div>
+
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNueva ? "Crear sucursal" : "Guardar cambios")</button>
+                        <button type="button" class="btn" disabled="@ocupado" @onclick="() => edit = null">Cancelar</button>
+                        @if (!edit.EsNueva)
+                        {
+                            <div class="crece"></div>
+                            <button type="button" class="btn" disabled="@ocupado" @onclick="() => CambiarEstado(!edit.Activa)">
+                                @(edit.Activa ? "Desactivar" : "Reactivar")
+                            </button>
+                        }
+                    </div>
+
+                    @if (edit.EsNueva)
+                    {
+                        <p class="alerta alerta-aviso">La sucursal nueva arranca con todos los productos en cero. Después se le carga stock con «Mover stock».</p>
+                    }
+                </aside>
+            }
+        </div>
+    }
+    else if (pestania == 1)
+    {
+        <section class="panel panel-ancho">
+            <h2>Mover stock</h2>
+
+            <div class="campo">
+                <label for="mv-prod">Producto</label>
+                <div class="buscador-cliente">
+                    <input id="mv-prod" class="input" autocomplete="off" placeholder="Código o descripción, y Enter"
+                           @bind="textoProducto" @bind:event="oninput" @onkeydown="BuscarProducto" />
+                    @if (productos.Count > 0)
+                    {
+                        <ul class="resultados" role="listbox" aria-label="Productos">
+                            @foreach (var p in productos)
+                            {
+                                <li>
+                                    <button type="button" class="resultado" @onclick="() => ElegirProducto(p)">
+                                        <span class="r-nombre">@p.Nombre</span>
+                                        <span class="r-cod">@p.Codigo</span>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            @if (producto != null)
+            {
+                <h3 class="sub-titulo">@producto.Nombre</h3>
+                <table class="tabla">
+                    <thead><tr><th>Sucursal</th><th class="der">Stock actual</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in stock)
+                        {
+                            <tr><td>@s.Sucursal</td><td class="der fuerte">@s.Stock.ToString("N3", Ar)</td></tr>
+                        }
+                        <tr class="fila-total"><td>Total</td><td class="der">@stock.Sum(x => x.Stock).ToString("N3", Ar)</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="fila-campos">
+                    <div class="campo">
+                        <label for="mv-tipo">Operación</label>
+                        <select id="mv-tipo" class="input" @bind="esTransferencia">
+                            <option value="false">Ajuste (entra o sale mercadería)</option>
+                            <option value="true">Transferencia entre sucursales</option>
+                        </select>
+                    </div>
+                    @if (esTransferencia)
+                    {
+                        <div class="campo">
+                            <label for="mv-origen">Desde</label>
+                            <select id="mv-origen" class="input" @bind="origenId">
+                                @foreach (var s in activas) { <option value="@s.Id">@s.Etiqueta</option> }
+                            </select>
+                        </div>
+                        <div class="campo">
+                            <label for="mv-destino">Hacia</label>
+                            <select id="mv-destino" class="input" @bind="destinoId">
+                                @foreach (var s in activas) { <option value="@s.Id">@s.Etiqueta</option> }
+                            </select>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="campo">
+                            <label for="mv-suc">Sucursal</label>
+                            <select id="mv-suc" class="input" @bind="destinoId">
+                                @foreach (var s in activas) { <option value="@s.Id">@s.Etiqueta</option> }
+                            </select>
+                        </div>
+                    }
+                    <div class="campo">
+                        <label for="mv-cant">Cantidad</label>
+                        <input id="mv-cant" class="input mono" type="number" step="0.001" @bind="cantidad" />
+                        @if (!esTransferencia)
+                        {
+                            <span class="sub">En negativo si sale mercadería.</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="campo">
+                    <label for="mv-obs">Motivo</label>
+                    <input id="mv-obs" class="input" maxlength="300" @bind="observaciones" placeholder="ej. compra a proveedor, rotura, recuento" />
+                </div>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Mover">
+                        @(esTransferencia ? "Transferir" : "Registrar ajuste")
+                    </button>
+                </div>
+            }
+        </section>
+    }
+    else
+    {
+        <div class="panel tabla-scroll">
+            <table class="tabla">
+                <thead><tr><th>Fecha</th><th>Sucursal</th><th>Producto</th><th class="der">Cantidad</th><th>Tipo</th><th>Usuario</th><th>Motivo</th></tr></thead>
+                <tbody>
+                    @if (movimientos.Count == 0)
+                    {
+                        <tr><td colspan="7" class="sub">No hay movimientos registrados en los últimos 90 días.</td></tr>
+                    }
+                    @foreach (var m in movimientos)
+                    {
+                        <tr>
+                            <td>@m.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@m.Sucursal</td>
+                            <td>@m.Producto</td>
+                            <td class="der fuerte @(m.Cantidad < 0 ? "negativo" : "")">@m.Cantidad.ToString("N3", Ar)</td>
+                            <td>@m.Tipo</td>
+                            <td class="mono">@m.Usuario</td>
+                            <td>@m.Observaciones</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    private SesionActual sesion;
+    private List<Sucursal> lista = new();
+    private List<Sucursal> activas => lista.Where(s => s.Activa).ToList();
+    private Sucursal edit;
+    private int pestania;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+
+    private string textoProducto;
+    private List<ProductoItem> productos = new();
+    private ProductoItem producto;
+    private List<StockEnSucursal> stock = new();
+    private bool esTransferencia;
+    private Guid origenId;
+    private Guid destinoId;
+    private decimal cantidad;
+    private string observaciones;
+
+    private List<MovimientoStockItem> movimientos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await Recargar();
+    }
+
+    private async Task Recargar()
+    {
+        lista = await SucursalSrv.ListarAsync(sesion.Cs);
+        if (lista.Count == 0)
+        {
+            await SucursalSrv.AsegurarCasaCentralAsync(sesion.Tenant);
+            lista = await SucursalSrv.ListarAsync(sesion.Cs);
+        }
+        var primera = activas.FirstOrDefault();
+        if (primera != null)
+        {
+            if (destinoId == Guid.Empty) destinoId = primera.Id;
+            if (origenId == Guid.Empty) origenId = primera.Id;
+        }
+    }
+
+    private void Nueva()
+    {
+        edit = new Sucursal { PuntoVenta = lista.Count == 0 ? 1 : lista.Max(s => s.PuntoVenta) + 1 };
+        pestania = 0;
+        mensaje = null;
+    }
+
+    private void Seleccionar(Sucursal s)
+    {
+        edit = new Sucursal
+        {
+            Id = s.Id, Nombre = s.Nombre, PuntoVenta = s.PuntoVenta, Domicilio = s.Domicilio,
+            Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa
+        };
+        mensaje = null;
+    }
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.GuardarAsync(sesion.Cs, edit);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, edit.EsNueva ? "Sucursal creada." : "Sucursal actualizada.");
+            await Recargar();
+            edit = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CambiarEstado(bool activa)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.CambiarEstadoAsync(sesion.Cs, edit.Id, activa);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, activa ? "Sucursal reactivada." : "Sucursal desactivada.");
+            await Recargar();
+            edit = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task BuscarProducto(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(textoProducto)) return;
+        productos = await Catalogo.BuscarProductosAsync(sesion.Cs, textoProducto);
+        if (productos.Count == 1) await ElegirProducto(productos[0]);
+    }
+
+    private async Task ElegirProducto(ProductoItem p)
+    {
+        producto = p;
+        productos.Clear();
+        textoProducto = "";
+        stock = await SucursalSrv.StockDeProductoAsync(sesion.Cs, p.Id);
+    }
+
+    private async Task Mover()
+    {
+        ocupado = true;
+        try
+        {
+            string error = esTransferencia
+                ? await SucursalSrv.TransferirAsync(sesion.Cs, sesion.UsuarioId, origenId, destinoId, producto.Id, cantidad, observaciones)
+                : await SucursalSrv.AjustarAsync(sesion.Cs, sesion.UsuarioId, destinoId, producto.Id, cantidad, observaciones);
+
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, esTransferencia ? "Mercadería transferida." : "Ajuste registrado.");
+            cantidad = 0;
+            observaciones = null;
+            stock = await SucursalSrv.StockDeProductoAsync(sesion.Cs, producto.Id);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task VerMovimientos()
+    {
+        pestania = 2;
+        movimientos = await SucursalSrv.MovimientosAsync(sesion.Cs, DateTime.Today.AddDays(-90), DateTime.Today, null, null);
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

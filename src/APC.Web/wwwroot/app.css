@@ -404,3 +404,7 @@ input.input-ajuste { width: 72px; text-align: right; }
 /* ---- Buscador de clientes ---- */
 .buscador-cliente { position: relative; }
 .buscador-cliente .resultados { top: 100%; }
+
+/* ---- Sucursales ---- */
+.negativo { color: var(--rojo-osc); }
+.sub-titulo { margin: 10px 0 4px; font-size: 15px; font-weight: 600; }

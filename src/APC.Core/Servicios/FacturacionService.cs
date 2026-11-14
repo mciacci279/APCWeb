@@ -112,8 +112,11 @@ public class FacturacionService
 
     /// <param name="fiscal">false = nota de pedido: se guarda igual que la factura pero sin pedir CAE
     /// (como el "presupuesto" no fiscal de APC: Factura con Impresa = 1 y sin CAE).</param>
-    public async Task<ResultadoEmision> EmitirAsync(TenantConfig tenant, Guid usuarioId, NuevaFactura f, bool fiscal = true)
+    public async Task<ResultadoEmision> EmitirAsync(TenantConfig tenant, Guid usuarioId, NuevaFactura f,
+        bool fiscal = true, Sucursal sucursal = null)
     {
+        // El punto de venta es el de la sucursal donde trabaja el usuario.
+        int puntoVenta = sucursal?.PuntoVenta ?? tenant.PuntoVenta;
         if (f.Renglones.Count == 0) return Falla("La factura no tiene renglones.");
         if (f.FormaPagoId == Guid.Empty) return Falla("Elegí la forma de pago.");
         var errAjuste = ValidarAjustes(f);
@@ -193,7 +196,7 @@ public class FacturacionService
                     ClienteCuit = Recortar(f.ClienteDocumento?.Trim(), 13),
                     ClienteDomicilio = Recortar(f.ClienteDomicilio, 100),
                     ClienteLocalidad = Recortar(f.ClienteLocalidad, 100),
-                    Terminal = tenant.PuntoVenta, Renglones = f.Renglones.Count
+                    Terminal = puntoVenta, Renglones = f.Renglones.Count
                 }, tx);
 
             await cn.ExecuteAsync(
@@ -208,21 +211,27 @@ public class FacturacionService
             if (param.DecrementaStock)
             {
                 foreach (var g in f.Renglones.Where(r => !r.Producto.OmitirControlStock).GroupBy(r => r.Producto.Id))
-                    await cn.ExecuteAsync(
-                        @"UPDATE dbo.Producto
-                          SET Stock = CASE WHEN Stock - @c <= 0 THEN 0 ELSE Stock - @c END
-                          WHERE Id = @id", new { id = g.Key, c = g.Sum(x => x.Cantidad) }, tx);
+                {
+                    var cantidad = g.Sum(x => x.Cantidad);
+                    if (sucursal != null)
+                        await SucursalService.DescontarVentaAsync(cn, tx, sucursal.Id, g.Key, cantidad);
+                    else
+                        await cn.ExecuteAsync(
+                            @"UPDATE dbo.Producto
+                              SET Stock = CASE WHEN Stock - @c <= 0 THEN 0 ELSE Stock - @c END
+                              WHERE Id = @id", new { id = g.Key, c = cantidad }, tx);
+                }
             }
 
             tx.Commit();
         }
 
-        return fiscal ? await SolicitarCaeAsync(tenant, facturaId) : await CerrarNotaPedidoAsync(tenant, facturaId);
+        return fiscal ? await SolicitarCaeAsync(tenant, facturaId) : await CerrarNotaPedidoAsync(tenant, facturaId, puntoVenta);
     }
 
     // ------------------------------------------------------------------ notas de pedido (no fiscales)
 
-    private static async Task<ResultadoEmision> CerrarNotaPedidoAsync(TenantConfig tenant, Guid facturaId)
+    private static async Task<ResultadoEmision> CerrarNotaPedidoAsync(TenantConfig tenant, Guid facturaId, int puntoVenta)
     {
         using var cn = await Db.AbrirAsync(tenant.ConnectionString);
         var numero = await cn.ExecuteScalarAsync<int>(
@@ -230,7 +239,7 @@ public class FacturacionService
               SELECT NumeroInterno FROM dbo.Factura WHERE Id = @id", new { id = facturaId });
         return new ResultadoEmision
         {
-            Ok = true, FacturaId = facturaId, Letra = "X", PuntoVenta = tenant.PuntoVenta, Numero = numero, EsNotaPedido = true
+            Ok = true, FacturaId = facturaId, Letra = "X", PuntoVenta = puntoVenta, Numero = numero, EsNotaPedido = true
         };
     }
 
@@ -250,13 +259,7 @@ public class FacturacionService
         await cn.ExecuteAsync(
             "UPDATE dbo.Factura SET Anulada = 1, FechaAnulacion = GETDATE(), Observaciones = @obs WHERE Id = @id",
             new { id = facturaId, obs }, tx);
-        if (param.DecrementaStock)
-            await cn.ExecuteAsync(
-                @"UPDATE p SET p.Stock = p.Stock + d.Cant
-                  FROM dbo.Producto p
-                  JOIN (SELECT ProductoId, SUM(CantidadRenglon) AS Cant FROM dbo.Detalle WHERE FacturaId = @id GROUP BY ProductoId) d
-                    ON d.ProductoId = p.Id
-                  WHERE ISNULL(p.OmitirControlStock, 0) = 0", new { id = facturaId }, tx);
+        if (param.DecrementaStock) await DevolverStockAsync(cn, tx, facturaId);
         tx.Commit();
         return new ResultadoEmision { Ok = true, FacturaId = facturaId, Letra = "X" };
     }
@@ -287,9 +290,9 @@ public class FacturacionService
         var condicion = iva?.Condicion ?? CondicionReceptor.ConsumidorFinal;
         int tipoComp = empresa.EsMonotributo ? 11 : condicion == CondicionReceptor.ResponsableInscripto ? 1 : 6;
 
-        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, fac.ClienteCUIT, fac.MontoTotal, renglones, null);
+        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, fac.ClienteCUIT, fac.MontoTotal, renglones, null, fac.Terminal);
         if (!r.Ok)
-            return new ResultadoEmision { Ok = false, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = tenant.PuntoVenta, Mensaje = r.Mensaje };
+            return new ResultadoEmision { Ok = false, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = fac.Terminal, Mensaje = r.Mensaje };
 
         await cn.ExecuteAsync(
             @"UPDATE dbo.Factura SET
@@ -300,14 +303,14 @@ public class FacturacionService
               WHERE Id = @id",
             new
             {
-                id = facturaId, pv = tenant.PuntoVenta, nro = (int)r.Numero, tipo = tipoComp,
+                id = facturaId, pv = fac.Terminal, nro = (int)r.Numero, tipo = tipoComp,
                 cae = r.Cae, vto = r.CaeVencimiento, tipoDoc = r.TipoDoc, qrJson = r.QrJson, qrUrl = r.QrUrl,
                 qrPng = r.QrPng, i4 = r.Iva4, i5 = r.Iva5, i6 = r.Iva6
             });
 
         return new ResultadoEmision
         {
-            Ok = true, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = tenant.PuntoVenta,
+            Ok = true, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = fac.Terminal,
             Numero = r.Numero, Cae = r.Cae
         };
     }
@@ -357,7 +360,7 @@ public class FacturacionService
                          @ClienteDomicilio, @ClienteLocalidad, @NroFac, @TipoFac, @TerminalFac)",
                     new
                     {
-                        Id = ncId, fac.Tipo, Terminal = tenant.PuntoVenta, fac.CantidadRenglones, fac.MontoTotal, fac.MontoIva, fac.Iva,
+                        Id = ncId, fac.Tipo, Terminal = fac.Terminal, fac.CantidadRenglones, fac.MontoTotal, fac.MontoIva, fac.Iva,
                         fac.MontoNoGravado, fac.MontoExento, Obs = obs, fac.IvaId, fac.FormaPagoId, fac.ClienteId, UsuarioId = usuarioId,
                         fac.ClienteNombre, fac.ClienteCUIT, fac.ClienteDomicilio, fac.ClienteLocalidad,
                         NroFac = fac.Numero, TipoFac = fac.Tipo, TerminalFac = fac.Terminal
@@ -374,14 +377,7 @@ public class FacturacionService
 
                 // Devuelve al stock lo que la factura había descontado
                 if (param.DecrementaStock)
-                    await cn.ExecuteAsync(
-                        @"UPDATE p SET p.Stock = p.Stock + d.Cant
-                          FROM dbo.Producto p
-                          JOIN (SELECT ProductoId, SUM(CantidadRenglon) AS Cant FROM dbo.Detalle WHERE FacturaId = @fac GROUP BY ProductoId) d
-                            ON d.ProductoId = p.Id
-                          WHERE ISNULL(p.OmitirControlStock, 0) = 0",
-                        new { fac = facturaId }, tx);
-
+                    await DevolverStockAsync(cn, tx, facturaId);
                 tx.Commit();
             }
         }
@@ -426,9 +422,9 @@ public class FacturacionService
             Fecha = fac.Fecha
         };
 
-        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, nc.ClienteCUIT, nc.MontoTotal, renglones, asociado);
+        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, nc.ClienteCUIT, nc.MontoTotal, renglones, asociado, nc.Terminal);
         if (!r.Ok)
-            return new ResultadoEmision { Ok = false, FacturaId = notaCreditoId, Letra = nc.Tipo, PuntoVenta = tenant.PuntoVenta, Mensaje = r.Mensaje };
+            return new ResultadoEmision { Ok = false, FacturaId = notaCreditoId, Letra = nc.Tipo, PuntoVenta = nc.Terminal, Mensaje = r.Mensaje };
 
         await cn.ExecuteAsync(
             @"UPDATE dbo.NotaCredito SET
@@ -439,14 +435,14 @@ public class FacturacionService
               WHERE Id = @id",
             new
             {
-                id = notaCreditoId, pv = tenant.PuntoVenta, nro = (int)r.Numero, tipo = tipoComp,
+                id = notaCreditoId, pv = nc.Terminal, nro = (int)r.Numero, tipo = tipoComp,
                 cae = r.Cae, vto = r.CaeVencimiento, tipoDoc = r.TipoDoc, qrJson = r.QrJson, qrUrl = r.QrUrl,
                 qrPng = r.QrPng, i4 = r.Iva4, i5 = r.Iva5, i6 = r.Iva6
             });
 
         return new ResultadoEmision
         {
-            Ok = true, FacturaId = notaCreditoId, Letra = nc.Tipo, PuntoVenta = tenant.PuntoVenta, Numero = r.Numero, Cae = r.Cae
+            Ok = true, FacturaId = notaCreditoId, Letra = nc.Tipo, PuntoVenta = nc.Terminal, Numero = r.Numero, Cae = r.Cae
         };
     }
 
@@ -479,8 +475,34 @@ public class FacturacionService
     }
 
     /// <summary>Arma el pedido (alícuotas, receptor, asociado), lo envía a ARCA y prepara el QR.</summary>
+
+    /// <summary>
+    /// Devuelve al stock lo que una factura había descontado. Si la empresa trabaja con sucursales,
+    /// la mercadería vuelve a la sucursal del punto de venta del comprobante.
+    /// </summary>
+    private static async Task DevolverStockAsync(IDbConnection cn, IDbTransaction tx, Guid facturaId)
+    {
+        await cn.ExecuteAsync(
+            @"UPDATE p SET p.Stock = ISNULL(p.Stock, 0) + d.Cant
+              FROM dbo.Producto p
+              JOIN (SELECT ProductoId, SUM(CantidadRenglon) AS Cant FROM dbo.Detalle WHERE FacturaId = @id GROUP BY ProductoId) d
+                ON d.ProductoId = p.Id
+              WHERE ISNULL(p.OmitirControlStock, 0) = 0;
+
+              IF OBJECT_ID(N'dbo.StockSucursal', N'U') IS NOT NULL
+              UPDATE ss SET ss.Stock = ss.Stock + d.Cant
+              FROM dbo.StockSucursal ss
+              JOIN dbo.Factura f ON f.Id = @id
+              JOIN dbo.Sucursal s ON s.PuntoVenta = f.Terminal AND s.Id = ss.SucursalId
+              JOIN (SELECT ProductoId, SUM(CantidadRenglon) AS Cant FROM dbo.Detalle WHERE FacturaId = @id GROUP BY ProductoId) d
+                ON d.ProductoId = ss.ProductoId
+              JOIN dbo.Producto p ON p.Id = ss.ProductoId AND ISNULL(p.OmitirControlStock, 0) = 0;",
+            new { id = facturaId }, tx);
+    }
+
     private async Task<CaeObtenido> PedirCaeAsync(TenantConfig tenant, IDbConnection cn, EmpresaDatos empresa, int tipoComp,
-        CondicionReceptor condicion, string clienteCuit, decimal montoTotal, List<DetalleCalc> renglones, ComprobanteAsociado asociado)
+        CondicionReceptor condicion, string clienteCuit, decimal montoTotal, List<DetalleCalc> renglones,
+        ComprobanteAsociado asociado, int puntoVenta)
     {
         var docNum = NormalizarDocumento(clienteCuit);
         int tipoDoc = docNum.Length == 11 ? 80 : (docNum.Length is 7 or 8 ? 96 : 99);
@@ -523,7 +545,7 @@ public class FacturacionService
         var cfg = new ArcaConfig
         {
             Cuit = empresa.CuitNumero,
-            PuntoVenta = tenant.PuntoVenta,
+            PuntoVenta = puntoVenta,
             CertificadoPath = tenant.CertificadoPath,
             ClavePath = tenant.ClavePath,
             UrlWsaa = tenant.UrlWsaa,
@@ -545,7 +567,7 @@ public class FacturacionService
             ver = 1,
             fecha = sol.Fecha.ToString("yyyy-MM-dd"),
             cuit = empresa.CuitNumero,
-            ptoVta = tenant.PuntoVenta,
+            ptoVta = puntoVenta,
             tipoCmp = tipoComp,
             nroCmp = resp.Numero,
             importe = sol.ImporteTotal,

@@ -32,6 +32,21 @@ Seguridad del ingreso: 5 claves incorrectas bloquean el usuario 15 minutos; el d
 | `sql/01_apcweb_cajaturno.sql` | Tabla `CajaTurno`, en la base de **cada empresa** |
 | `sql/02_apcweb_central.sql` | Crea la base central `APCWeb_Central` (una sola vez) |
 
+## Scripts de base de datos
+
+Se ejecutan una sola vez, en orden. Los `*_central_*` van en `APCWeb_Central`; los demás, en la base de **cada empresa**.
+
+| Script | Dónde | Qué agrega |
+|---|---|---|
+| `01_apcweb_cajaturno.sql` | empresa | Apertura y cierre de caja |
+| `02_apcweb_central.sql` | central | Empresa, Usuario, IngresoLog |
+| `03_apcweb_central_logo.sql` | central | Logo de la empresa |
+| `04_apcweb_central_leyenda.sql` | central | Leyenda del ticket |
+| `05_apcweb_central_recupero.sql` | central | Recupero de clave por email |
+| `06_apcweb_central_fantasia.sql` | central | Nombre de fantasía |
+| `07_apcweb_sucursales.sql` | empresa | Sucursales, stock por sucursal y movimientos |
+| `08_apcweb_central_sucursal_usuario.sql` | central | Sucursal asignada a cada usuario |
+
 ## Primera vez después de clonar desde GitHub
 
 Por seguridad, estos archivos **no están en el repositorio** (ver `.gitignore`):

@@ -3,6 +3,7 @@
 @inject SesionService SesionSrv
 @inject ProductoService ProductoSrv
 @inject ImportadorProductosService ImportadorSrv
+@inject SucursalService SucursalSrv
 
 <PageTitle>Productos · APC Web</PageTitle>
 
@@ -136,7 +137,15 @@
                     }
                     else if (pestania == 1)
                     {
-                        <div class="t-fila"><span class="sub">Stock actual</span><span class="mono fuerte">@sel.Stock.ToString("0.###", Ar)</span></div>
+                        <div class="t-fila"><span class="sub">Stock total</span><span class="mono fuerte">@sel.Stock.ToString("0.###", Ar)</span></div>
+                        @if (stockSucursales.Count > 1)
+                        {
+                            @foreach (var ss in stockSucursales)
+                            {
+                                <div class="t-fila"><span class="sub">@ss.Sucursal</span><span class="mono">@ss.Stock.ToString("0.###", Ar)</span></div>
+                            }
+                            <p class="sub">El ingreso o egreso se registra en @(sesion.Sucursal?.Nombre ?? "la sucursal del usuario"). Para pasar mercadería de una sucursal a otra, usá <a href="/sucursales">Sucursales</a>.</p>
+                        }
                         <div class="campo">
                             <label for="c-cant">Ingreso (+) o egreso (−) de stock</label>
                             <input id="c-cant" class="input mono" type="number" step="0.001" @bind="cambio.CantidadStock" @bind:event="oninput" disabled="@(!esAdmin)" />
@@ -359,6 +368,17 @@
 
     private async Task Buscar() => lista = await ProductoSrv.ListarAsync(sesion.Cs, texto, filtroRubro, verInactivos);
 
+    private List<StockEnSucursal> stockSucursales = new();
+
+    /// <summary>Sucursal del usuario; null si la empresa todavía no usa sucursales.</summary>
+    private Guid? Sucursal => sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId;
+
+    private async Task<List<StockEnSucursal>> StockPorSucursalAsync(Guid productoId)
+    {
+        try { return await SucursalSrv.StockDeProductoAsync(sesion.Cs, productoId); }
+        catch (Exception) { return new(); }   // la empresa todavía no corrió el script de sucursales
+    }
+
     private async Task Seleccionar(Guid id)
     {
         sel = await ProductoSrv.ObtenerAsync(sesion.Cs, id);
@@ -371,6 +391,7 @@
         };
         modo = Modo.Editar;
         mensaje = null;
+        stockSucursales = await StockPorSucursalAsync(id);
         if (pestania == 2) await CargarHistorialProducto();
     }
 
@@ -462,7 +483,7 @@
 
     private async Task GuardarNuevo()
     {
-        var err = await ProductoSrv.CrearAsync(sesion.Cs, sesion.UsuarioId, edit);
+        var err = await ProductoSrv.CrearAsync(sesion.Cs, sesion.UsuarioId, edit, Sucursal);
         Aviso(err == null, err ?? $"Producto «{edit.Nombre}» creado.");
         if (err == null) { await Buscar(); await Seleccionar(edit.Id); }
     }
@@ -476,7 +497,7 @@
 
     private async Task GuardarCambio()
     {
-        var err = await ProductoSrv.CambiarPrecioStockAsync(sesion.Cs, sesion.UsuarioId, sel.Id, cambio);
+        var err = await ProductoSrv.CambiarPrecioStockAsync(sesion.Cs, sesion.UsuarioId, sel.Id, cambio, Sucursal);
         Aviso(err == null, err ?? "Cambio registrado en el historial.");
         if (err == null) { await Buscar(); await Seleccionar(sel.Id); }
     }
