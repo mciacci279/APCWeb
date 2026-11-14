@@ -11,7 +11,36 @@ public class Facturador
     public string Banco { get; set; }
     public bool Activo { get; set; } = true;
 
+    // ---- Datos para emitir la Factura C por ARCA ----
+    public int? PuntoVenta { get; set; }
+    /// <summary>"HOMO" (pruebas) o "PROD".</summary>
+    public string Ambiente { get; set; } = "HOMO";
+    public string CertificadoPath { get; set; }
+    public string ClavePath { get; set; }
+    public string Domicilio { get; set; }
+    public string Localidad { get; set; }
+    public string IngresosBrutos { get; set; }
+    public DateTime? FechaInicioActividades { get; set; }
+
     public bool EsNuevo => Id == Guid.Empty;
+    public long CuitNumero => long.TryParse((Cuit ?? "").Replace("-", "").Replace(" ", "").Trim(), out var c) ? c : 0;
+    public bool EsProduccion => string.Equals(Ambiente?.Trim(), "PROD", StringComparison.OrdinalIgnoreCase);
+
+    public string UrlWsaa => EsProduccion
+        ? "https://wsaa.afip.gov.ar/ws/services/LoginCms"
+        : "https://wsaahomo.afip.gov.ar/ws/services/LoginCms";
+
+    public string UrlWsfe => EsProduccion
+        ? "https://servicios1.afip.gov.ar/wsfev1/service.asmx"
+        : "https://wswhomo.afip.gov.ar/wsfev1/service.asmx";
+
+    /// <summary>Puede emitir por ARCA: tiene CUIT, punto de venta y certificado.</summary>
+    public bool PuedeFacturar =>
+        CuitNumero > 0 && PuntoVenta > 0 &&
+        !string.IsNullOrWhiteSpace(CertificadoPath) && !string.IsNullOrWhiteSpace(ClavePath);
+
+    /// <summary>Código con el que se guardan sus certificados en el servidor.</summary>
+    public string CodigoCertificado => "facturador-" + (CuitNumero > 0 ? CuitNumero.ToString() : Id.ToString("N")[..8]);
 
     /// <summary>Línea con los datos para transferir, para el mensaje al cliente.</summary>
     public string DatosParaTransferir
@@ -52,6 +81,22 @@ public class Cobro
     public DateTime? FechaPago { get; set; }
     public string MedioPago { get; set; }
     public string Observaciones { get; set; }
+
+    // ---- Factura C emitida por ARCA ----
+    public int? TipoComprobanteAFIP { get; set; }
+    public int? PuntoVenta { get; set; }
+    public int? Numero { get; set; }
+    public string CAE { get; set; }
+    public string CAEVencimiento { get; set; }
+    public string QRURLAFIP { get; set; }
+    public DateTime? FechaEmision { get; set; }
+    public string ReceptorCuit { get; set; }
+    public string ReceptorNombre { get; set; }
+    public string ReceptorDomicilio { get; set; }
+    public string ReceptorCondicionIva { get; set; }
+
+    public bool Facturado => !string.IsNullOrEmpty(CAE);
+    public string NumeroFactura => Facturado ? $"{PuntoVenta ?? 0:00000}-{Numero ?? 0:00000000}" : ComprobanteNro;
 
     // Datos que se leen junto con el cobro, para la pantalla
     public string EmpresaCodigo { get; set; }

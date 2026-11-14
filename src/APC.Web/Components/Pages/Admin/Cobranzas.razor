@@ -3,6 +3,9 @@
 @using APC.Core.Seguridad
 @inject SesionService SesionSrv
 @inject CobranzaService CobranzaSrv
+@inject FacturaAbonoService FacturaSrv
+@inject CertificadoService CertSrv
+@inject IJSRuntime JS
 
 <PageTitle>Cobranzas · APC Web</PageTitle>
 
@@ -54,7 +57,7 @@
                         @foreach (var f in facturadores)
                         {
                             <tr class="@(f.Activo ? "" : "fila-baja")">
-                                <td><button type="button" class="link-fila" @onclick="() => editF = Copia(f)">@f.Nombre</button></td>
+                                <td><button type="button" class="link-fila" @onclick="() => SeleccionarFacturador(f)">@f.Nombre</button></td>
                                 <td class="mono">@f.Cuit</td>
                                 <td class="mono">@f.Alias</td>
                                 <td>@f.Banco</td>
@@ -64,7 +67,7 @@
                     </tbody>
                 </table>
                 <div class="fila-btns">
-                    <button type="button" class="btn" @onclick="() => editF = new Facturador()">+ Agregar</button>
+                    <button type="button" class="btn" @onclick="() => { editF = new Facturador(); certInfo = null; }">+ Agregar</button>
                 </div>
             </section>
 
@@ -78,11 +81,67 @@
                     <div class="campo"><label for="f-cbu">CBU</label><input id="f-cbu" class="input mono" maxlength="30" @bind="editF.Cbu" /></div>
                     <div class="campo"><label for="f-banco">Banco</label><input id="f-banco" class="input" maxlength="60" @bind="editF.Banco" /></div>
                     <label class="check"><input type="checkbox" @bind="editF.Activo" /> Activo</label>
+                    <p class="sub">El alias y el nombre se usan en el mensaje de WhatsApp para que el cliente pueda transferir.</p>
+
+                    <h3 class="sub-titulo">Facturación electrónica (Factura C)</h3>
+                    <p class="sub">Completá esto solo si querés que el sistema emita la factura del abono con CAE de ARCA.</p>
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="f-pv">Punto de venta</label>
+                            <input id="f-pv" class="input mono input-chico" type="number" min="1" max="99999" @bind="editF.PuntoVenta" />
+                        </div>
+                        <div class="campo">
+                            <label for="f-amb">Ambiente</label>
+                            <select id="f-amb" class="input" @bind="editF.Ambiente">
+                                <option value="HOMO">Homologación (pruebas)</option>
+                                <option value="PROD">Producción</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fila-campos">
+                        <div class="campo crece"><label for="f-dom">Domicilio</label><input id="f-dom" class="input" maxlength="150" @bind="editF.Domicilio" /></div>
+                        <div class="campo crece"><label for="f-loc">Localidad</label><input id="f-loc" class="input" maxlength="100" @bind="editF.Localidad" /></div>
+                    </div>
+                    <div class="fila-campos">
+                        <div class="campo crece"><label for="f-ib">Ingresos Brutos</label><input id="f-ib" class="input" maxlength="50" @bind="editF.IngresosBrutos" /></div>
+                        <div class="campo"><label for="f-inicio">Inicio de actividades</label><input id="f-inicio" class="input" type="date" @bind="editF.FechaInicioActividades" /></div>
+                    </div>
+
+                    @if (editF.EsNuevo)
+                    {
+                        <p class="alerta alerta-aviso">Guardá primero los datos; después vas a poder subir el certificado.</p>
+                    }
+                    else
+                    {
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="f-crt">Certificado (.crt)</label>
+                                <InputFile id="f-crt" class="input" accept=".crt,.pem,.cer" OnChange="@(a => SubirCert(a, false))" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="f-key">Clave privada (.key)</label>
+                                <InputFile id="f-key" class="input" accept=".key,.pem" OnChange="@(a => SubirCert(a, true))" />
+                            </div>
+                        </div>
+                        @if (certInfo?.Existe == true)
+                        {
+                            <div class="cert-info @(CertOk ? "ok" : "falta")">
+                                <span><strong>@certInfo.Sujeto</strong>@(certInfo.Cuit != null ? " · CUIT " + certInfo.Cuit : "")</span>
+                                <span>Vence el @certInfo.Vence?.ToString("dd/MM/yyyy")@(certInfo.Vencido ? " · VENCIDO" : certInfo.VencePronto ? " · vence en menos de 30 días" : "")</span>
+                                <span>@(!certInfo.ClaveCargada ? "Falta subir la clave privada." : certInfo.ClaveCoincide ? "La clave corresponde al certificado." : "La clave NO corresponde a este certificado.")</span>
+                                <span>Emitido para @(certInfo.EsHomologacion ? "homologación" : "producción")@(certInfo.EsHomologacion == editF.EsProduccion ? $" · NO SIRVE para {(editF.EsProduccion ? "producción" : "homologación")}" : "")</span>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(editF.CertificadoPath))
+                        {
+                            <p class="alerta alerta-aviso">No se encuentra el certificado en el servidor. Volvé a subirlo.</p>
+                        }
+                    }
+
                     <div class="fila-btns">
                         <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarFacturador">Guardar</button>
-                        <button type="button" class="btn" @onclick="() => editF = null">Cancelar</button>
+                        <button type="button" class="btn" @onclick="() => { editF = null; certInfo = null; }">Cancelar</button>
                     </div>
-                    <p class="sub">El alias y el nombre se usan en el mensaje de WhatsApp para que el cliente pueda transferir.</p>
                 </aside>
             }
         </div>
@@ -123,7 +182,8 @@
                             </td>
                             <td>
                                 <span class="sub">@c.Facturador</span>
-                                @if (!string.IsNullOrWhiteSpace(c.ComprobanteNro)) { <span class="mono">@c.ComprobanteNro</span> }
+                                @if (c.Facturado) { <span class="mono num-presu">C @c.NumeroFactura</span> }
+                                else if (!string.IsNullOrWhiteSpace(c.ComprobanteNro)) { <span class="mono">@c.ComprobanteNro</span> }
                             </td>
                             <td class="der fuerte">@Pesos(c.Monto)</td>
                             <td>
@@ -134,6 +194,14 @@
                             </td>
                             <td class="der">@(c.Avisos == 0 ? "—" : c.Avisos.ToString())</td>
                             <td class="acciones">
+                                @if (!c.Anulado && !c.Facturado)
+                                {
+                                    <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => Emitir(c)">Emitir factura</button>
+                                }
+                                @if (c.Facturado)
+                                {
+                                    <button type="button" class="btn btn-chico" @onclick="() => Imprimir(c)">Ver factura</button>
+                                }
                                 @if (!c.Anulado && !c.Abonado)
                                 {
                                     <a class="btn btn-chico btn-whatsapp" href="@LinkWhatsApp(c)" target="_blank" rel="noopener"
@@ -275,6 +343,48 @@
     private bool extenderAbono = true;
 
     private Facturador editF;
+    private CertificadoInfo certInfo;
+
+    private bool CertOk => certInfo?.Existe == true && certInfo.ClaveCoincide && !certInfo.Vencido
+                           && certInfo.EsHomologacion != editF.EsProduccion;
+
+    private async Task Emitir(Cobro c)
+    {
+        ocupado = true;
+        mensaje = null;
+        StateHasChanged();
+        try
+        {
+            var error = await FacturaSrv.EmitirAsync(c.Id, sesion.UsuarioId);
+            if (error != null) { Aviso(false, error); return; }
+            await Cargar();
+            var emitido = lista.FirstOrDefault(x => x.Id == c.Id);
+            Aviso(true, $"Factura C {emitido?.NumeroFactura} emitida para {c.Comercio}.");
+            await Imprimir(c);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Imprimir(Cobro c) => await JS.InvokeVoidAsync("apc.imprimir", $"/admin/cobranzas/factura/{c.Id}");
+
+    private async Task SubirCert(InputFileChangeEventArgs a, bool esClave)
+    {
+        ocupado = true;
+        try
+        {
+            await using var st = a.File.OpenReadStream(CertificadoService.MaximoBytes);
+            var (ruta, err) = await CertSrv.GuardarAsync(editF.CodigoCertificado, editF.Ambiente, esClave, st);
+            if (err != null) { Aviso(false, err); return; }
+            if (esClave) editF.ClavePath = ruta; else editF.CertificadoPath = ruta;
+            certInfo = CertSrv.Leer(editF.CertificadoPath, editF.ClavePath);
+            Aviso(true, (esClave ? "Clave privada" : "Certificado") + " subido. Tocá «Guardar» para aplicarlo.");
+        }
+        catch (IOException)
+        {
+            Aviso(false, "El archivo es demasiado grande para ser un certificado.");
+        }
+        finally { ocupado = false; }
+    }
     private string mensaje;
     private bool mensajeOk;
     private bool ocupado;
@@ -431,9 +541,19 @@
         finally { ocupado = false; }
     }
 
+    private void SeleccionarFacturador(Facturador f)
+    {
+        editF = Copia(f);
+        certInfo = CertSrv.Leer(f.CertificadoPath, f.ClavePath);
+        mensaje = null;
+    }
+
     private static Facturador Copia(Facturador f) => new()
     {
-        Id = f.Id, Nombre = f.Nombre, Cuit = f.Cuit, Alias = f.Alias, Cbu = f.Cbu, Banco = f.Banco, Activo = f.Activo
+        Id = f.Id, Nombre = f.Nombre, Cuit = f.Cuit, Alias = f.Alias, Cbu = f.Cbu, Banco = f.Banco, Activo = f.Activo,
+        PuntoVenta = f.PuntoVenta, Ambiente = f.Ambiente, CertificadoPath = f.CertificadoPath, ClavePath = f.ClavePath,
+        Domicilio = f.Domicilio, Localidad = f.Localidad, IngresosBrutos = f.IngresosBrutos,
+        FechaInicioActividades = f.FechaInicioActividades
     };
 
     private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }

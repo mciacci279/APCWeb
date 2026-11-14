@@ -1,0 +1,29 @@
+@page "/admin/cobranzas/factura/{Id:guid}"
+@layout VacioLayout
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@inject FacturaAbonoService FacturaSrv
+
+<PageTitle>@ComprobanteVista.TituloDe(c, emisor)</PageTitle>
+
+@if (c == null)
+{
+    <p class="page-pad">La factura no está emitida o no se encontró.</p>
+}
+else
+{
+    <ComprobanteVista C="c" Empresa="emisor" Formato="a4" UrlBase="@($"/admin/cobranzas/factura/{Id}")" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ComprobanteImpresion c;
+    private EmpresaDatos emisor;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (comprobante, e) = await FacturaSrv.ParaImprimirAsync(Id);
+        c = comprobante;
+        emisor = e;
+    }
+}
