@@ -32,6 +32,19 @@ Seguridad del ingreso: 5 claves incorrectas bloquean el usuario 15 minutos; el d
 | `sql/01_apcweb_cajaturno.sql` | Tabla `CajaTurno`, en la base de **cada empresa** |
 | `sql/02_apcweb_central.sql` | Crea la base central `APCWeb_Central` (una sola vez) |
 
+## Primera vez después de clonar desde GitHub
+
+Por seguridad, estos archivos **no están en el repositorio** (ver `.gitignore`):
+
+| Falta | Qué hacer |
+|---|---|
+| `src/APC.Web/appsettings.Secretos.json` | Copiar `appsettings.Secretos.example.json` con ese nombre y completar la conexión a `APCWeb_Central` (y SMTP si se prueba el recupero de clave). **Sin este archivo la app no arranca.** Pedir los datos a CM Tech por un medio privado, nunca por GitHub. |
+| `bin/`, `obj/`, `.vs/` | Nada: Visual Studio los genera al compilar (restaura los paquetes NuGet solo). |
+| Perfil de publicación (`Properties/PublishProfiles`, `*.PublishSettings`) | Solo si va a publicar al VPS: importar el `.PublishSettings` que le pase CM Tech, o crear el perfil Web Deploy. |
+| Certificados ARCA (`.crt` / `.key`) | Nada en la PC: viven en el servidor y se suben desde el panel Empresas. |
+
+Requisitos: Visual Studio 2022 con el SDK de .NET 9.
+
 ## Puesta en marcha
 
 1. Ejecutar `sql/02_apcweb_central.sql` en el SQL Server (una sola vez).
