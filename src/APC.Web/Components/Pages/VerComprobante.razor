@@ -1,0 +1,64 @@
+@page "/ver/{Codigo}/{Id:guid}"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@using APC.Core.Seguridad
+@using APC.Core.Tenants
+@inject TenantRegistry Tenants
+@inject CatalogoService Catalogo
+@inject FacturacionService Facturacion
+@inject EmpresaCentralService EmpresaSrv
+
+<PageTitle>@ComprobanteVista.TituloDe(c, empresa)</PageTitle>
+
+@if (c == null)
+{
+    <main class="login">
+        <div class="login-card">
+            <h1>Comprobante no disponible</h1>
+            <p>El link no es válido o el comprobante ya no está disponible. Pedile al comercio que te lo envíe de nuevo.</p>
+        </div>
+    </main>
+}
+else
+{
+    <ComprobanteVista C="c" Empresa="empresa" Logo="@logo" Leyenda="@leyenda" Formato="@(Formato ?? "a4")"
+                      UrlBase="@UrlBase" AutoImprimir="false" />
+}
+
+@code {
+    [Parameter] public string Codigo { get; set; }
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "f")] public string Firma { get; set; }
+    [SupplyParameterFromQuery(Name = "nc")] public int? Nc { get; set; }
+    [SupplyParameterFromQuery(Name = "formato")] public string Formato { get; set; }
+
+    private ComprobanteImpresion c;
+    private EmpresaDatos empresa;
+    private string logo;
+    private string leyenda;
+
+    private string UrlBase => $"/ver/{Uri.EscapeDataString(Codigo ?? "")}/{Id}?f={Uri.EscapeDataString(Firma ?? "")}" + (Nc == 1 ? "&nc=1" : "");
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Sin firma válida no se muestra nada (ni siquiera si el comprobante existe).
+        if (!EnlaceComprobante.Verificar(Tenants.CarpetaDatos, Codigo, Id, Nc == 1, Firma)) return;
+
+        var tenant = Tenants.Buscar(Codigo);
+        if (tenant == null) return;
+
+        try
+        {
+            var comprobante = await Facturacion.ObtenerParaImprimirAsync(tenant.ConnectionString, Id, Nc == 1);
+            if (comprobante == null) return;
+            empresa = await Catalogo.EmpresaAsync(tenant.ConnectionString);
+            logo = await EmpresaSrv.LogoDataUriAsync(tenant.Id);
+            leyenda = tenant.LeyendaTicket;
+            c = comprobante;
+        }
+        catch (Exception)
+        {
+            c = null;
+        }
+    }
+}

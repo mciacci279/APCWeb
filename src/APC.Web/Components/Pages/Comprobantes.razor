@@ -3,6 +3,8 @@
 @inject SesionService SesionSrv
 @inject FacturacionService Facturacion
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject APC.Core.Tenants.TenantRegistry Tenants
 
 <PageTitle>Comprobantes · APC Web</PageTitle>
 
@@ -104,6 +106,7 @@
                             {
                                 <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "ticket", false))">Ticket</button>
                                 <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "a4", false))">A4</button>
+                                <a class="btn btn-chico btn-whatsapp" href="@LinkWhatsApp(c)" target="_blank" rel="noopener" title="Enviar por WhatsApp">WhatsApp</a>
                                 @if (c.Anulada)
                                 {
                                     <button type="button" class="btn btn-chico btn-nc" @onclick="@(() => Imprimir(c.NcId.Value, "a4", true))">Ver nota de crédito</button>
@@ -215,6 +218,16 @@
 
     private async Task Imprimir(Guid id, string formato, bool nc) =>
         await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/{id}?formato={formato}" + (nc ? "&nc=1" : ""));
+
+    /// <summary>Abre WhatsApp con el mensaje listo y el link público a la factura; el contacto se elige ahí.</summary>
+    private string LinkWhatsApp(ComprobanteListado c)
+    {
+        var sitio = string.IsNullOrWhiteSpace(Tenants.UrlPublica) ? Nav.BaseUri : Tenants.UrlPublica.TrimEnd('/') + "/";
+        var link = sitio + APC.Core.Seguridad.EnlaceComprobante.Ruta(Tenants.CarpetaDatos, sesion.Tenant.Codigo, c.Id, false);
+        var comercio = string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
+        return APC.Core.Seguridad.EnlaceComprobante.WhatsApp(null,
+            $"Hola! Te enviamos tu Factura {c.Tipo} {Numero(c.Terminal, c.Numero)} de {comercio}. Podés verla y descargarla acá: {link}");
+    }
 
     private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
     private static string Numero(int terminal, int? numero) => $"{terminal:00000}-{(numero ?? 0):00000000}";

@@ -413,3 +413,10 @@ input.input-ajuste { width: 72px; text-align: right; }
 .aviso-abono { margin: 0; padding: 10px 28px; background: var(--aviso-fondo); color: var(--aviso-texto); font-weight: 600; border-bottom: 1px solid #E8D29A; }
 .qr-2fa { width: 200px; height: 200px; margin: 8px 0; image-rendering: pixelated; border: 1px solid var(--borde); border-radius: 8px; background: #fff; }
 .pasos { display: flex; flex-direction: column; gap: 14px; padding-left: 20px; margin: 0 0 14px; }
+
+/* ---- Enviar por WhatsApp ---- */
+.btn-whatsapp { display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; min-height: 36px; border-radius: 8px; background: #128C4B; border: 1px solid #128C4B; color: #fff; font-weight: 600; text-decoration: none; }
+.btn-whatsapp:hover { background: #0E6E3B; color: #fff; }
+.wa-fila { display: flex; gap: 8px; }
+.wa-fila .btn-whatsapp { min-height: 44px; }
+.input-oscuro.wa-tel { height: 44px; font-size: 15px; }

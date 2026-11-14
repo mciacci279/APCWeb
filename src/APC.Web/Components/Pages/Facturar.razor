@@ -7,6 +7,8 @@
 @inject CajaService Caja
 @inject PresupuestoService Presupuestos
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject APC.Core.Tenants.TenantRegistry Tenants
 
 <PageTitle>Facturar · APC Web</PageTitle>
 
@@ -151,6 +153,15 @@ else
                 <button type="button" class="btn-pago" @onclick="@(() => Reimprimir("ticket"))">Reimprimir ticket</button>
                 <button type="button" class="btn-pago" @onclick="@(() => Reimprimir("a4"))">Reimprimir A4</button>
             </div>
+            <div class="campo">
+                <label for="wa-tel" class="sub-claro">Enviar por WhatsApp</label>
+                <div class="wa-fila">
+                    <input id="wa-tel" class="input-oscuro wa-tel mono" inputmode="tel" placeholder="Celular con característica, sin 0 ni 15"
+                           @bind="telefonoWhatsApp" @bind:event="oninput" />
+                    <a class="btn-whatsapp" href="@LinkWhatsApp" target="_blank" rel="noopener">WhatsApp</a>
+                </div>
+                <span class="sub-claro">Se abre WhatsApp con el mensaje y el link al comprobante. Sin número, elegís el contacto ahí.</span>
+            </div>
             @if (vuelto > 0)
             {
                 <div class="t-vuelto"><span>Vuelto</span><span class="mono">@Pesos(vuelto)</span></div>
@@ -279,6 +290,25 @@ else
     private bool emitiendo;
     private ResultadoEmision resultado;
     private DotNetObjectReference<Facturar> refJs;
+
+    private string telefonoWhatsApp;
+
+    /// <summary>Link de WhatsApp con el mensaje listo y el link público al comprobante recién emitido.</summary>
+    private string LinkWhatsApp
+    {
+        get
+        {
+            if (resultado?.FacturaId == null) return "#";
+            var sitio = string.IsNullOrWhiteSpace(Tenants.UrlPublica) ? Nav.BaseUri : Tenants.UrlPublica.TrimEnd('/') + "/";
+            var link = sitio + APC.Core.Seguridad.EnlaceComprobante.Ruta(Tenants.CarpetaDatos, sesion.Tenant.Codigo, resultado.FacturaId.Value, false);
+            var comercio = string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? empresa.Nombre : sesion.Tenant.NombreFantasia;
+            var comprobante = resultado.EsNotaPedido
+                ? $"nota de pedido Nº {resultado.Numero:00000000}"
+                : $"Factura {resultado.Letra} {resultado.PuntoVenta:00000}-{resultado.Numero:00000000}";
+            return APC.Core.Seguridad.EnlaceComprobante.WhatsApp(telefonoWhatsApp,
+                $"Hola! Te enviamos tu {comprobante} de {comercio}. Podés verla y descargarla acá: {link}");
+        }
+    }
 
     /// <summary>/?presupuesto={id}: carga un presupuesto guardado para facturarlo.</summary>
     [SupplyParameterFromQuery(Name = "presupuesto")] public Guid? PresupuestoId { get; set; }
@@ -522,6 +552,7 @@ else
         presupuestoOrigenId = null;
         presupuestoOrigen = null;
         factura = new NuevaFactura();
+        telefonoWhatsApp = null;
         editandoPrecio.Clear();
         resultado = null;
         pagaCon = 0;
