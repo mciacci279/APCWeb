@@ -385,3 +385,18 @@ input.input-ajuste { width: 72px; text-align: right; }
 .ajuste-total .input-oscuro { width: 100%; }
 .t-fila-desc span:last-child { color: #8FE0B0; }
 .t-fila-rec span:last-child { color: #FFD08A; }
+
+/* ---- Registro del sistema ---- */
+.registro { margin: 0; padding: 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 70vh; overflow: auto; }
+
+/* ---- Estado del certificado de ARCA en la lista de empresas ---- */
+.cert-chip { display: inline-block; margin-left: 8px; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.cert-bien { background: var(--ok-fondo); color: var(--ok-texto); }
+.cert-aviso { background: var(--aviso-fondo); color: var(--aviso-texto); font-weight: 600; }
+.cert-mal { background: var(--error-fondo); color: var(--rojo-osc); font-weight: 600; }
+.lista-avisos { margin: 6px 0 0; padding-left: 18px; }
+.lista-avisos li { margin: 2px 0; }
+
+/* ---- Reportes ---- */
+.kpi-fuerte { border-color: var(--azul); border-width: 2px; }
+.kpi-fuerte .kpi-num { color: var(--azul); }

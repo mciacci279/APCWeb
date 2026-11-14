@@ -1,0 +1,121 @@
+@page "/admin/registro"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@inject IConfiguration Config
+
+<PageTitle>Registro del sistema · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Registro del sistema</h1>
+            <span class="sub">Errores y avisos del servidor</span>
+        </div>
+        <div class="fila-campos">
+            @if (archivos.Count > 0)
+            {
+                <div class="campo">
+                    <label for="archivo">Día</label>
+                    <select id="archivo" class="input" @bind="archivoElegido" @bind:after="Cargar">
+                        @foreach (var a in archivos)
+                        {
+                            <option value="@a">@Fecha(a)</option>
+                        }
+                    </select>
+                </div>
+            }
+            <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
+        </div>
+    </header>
+
+    <p class="sub">Carpeta: <span class="mono">@carpeta</span></p>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta alerta-aviso">@mensaje</p>
+    }
+    else
+    {
+        <div class="panel tabla-scroll">
+            <pre class="registro">@contenido</pre>
+        </div>
+    }
+</div>
+
+@code {
+    private string carpeta;
+    private List<string> archivos = new();
+    private string archivoElegido;
+    private string contenido;
+    private string mensaje;
+
+    /// <summary>Últimas líneas que se muestran (el archivo completo puede ser grande).</summary>
+    private const int UltimasLineas = 500;
+
+    protected override void OnInitialized()
+    {
+        carpeta = Config["APC:CarpetaLogs"];
+        if (string.IsNullOrWhiteSpace(carpeta)) carpeta = Path.Combine(AppContext.BaseDirectory, "Logs");
+        Refrescar();
+    }
+
+    private void Refrescar()
+    {
+        mensaje = null;
+        try
+        {
+            if (!Directory.Exists(carpeta))
+            {
+                mensaje = "Todavía no hay registros: la carpeta no existe. Se crea sola cuando se guarda el primer mensaje.";
+                return;
+            }
+            archivos = Directory.GetFiles(carpeta, "apcweb-*.log")
+                .OrderByDescending(f => f)
+                .Select(Path.GetFileName)
+                .ToList();
+            if (archivos.Count == 0)
+            {
+                mensaje = "No hay registros guardados. Es buena señal: quiere decir que no hubo errores.";
+                return;
+            }
+            if (archivoElegido == null || !archivos.Contains(archivoElegido)) archivoElegido = archivos[0];
+            Cargar();
+        }
+        catch (Exception ex)
+        {
+            mensaje = "No se pudo leer la carpeta de registros: " + ex.Message;
+        }
+    }
+
+    private void Cargar()
+    {
+        mensaje = null;
+        try
+        {
+            // El archivo lo está usando la aplicación: hay que abrirlo permitiendo escritura.
+            var ruta = Path.Combine(carpeta, archivoElegido);
+            using var fs = new FileStream(ruta, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var sr = new StreamReader(fs);
+            var lineas = new Queue<string>();
+            string linea;
+            while ((linea = sr.ReadLine()) != null)
+            {
+                lineas.Enqueue(linea);
+                if (lineas.Count > UltimasLineas) lineas.Dequeue();
+            }
+            contenido = lineas.Count == 0 ? "(archivo vacío)" : string.Join("\n", lineas);
+        }
+        catch (Exception ex)
+        {
+            mensaje = "No se pudo leer el archivo: " + ex.Message;
+        }
+    }
+
+    /// <summary>"apcweb-2026-11-14.log" → "14/11/2026".</summary>
+    private static string Fecha(string archivo)
+    {
+        var sinExtension = Path.GetFileNameWithoutExtension(archivo);
+        return DateTime.TryParse(sinExtension.Replace("apcweb-", ""), out var f)
+            ? f.ToString("dd/MM/yyyy")
+            : sinExtension;
+    }
+}

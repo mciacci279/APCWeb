@@ -13,6 +13,23 @@
         <button type="button" class="btn btn-primario" @onclick="Nueva">+ Nueva empresa</button>
     </header>
 
+    @if (PorVencer.Count > 0)
+    {
+        <div class="alerta alerta-aviso" role="status">
+            <strong>Certificados de ARCA que necesitan atención:</strong>
+            <ul class="lista-avisos">
+                @foreach (var e in PorVencer)
+                {
+                    var c = certificados[e.Id];
+                    <li>
+                        <button type="button" class="link-fila" @onclick="() => Seleccionar(e)">@e.Nombre</button>
+                        — @TextoCertificado(c)
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+
     @if (mensaje != null)
     {
         <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
@@ -33,7 +50,13 @@
                             <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(e)">@e.Codigo</button></td>
                             <td>@e.Nombre</td>
                             <td>@e.NombreFantasia</td>
-                            <td><span class="etiqueta @(e.EsProduccion ? "etiqueta-admin" : "etiqueta-empleado")">@(e.EsProduccion ? "Producción" : "Homologación")</span></td>
+                            <td>
+                                <span class="etiqueta @(e.EsProduccion ? "etiqueta-admin" : "etiqueta-empleado")">@(e.EsProduccion ? "Producción" : "Homologación")</span>
+                                @if (certificados.TryGetValue(e.Id, out var cert))
+                                {
+                                    <span class="cert-chip @ClaseCertificado(cert)">@TextoCertificado(cert)</span>
+                                }
+                            </td>
                             <td class="der">@e.PuntoVenta</td>
                             <td class="der">@e.CantidadUsuarios</td>
                             <td>
@@ -248,11 +271,33 @@
 
     private string LinkIngreso => Nav.BaseUri + "ingresar?e=" + edit?.Codigo;
 
+    /// <summary>Estado del certificado de ARCA de cada empresa, para avisar antes de que venza.</summary>
+    private readonly Dictionary<Guid, CertificadoInfo> certificados = new();
+
+    private List<TenantConfig> PorVencer => lista
+        .Where(e => e.Activa && certificados.TryGetValue(e.Id, out var c) && (!c.Existe || c.Vencido || c.VencePronto || !c.ClaveCoincide))
+        .ToList();
+
+    private static string ClaseCertificado(CertificadoInfo c) =>
+        !c.Existe || c.Vencido || !c.ClaveCoincide ? "cert-mal" : c.VencePronto ? "cert-aviso" : "cert-bien";
+
+    private static string TextoCertificado(CertificadoInfo c)
+    {
+        if (!c.Existe) return "sin certificado";
+        if (!c.ClaveCoincide) return "la clave no corresponde";
+        if (c.Vencido) return $"VENCIÓ el {c.Vence:dd/MM/yyyy}";
+        var dias = (int)Math.Ceiling((c.Vence.Value - DateTime.Now).TotalDays);
+        if (c.VencePronto) return dias <= 1 ? "vence hoy" : $"vence en {dias} días";
+        return $"vence el {c.Vence:dd/MM/yyyy}";
+    }
+
     protected override async Task OnInitializedAsync() => await Recargar();
 
     private async Task Recargar()
     {
         lista = await EmpresaSrv.ListarAsync();
+        certificados.Clear();
+        foreach (var e in lista) certificados[e.Id] = CertSrv.Leer(e.CertificadoPath, e.ClavePath);
         if (edit != null && !esNueva)
         {
             var actual = lista.FirstOrDefault(e => e.Id == edit.Id);

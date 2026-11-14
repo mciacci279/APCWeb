@@ -1,0 +1,300 @@
+@page "/reportes"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@using APC.Core.Datos
+@inject SesionService SesionSrv
+@inject ReporteService Reportes
+@inject IJSRuntime JS
+
+<PageTitle>Reportes · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Reportes</h1><span class="sub">@Periodo</span></div>
+        <div class="fila-campos">
+            <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
+            <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
+            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+        </div>
+    </header>
+
+    <div class="fila-btns">
+        <button type="button" class="btn btn-chico" @onclick="() => Rango(0)">Hoy</button>
+        <button type="button" class="btn btn-chico" @onclick="() => Rango(1)">Esta semana</button>
+        <button type="button" class="btn btn-chico" @onclick="() => Rango(2)">Este mes</button>
+        <button type="button" class="btn btn-chico" @onclick="() => Rango(3)">Mes anterior</button>
+    </div>
+
+    @if (error != null)
+    {
+        <p class="alerta alerta-error">@error</p>
+    }
+
+    @if (cargando)
+    {
+        <p>Cargando…</p>
+    }
+    else if (resumen != null)
+    {
+        <div class="kpis">
+            <div class="kpi">
+                <span class="sub">Facturado (con CAE)</span>
+                <span class="mono kpi-num">@Pesos(resumen.TotalFacturas)</span>
+                <span class="sub">@resumen.CantidadFacturas comprobantes</span>
+            </div>
+            <div class="kpi">
+                <span class="sub">Notas de crédito</span>
+                <span class="mono kpi-num">−@Pesos(resumen.TotalNotasCredito)</span>
+                <span class="sub">@resumen.CantidadNotasCredito comprobantes</span>
+            </div>
+            <div class="kpi kpi-fuerte">
+                <span class="sub">Ventas netas</span>
+                <span class="mono kpi-num">@Pesos(resumen.VentasNetas)</span>
+                <span class="sub">IVA @Pesos(resumen.IvaNeto)</span>
+            </div>
+            <div class="kpi">
+                <span class="sub">Notas de pedido</span>
+                <span class="mono kpi-num">@Pesos(resumen.TotalNotasPedido)</span>
+                <span class="sub">@resumen.CantidadNotasPedido comprobantes</span>
+            </div>
+        </div>
+
+        <nav class="pestanias" aria-label="Tipo de reporte">
+            @foreach (var p in Pestanias)
+            {
+                <button type="button" class="pestania @(pestania == p.Key ? "activa" : "")" @onclick="() => pestania = p.Key">@p.Value</button>
+            }
+        </nav>
+
+        <div class="panel tabla-scroll">
+            @switch (pestania)
+            {
+                case 0:
+                    <table class="tabla">
+                        <thead><tr><th>Día</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (porDia.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
+                            @foreach (var f in porDia)
+                            {
+                                <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    break;
+
+                case 1:
+                    <table class="tabla">
+                        <thead><tr><th>Forma de pago</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (porFormaPago.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
+                            @foreach (var f in porFormaPago)
+                            {
+                                <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    break;
+
+                case 2:
+                    <table class="tabla">
+                        <thead><tr><th>Usuario</th><th>Nombre</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (porUsuario.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
+                            @foreach (var f in porUsuario)
+                            {
+                                <tr><td class="mono">@f.Etiqueta</td><td>@f.Detalle</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    break;
+
+                case 3:
+                    <table class="tabla">
+                        <thead><tr><th>Código</th><th>Producto</th><th class="der">Cantidad</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (porProducto.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
+                            @foreach (var f in porProducto)
+                            {
+                                <tr><td class="mono">@f.Codigo</td><td>@f.Producto</td><td class="der">@f.Cantidad.ToString("N3", Ar)</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                    break;
+
+                default:
+                    <table class="tabla tabla-chica">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th><th>Comprobante</th><th>Número</th><th>Cliente</th><th>CUIT</th>
+                                <th class="der">Neto gravado</th><th class="der">IVA 21%</th><th class="der">IVA 10,5%</th>
+                                <th class="der">IVA 27%</th><th class="der">No gravado</th><th class="der">Exento</th>
+                                <th class="der">Total</th><th>CAE</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (libro.Count == 0) { <tr><td colspan="13" class="sub">Sin comprobantes fiscales en el período.</td></tr> }
+                            @foreach (var f in libro)
+                            {
+                                <tr>
+                                    <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td>@f.Comprobante @f.Letra</td>
+                                    <td class="mono">@f.NumeroCompleto</td>
+                                    <td>@f.ClienteNombre</td>
+                                    <td class="mono">@f.ClienteCUIT</td>
+                                    <td class="der">@Numero(f.NetoGravado)</td>
+                                    <td class="der">@Numero(f.Iva21)</td>
+                                    <td class="der">@Numero(f.Iva105)</td>
+                                    <td class="der">@Numero(f.Iva27)</td>
+                                    <td class="der">@Numero(f.NoGravado)</td>
+                                    <td class="der">@Numero(f.Exento)</td>
+                                    <td class="der fuerte">@Numero(f.MontoTotal)</td>
+                                    <td class="mono sub">@f.CAE</td>
+                                </tr>
+                            }
+                        </tbody>
+                        @if (libro.Count > 0)
+                        {
+                            <tfoot>
+                                <tr class="fila-total">
+                                    <td colspan="5">Totales</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.NetoGravado))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.Iva21))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.Iva105))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.Iva27))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.NoGravado))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.Exento))</td>
+                                    <td class="der">@Numero(libro.Sum(x => x.MontoTotal))</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        }
+                    </table>
+                    break;
+            }
+        </div>
+
+        <div class="fila-btns">
+            <button type="button" class="btn btn-primario" @onclick="Exportar">Exportar a Excel</button>
+            <span class="sub">Se descarga un archivo que Excel abre directamente.</span>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    private static readonly Dictionary<int, string> Pestanias = new()
+    {
+        [0] = "Por día",
+        [1] = "Por forma de pago",
+        [2] = "Por usuario",
+        [3] = "Por producto",
+        [4] = "Libro IVA Ventas"
+    };
+
+    private SesionActual sesion;
+    private DateTime desde = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateTime hasta = DateTime.Today;
+    private int pestania;
+    private bool cargando = true;
+    private string error;
+
+    private ResumenVentas resumen;
+    private List<FilaReporte> porDia = new();
+    private List<FilaReporte> porFormaPago = new();
+    private List<FilaReporte> porUsuario = new();
+    private List<FilaProducto> porProducto = new();
+    private List<FilaLibroIva> libro = new();
+
+    private string Periodo => $"Del {desde:dd/MM/yyyy} al {hasta:dd/MM/yyyy}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await Buscar();
+    }
+
+    private async Task Rango(int cual)
+    {
+        var hoy = DateTime.Today;
+        switch (cual)
+        {
+            case 0: desde = hoy; hasta = hoy; break;
+            case 1: desde = hoy.AddDays(-(int)hoy.DayOfWeek + (hoy.DayOfWeek == DayOfWeek.Sunday ? -6 : 1)); hasta = hoy; break;
+            case 2: desde = new DateTime(hoy.Year, hoy.Month, 1); hasta = hoy; break;
+            default:
+                var mesAnterior = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-1);
+                desde = mesAnterior;
+                hasta = mesAnterior.AddMonths(1).AddDays(-1);
+                break;
+        }
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        cargando = true;
+        error = null;
+        StateHasChanged();
+        try
+        {
+            if (hasta < desde) (desde, hasta) = (hasta, desde);
+            resumen = await Reportes.ResumenAsync(sesion.Cs, desde, hasta);
+            porDia = await Reportes.PorDiaAsync(sesion.Cs, desde, hasta);
+            porFormaPago = await Reportes.PorFormaPagoAsync(sesion.Cs, desde, hasta);
+            porUsuario = await Reportes.PorUsuarioAsync(sesion.Cs, desde, hasta);
+            porProducto = await Reportes.PorProductoAsync(sesion.Cs, desde, hasta);
+            libro = await Reportes.LibroIvaVentasAsync(sesion.Cs, desde, hasta);
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron leer los datos: " + ex.Message;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task Exportar()
+    {
+        var (nombre, bytes) = Archivo();
+        await JS.InvokeVoidAsync("apc.descargar", nombre, Convert.ToBase64String(bytes), "text/csv");
+    }
+
+    private (string Nombre, byte[] Contenido) Archivo()
+    {
+        var sufijo = $"{desde:yyyy-MM-dd}_a_{hasta:yyyy-MM-dd}.csv";
+        switch (pestania)
+        {
+            case 0:
+                return ("Ventas por dia " + sufijo, Csv.Armar(
+                    new[] { "Día", "Comprobantes", "Total" },
+                    porDia.Select(f => new object[] { f.Etiqueta, f.Cantidad, f.Total })));
+            case 1:
+                return ("Ventas por forma de pago " + sufijo, Csv.Armar(
+                    new[] { "Forma de pago", "Comprobantes", "Total" },
+                    porFormaPago.Select(f => new object[] { f.Etiqueta, f.Cantidad, f.Total })));
+            case 2:
+                return ("Ventas por usuario " + sufijo, Csv.Armar(
+                    new[] { "Usuario", "Nombre", "Comprobantes", "Total" },
+                    porUsuario.Select(f => new object[] { f.Etiqueta, f.Detalle, f.Cantidad, f.Total })));
+            case 3:
+                return ("Ventas por producto " + sufijo, Csv.Armar(
+                    new[] { "Código", "Producto", "Cantidad", "Total" },
+                    porProducto.Select(f => new object[] { f.Codigo, f.Producto, f.Cantidad, f.Total })));
+            default:
+                return ("Libro IVA Ventas " + sufijo, Csv.Armar(
+                    new[] { "Fecha", "Comprobante", "Letra", "Cód. AFIP", "Número", "Cliente", "CUIT", "Condición IVA",
+                            "Neto gravado", "IVA 21%", "IVA 10,5%", "IVA 27%", "No gravado", "Exento", "Total", "CAE" },
+                    libro.Select(f => new object[]
+                    {
+                        f.Fecha, f.Comprobante, f.Letra, f.TipoComprobanteAFIP, f.NumeroCompleto, f.ClienteNombre,
+                        f.ClienteCUIT, f.CondicionIva, f.NetoGravado, f.Iva21, f.Iva105, f.Iva27,
+                        f.NoGravado, f.Exento, f.MontoTotal, f.CAE
+                    })));
+        }
+    }
+
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+    private static string Numero(decimal v) => v == 0 ? "—" : v.ToString("N2", Ar);
+}

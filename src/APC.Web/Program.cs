@@ -4,6 +4,7 @@ using APC.Core.Modelos;
 using APC.Core.Servicios;
 using APC.Core.Tenants;
 using APC.Web.Components;
+using APC.Web.Registro;
 using APC.Web.Sesion;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
@@ -13,6 +14,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Conexión a la base central y otros datos sensibles: appsettings.Secretos.json (no se versiona)
 builder.Configuration.AddJsonFile("appsettings.Secretos.json", optional: true, reloadOnChange: true);
+
+// ---- Registro en archivo: C:\APCWeb\Logs\apcweb-aaaa-mm-dd.log ----
+var carpetaLogs = builder.Configuration["APC:CarpetaLogs"];
+if (string.IsNullOrWhiteSpace(carpetaLogs)) carpetaLogs = Path.Combine(AppContext.BaseDirectory, "Logs");
+var registro = new ArchivoLoggerProvider(carpetaLogs);
+builder.Logging.AddProvider(registro);
+
+// Si la aplicación se cae del todo (por ejemplo al arrancar), que quede escrito el motivo.
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    registro.Escribir($"{DateTime.Now:yyyy-MM-dd HH:mm:ss}  [CRITICO]  La aplicación se detuvo{Environment.NewLine}{e.ExceptionObject}{Environment.NewLine}");
 
 var central = builder.Configuration.GetConnectionString("Central");
 if (string.IsNullOrWhiteSpace(central))
@@ -52,11 +63,14 @@ builder.Services.AddSingleton<CertificadoService>();
 builder.Services.AddSingleton<CajaService>();
 builder.Services.AddSingleton<FacturacionService>();
 builder.Services.AddSingleton<PresupuestoService>();
+builder.Services.AddSingleton<ReporteService>();
 builder.Services.AddSingleton<ProductoService>();
 builder.Services.AddSingleton<ImportadorProductosService>();
 builder.Services.AddScoped<SesionService>();
 
 var app = builder.Build();
+
+app.Logger.LogInformation("APC Web iniciada. El registro se guarda en {carpeta}", carpetaLogs);
 
 if (!app.Environment.IsDevelopment())
 {

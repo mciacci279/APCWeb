@@ -36,6 +36,20 @@ window.apc = (function () {
       ref = null;
     },
     enfocar: enfocar,
+    // Descarga un archivo generado por el servidor (reportes en Excel/CSV).
+    descargar: function (nombre, base64, tipo) {
+      const binario = atob(base64);
+      const bytes = new Uint8Array(binario.length);
+      for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: tipo || 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    },
     // Carga el comprobante en un marco oculto: la página se imprime sola al cargar,
     // sin abrir pestañas (los bloqueadores de ventanas emergentes no intervienen).
     imprimir: function (url) {
