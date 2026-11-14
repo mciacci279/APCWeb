@@ -1,0 +1,88 @@
+@page "/admin/tablero"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@inject TableroService TableroSrv
+
+<PageTitle>Tablero · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Tablero</h1><span class="sub">Uso del sistema y abonos por empresa</span></div>
+        <button type="button" class="btn" disabled="@cargando" @onclick="Cargar">Actualizar</button>
+    </header>
+
+    @if (error != null)
+    {
+        <p class="alerta alerta-error">@error</p>
+    }
+
+    @if (cargando)
+    {
+        <p>Leyendo las bases de las empresas…</p>
+    }
+    else
+    {
+        <div class="kpis">
+            <div class="kpi"><span class="sub">Empresas habilitadas</span><span class="mono kpi-num">@lista.Count(u => u.Empresa.Habilitada)</span><span class="sub">de @lista.Count</span></div>
+            <div class="kpi"><span class="sub">Facturas este mes</span><span class="mono kpi-num">@lista.Sum(u => u.FacturasMes).ToString("N0", Ar)</span><span class="sub">mes anterior: @lista.Sum(u => u.FacturasMesAnterior).ToString("N0", Ar)</span></div>
+            <div class="kpi @(lista.Any(u => u.Empresa.AbonoVencido) ? "falta" : "")"><span class="sub">Abonos vencidos</span><span class="mono kpi-num">@lista.Count(u => u.Empresa.AbonoVencido)</span><span class="sub">@lista.Count(u => u.Empresa.SuspendidaPorAbono) suspendidas por abono</span></div>
+            <div class="kpi"><span class="sub">Sin uso en 30 días</span><span class="mono kpi-num">@lista.Count(u => u.SinUso)</span><span class="sub">ni ingresos ni facturas</span></div>
+        </div>
+
+        <div class="panel tabla-scroll">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>Empresa</th><th class="der">Usuarios</th><th>Último ingreso</th>
+                        <th class="der">Facturas del mes</th><th class="der">Mes anterior</th><th class="der">Facturado del mes</th>
+                        <th>Última factura</th><th>Abono</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in lista)
+                    {
+                        var e = u.Empresa;
+                        <tr class="@(e.Habilitada ? "" : "fila-baja")">
+                            <td>
+                                <a href="/admin/empresas">@e.Nombre</a>
+                                <span class="sub mono">@e.Codigo</span>
+                                @if (u.Error != null) { <span class="etiqueta etiqueta-falta" title="@u.Error">sin conexión a su base</span> }
+                            </td>
+                            <td class="der">@u.UsuariosActivos</td>
+                            <td>@(u.UltimoIngreso?.ToString("dd/MM/yyyy HH:mm") ?? "Nunca")</td>
+                            <td class="der fuerte">@u.FacturasMes.ToString("N0", Ar)</td>
+                            <td class="der">@u.FacturasMesAnterior.ToString("N0", Ar)</td>
+                            <td class="der">$ @u.FacturadoMes.ToString("N2", Ar)</td>
+                            <td>@(u.UltimaFactura?.ToString("dd/MM/yyyy") ?? "—")</td>
+                            <td>
+                                @if (!e.Activa) { <span class="etiqueta etiqueta-falta">Suspendida</span> }
+                                else if (e.AbonoPagoHasta == null) { <span class="sub">sin control</span> }
+                                else if (e.SuspendidaPorAbono) { <span class="cert-chip cert-mal">suspendida · venció el @e.AbonoPagoHasta.Value.ToString("dd/MM/yyyy")</span> }
+                                else if (e.AbonoVencido) { <span class="cert-chip cert-aviso">vencido · se suspende en @e.AbonoDiasParaSuspension días</span> }
+                                else { <span class="cert-chip cert-bien">pago hasta el @e.AbonoPagoHasta.Value.ToString("dd/MM/yyyy")</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private List<UsoEmpresa> lista = new();
+    private bool cargando = true;
+    private string error;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        error = null;
+        StateHasChanged();
+        try { lista = await TableroSrv.UsoAsync(); }
+        catch (Exception ex) { error = "No se pudo armar el tablero: " + ex.Message; }
+        finally { cargando = false; }
+    }
+}

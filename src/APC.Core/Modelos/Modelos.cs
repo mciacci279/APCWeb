@@ -23,6 +23,9 @@ public class UsuarioSesion
     public int IntentosFallidos { get; set; }
     public DateTime? BloqueadoHasta { get; set; }
     public string Email { get; set; }
+    /// <summary>Doble factor: secreto de la app autenticadora y si está activado.</summary>
+    public string TotpSecreto { get; set; }
+    public bool TotpActivo { get; set; }
     public string NombreCompleto => string.Join(" ", new[] { Nombre, Apellido }.Where(s => !string.IsNullOrWhiteSpace(s)));
 }
 

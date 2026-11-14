@@ -40,15 +40,29 @@
         {
             <p class="alerta alerta-error" role="alert">Usuario o clave incorrectos.</p>
         }
+        else if (Error == "falta-codigo")
+        {
+            <p class="alerta alerta-aviso" role="status">Esta cuenta tiene verificación en dos pasos. Escribí de nuevo la clave y el código de 6 dígitos de tu app autenticadora.</p>
+        }
+        else if (Error == "codigo")
+        {
+            <p class="alerta alerta-error" role="alert">El código de verificación no es correcto. Probá con el código nuevo de la app.</p>
+        }
 
         <label for="empresa">Empresa</label>
         <input id="empresa" name="empresa" value="@E" autocomplete="organization" required />
 
         <label for="usuario">Usuario</label>
-        <input id="usuario" name="usuario" autocomplete="username" required autofocus="@(!string.IsNullOrEmpty(E))" />
+        <input id="usuario" name="usuario" value="@U" autocomplete="username" required autofocus="@(!string.IsNullOrEmpty(E))" />
 
         <label for="clave">Clave</label>
         <input id="clave" name="clave" type="password" autocomplete="current-password" required />
+
+        @if (PideCodigo)
+        {
+            <label for="codigo">Código de verificación</label>
+            <input id="codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required />
+        }
 
         <button type="submit" class="btn btn-primario btn-grande">Ingresar</button>
         <a class="login-link" href="@LinkRecuperar">¿Olvidaste tu clave?</a>
@@ -60,5 +74,7 @@
     [SupplyParameterFromQuery(Name = "e")] public string E { get; set; }
     [SupplyParameterFromQuery(Name = "d")] public string D { get; set; }
     [SupplyParameterFromQuery(Name = "ok")] public string Ok { get; set; }
+    [SupplyParameterFromQuery(Name = "u")] public string U { get; set; }
+    private bool PideCodigo => Error == "falta-codigo" || Error == "codigo";
     private string LinkRecuperar => string.IsNullOrEmpty(E) ? "/recuperar" : "/recuperar?e=" + Uri.EscapeDataString(E);
 }

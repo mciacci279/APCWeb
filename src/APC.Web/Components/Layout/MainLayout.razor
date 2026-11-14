@@ -54,6 +54,14 @@
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path></svg>
                 <span>Empresas</span>
             </NavLink>
+            <NavLink class="rail-btn" href="/admin/tablero" title="Tablero" aria-label="Tablero">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="10" rx="1.5"></rect><rect x="13" y="3" width="8" height="6" rx="1.5"></rect><rect x="13" y="11" width="8" height="10" rx="1.5"></rect><rect x="3" y="15" width="8" height="6" rx="1.5"></rect></svg>
+                <span>Tablero</span>
+            </NavLink>
+            <NavLink class="rail-btn" href="/admin/seguridad" title="Verificación en dos pasos" aria-label="Verificación en dos pasos">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+                <span>Seguridad</span>
+            </NavLink>
             <NavLink class="rail-btn" href="/admin/ingresos" title="Registro de ingresos" aria-label="Registro de ingresos">
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
                 <span>Ingresos</span>
@@ -74,6 +82,10 @@
         </form>
     </nav>
     <div class="app-main">
+        @if (avisoAbono != null)
+        {
+            <p class="aviso-abono" role="status">@avisoAbono</p>
+        }
         @Body
     </div>
 </div>
@@ -84,11 +96,21 @@
 </div>
 
 @code {
+    private string avisoAbono;
+
     protected override async Task OnInitializedAsync()
     {
         // Si la empresa fue suspendida con el usuario adentro, se cierra la sesión
         var user = (await Auth.GetAuthenticationStateAsync()).User;
-        if (user?.Identity?.IsAuthenticated == true && await SesionSrv.ObtenerAsync() == null)
-            Nav.NavigateTo("/cuenta/expirada", forceLoad: true);
+        if (user?.Identity?.IsAuthenticated != true) return;
+        var sesion = await SesionSrv.ObtenerAsync();
+        if (sesion == null) { Nav.NavigateTo("/cuenta/expirada", forceLoad: true); return; }
+
+        // Abono vencido, dentro de los días de gracia: aviso para el administrador del comercio.
+        var t = sesion.Tenant;
+        if (t != null && sesion.EsAdmin && t.AbonoVencido && !t.SuspendidaPorAbono)
+            avisoAbono = $"El abono del sistema venció el {t.AbonoPagoHasta:dd/MM/yyyy}. " +
+                         (t.AbonoDiasParaSuspension <= 1 ? "El servicio se suspende mañana." : $"El servicio se suspende en {t.AbonoDiasParaSuspension} días.") +
+                         " Comunicate con CM Tech para regularizarlo.";
     }
 }

@@ -67,6 +67,7 @@ builder.Services.AddSingleton<ReporteService>();
 builder.Services.AddSingleton<ClienteService>();
 builder.Services.AddSingleton<PadronService>();
 builder.Services.AddSingleton<SucursalService>();
+builder.Services.AddSingleton<TableroService>();
 builder.Services.AddSingleton<ProductoService>();
 builder.Services.AddSingleton<ImportadorProductosService>();
 builder.Services.AddScoped<SesionService>();
@@ -92,13 +93,13 @@ app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, Usuario
 {
     await af.ValidateRequestAsync(ctx);
     var form = await ctx.Request.ReadFormAsync();
-    string empresa = form["empresa"], usuario = form["usuario"], clave = form["clave"];
+    string empresa = form["empresa"], usuario = form["usuario"], clave = form["clave"], codigo = form["codigo"];
     var e = Uri.EscapeDataString(empresa ?? "");
 
     IngresoResultado r;
     try
     {
-        r = await usuarios.ValidarAsync(empresa, usuario, clave, ctx.Connection.RemoteIpAddress?.ToString());
+        r = await usuarios.ValidarAsync(empresa, usuario, clave, ctx.Connection.RemoteIpAddress?.ToString(), codigo);
     }
     catch (Exception ex)
     {
@@ -113,6 +114,8 @@ app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, Usuario
         case EstadoIngreso.EmpresaSuspendida: return Results.Redirect($"/ingresar?error=suspendida&e={e}");
         case EstadoIngreso.Bloqueado: return Results.Redirect($"/ingresar?error=bloqueado&e={e}");
         case EstadoIngreso.ClaveIncorrecta: return Results.Redirect($"/ingresar?error=clave&e={e}");
+        case EstadoIngreso.FaltaCodigo: return Results.Redirect($"/ingresar?error=falta-codigo&e={e}&u={Uri.EscapeDataString(usuario ?? "")}");
+        case EstadoIngreso.CodigoIncorrecto: return Results.Redirect($"/ingresar?error=codigo&e={e}&u={Uri.EscapeDataString(usuario ?? "")}");
     }
 
     var u = r.Usuario;

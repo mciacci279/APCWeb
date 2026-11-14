@@ -1,0 +1,123 @@
+@page "/admin/seguridad"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@inject SesionService SesionSrv
+@inject UsuarioService UsuarioSrv
+
+<PageTitle>Seguridad · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Verificación en dos pasos</h1><span class="sub">Usuario @sesion?.Usuario</span></div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <section class="panel panel-ancho">
+        @if (activo)
+        {
+            <p class="alerta alerta-ok">La verificación en dos pasos está <strong>activada</strong>. Al ingresar se pide la clave y el código de la app.</p>
+            <div class="campo">
+                <label for="cod-baja">Para desactivarla, escribí un código de la app</label>
+                <input id="cod-baja" class="input mono" inputmode="numeric" maxlength="6" @bind="codigo" />
+            </div>
+            <div class="fila-btns">
+                <button type="button" class="btn" disabled="@ocupado" @onclick="Desactivar">Desactivar</button>
+            </div>
+        }
+        else if (qr == null)
+        {
+            <p>Los usuarios de CM Tech entran a todas las empresas. Con la verificación en dos pasos, además de la clave hace falta un código de 6 dígitos que cambia cada 30 segundos en tu teléfono.</p>
+            <p class="sub">Necesitás una app autenticadora: Google Authenticator, Microsoft Authenticator o similar.</p>
+            <div class="fila-btns">
+                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Preparar">Activar</button>
+            </div>
+        }
+        else
+        {
+            <ol class="pasos">
+                <li>Abrí la app autenticadora y elegí «Agregar cuenta» → «Escanear código QR».</li>
+                <li>
+                    Escaneá este código:
+                    <div><img class="qr-2fa" src="@qr" alt="Código QR para la app autenticadora" /></div>
+                    <span class="sub">Si no podés escanear, cargá esta clave a mano: <span class="mono">@secreto</span></span>
+                </li>
+                <li>
+                    Escribí el código de 6 dígitos que muestra la app:
+                    <div class="fila-btns">
+                        <input class="input mono" aria-label="Código de verificación" inputmode="numeric" maxlength="6" @bind="codigo" />
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Activar">Confirmar</button>
+                    </div>
+                </li>
+            </ol>
+            <p class="alerta alerta-aviso">Si perdés el teléfono, otro usuario de CM Tech no puede desactivarlo desde el panel: hay que poner <span class="mono">TotpActivo = 0</span> en la tabla Usuario de la base central.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private SesionActual sesion;
+    private bool activo;
+    private string qr;
+    private string secreto;
+    private string codigo;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        activo = await UsuarioSrv.TotpActivoAsync(sesion.UsuarioId);
+    }
+
+    private async Task Preparar()
+    {
+        ocupado = true;
+        try
+        {
+            var (s, uri) = await UsuarioSrv.TotpPrepararAsync(sesion.UsuarioId, sesion.Usuario);
+            secreto = s;
+            qr = FacturacionService.QrDataUri(uri);
+            mensaje = null;
+        }
+        catch (Exception ex)
+        {
+            Aviso(false, "No se pudo generar el código. ¿Se ejecutó el script 09 en APCWeb_Central? Detalle: " + ex.Message);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Activar()
+    {
+        ocupado = true;
+        try
+        {
+            var err = await UsuarioSrv.TotpActivarAsync(sesion.UsuarioId, codigo);
+            if (err != null) { Aviso(false, err); return; }
+            activo = true;
+            qr = null;
+            codigo = null;
+            Aviso(true, "Verificación en dos pasos activada. Desde el próximo ingreso se pide el código.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Desactivar()
+    {
+        ocupado = true;
+        try
+        {
+            var err = await UsuarioSrv.TotpDesactivarAsync(sesion.UsuarioId, codigo);
+            if (err != null) { Aviso(false, err); return; }
+            activo = false;
+            codigo = null;
+            Aviso(true, "Verificación en dos pasos desactivada.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

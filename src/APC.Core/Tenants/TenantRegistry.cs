@@ -21,13 +21,14 @@ public class TenantRegistry
     public string CarpetaDatos => _opt.CurrentValue.CarpetaDatos;
     public string CarpetaCertificados => _opt.CurrentValue.CarpetaCertificados;
     public string UrlPublica => _opt.CurrentValue.UrlPublica;
+    public string BasePlantilla => _opt.CurrentValue.BasePlantilla;
     public string Central => _opt.CurrentValue.CentralConnectionString;
 
     /// <summary>Empresa activa con ese código, o null.</summary>
     public TenantConfig Buscar(string codigo)
     {
         var t = BuscarCualquiera(codigo);
-        return t != null && t.Activa ? t : null;
+        return t != null && t.Habilitada ? t : null;
     }
 
     /// <summary>Empresa con ese código aunque esté suspendida, o null.</summary>
@@ -50,10 +51,20 @@ public class TenantRegistry
 
             using var cn = new SqlConnection(Central);
             cn.Open();
-            var lista = cn.Query<TenantConfig>(
-                @"SELECT Id, Codigo, Nombre, NombreFantasia, ConnectionString, PuntoVenta, Ambiente, CertificadoPath, ClavePath,
-                         Concepto, Moneda, Activa, MotivoSuspension, FechaAlta, LeyendaTicket
-                  FROM dbo.Empresa");
+            const string columnas =
+                @"Id, Codigo, Nombre, NombreFantasia, ConnectionString, PuntoVenta, Ambiente, CertificadoPath, ClavePath,
+                  Concepto, Moneda, Activa, MotivoSuspension, FechaAlta, LeyendaTicket";
+            IEnumerable<TenantConfig> lista;
+            try
+            {
+                lista = cn.Query<TenantConfig>(
+                    $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas FROM dbo.Empresa");
+            }
+            catch (SqlException)
+            {
+                // Todavía no se corrió el script 09 (abono): se sigue sin control de abono.
+                lista = cn.Query<TenantConfig>($"SELECT {columnas} FROM dbo.Empresa");
+            }
             _cache = lista.ToDictionary(t => t.Codigo.Trim(), StringComparer.OrdinalIgnoreCase);
             _cargado = DateTime.UtcNow;
             return _cache;

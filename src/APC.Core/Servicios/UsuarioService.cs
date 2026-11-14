@@ -17,7 +17,7 @@ public class IngresoRegistro
     public string Ip { get; set; }
 }
 
-public enum EstadoIngreso { Ok, EmpresaNoExiste, EmpresaSuspendida, ClaveIncorrecta, Bloqueado }
+public enum EstadoIngreso { Ok, EmpresaNoExiste, EmpresaSuspendida, ClaveIncorrecta, Bloqueado, FaltaCodigo, CodigoIncorrecto }
 
 public class IngresoResultado
 {
@@ -46,7 +46,7 @@ public class UsuarioService
 
     // ------------------------------------------------------------------ ingreso
 
-    public async Task<IngresoResultado> ValidarAsync(string empresa, string usuario, string clave, string ip)
+    public async Task<IngresoResultado> ValidarAsync(string empresa, string usuario, string clave, string ip, string codigo = null)
     {
         empresa = (empresa ?? "").Trim().ToLowerInvariant();
         usuario = (usuario ?? "").Trim();
@@ -61,9 +61,10 @@ public class UsuarioService
                 await LogAsync(empresa, usuario, null, false, "Empresa inexistente", ip);
                 return new IngresoResultado { Estado = EstadoIngreso.EmpresaNoExiste };
             }
-            if (!tenant.Activa)
+            if (!tenant.Habilitada)
             {
-                await LogAsync(empresa, usuario, null, false, "Empresa suspendida", ip);
+                await LogAsync(empresa, usuario, null, false,
+                    tenant.Activa ? "Empresa suspendida por abono vencido" : "Empresa suspendida", ip);
                 return new IngresoResultado { Estado = EstadoIngreso.EmpresaSuspendida };
             }
         }
@@ -101,6 +102,25 @@ public class UsuarioService
             return new IngresoResultado { Estado = bloquear ? EstadoIngreso.Bloqueado : EstadoIngreso.ClaveIncorrecta };
         }
 
+        // Doble factor: si el usuario lo activó, además de la clave hace falta el código de la app.
+        var totp = await LeerTotpAsync(cn, u.Id);
+        if (totp.Activo)
+        {
+            if (string.IsNullOrWhiteSpace(codigo))
+                return new IngresoResultado { Estado = EstadoIngreso.FaltaCodigo };
+
+            if (!Totp.Verificar(totp.Secreto, codigo))
+            {
+                var intentos = u.IntentosFallidos + 1;
+                var bloquear = intentos >= MaxIntentos;
+                await cn.ExecuteAsync(
+                    "UPDATE dbo.Usuario SET IntentosFallidos = @i, BloqueadoHasta = @b WHERE Id = @id",
+                    new { i = bloquear ? 0 : intentos, b = bloquear ? DateTime.Now.Add(DuracionBloqueo) : (DateTime?)null, id = u.Id });
+                await LogAsync(empresa, usuario, u.Id, false, bloquear ? "Código incorrecto: bloqueado 15 min" : "Código de verificación incorrecto", ip);
+                return new IngresoResultado { Estado = bloquear ? EstadoIngreso.Bloqueado : EstadoIngreso.CodigoIncorrecto };
+            }
+        }
+
         await cn.ExecuteAsync(
             "UPDATE dbo.Usuario SET IntentosFallidos = 0, BloqueadoHasta = NULL, UltimoIngreso = GETDATE() WHERE Id = @id",
             new { id = u.Id });
@@ -109,6 +129,59 @@ public class UsuarioService
     }
 
     // ------------------------------------------------------------------ instalación (CM Tech)
+
+    // ------------------------------------------------------------------ doble factor
+
+    private static async Task<(string Secreto, bool Activo)> LeerTotpAsync(System.Data.IDbConnection cn, Guid usuarioId)
+    {
+        try
+        {
+            return await cn.QueryFirstOrDefaultAsync<(string, bool)>(
+                "SELECT TotpSecreto, TotpActivo FROM dbo.Usuario WHERE Id = @id", new { id = usuarioId });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException)
+        {
+            return (null, false);   // todavía no se corrió el script 09
+        }
+    }
+
+    public async Task<bool> TotpActivoAsync(Guid usuarioId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        return (await LeerTotpAsync(cn, usuarioId)).Activo;
+    }
+
+    /// <summary>Genera un secreto nuevo (todavía sin activar) y devuelve el secreto y la dirección para el QR.</summary>
+    public async Task<(string Secreto, string Uri)> TotpPrepararAsync(Guid usuarioId, string nombreUsuario)
+    {
+        var secreto = Totp.NuevoSecreto();
+        using var cn = await Db.AbrirAsync(Central);
+        await cn.ExecuteAsync("UPDATE dbo.Usuario SET TotpSecreto = @secreto, TotpActivo = 0 WHERE Id = @id",
+            new { id = usuarioId, secreto });
+        return (secreto, Totp.UriParaApp(secreto, nombreUsuario));
+    }
+
+    /// <summary>Activa el doble factor si el código de la app es correcto. Devuelve el error o null.</summary>
+    public async Task<string> TotpActivarAsync(Guid usuarioId, string codigo)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        var t = await LeerTotpAsync(cn, usuarioId);
+        if (string.IsNullOrEmpty(t.Secreto)) return "Primero generá el código QR.";
+        if (!Totp.Verificar(t.Secreto, codigo)) return "El código no coincide. Fijate que la hora del teléfono esté bien y probá con el código nuevo.";
+        await cn.ExecuteAsync("UPDATE dbo.Usuario SET TotpActivo = 1 WHERE Id = @id", new { id = usuarioId });
+        return null;
+    }
+
+    /// <summary>Desactiva el doble factor; pide un código válido para confirmar.</summary>
+    public async Task<string> TotpDesactivarAsync(Guid usuarioId, string codigo)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        var t = await LeerTotpAsync(cn, usuarioId);
+        if (!t.Activo) return null;
+        if (!Totp.Verificar(t.Secreto, codigo)) return "El código no coincide.";
+        await cn.ExecuteAsync("UPDATE dbo.Usuario SET TotpActivo = 0, TotpSecreto = NULL WHERE Id = @id", new { id = usuarioId });
+        return null;
+    }
 
     /// <summary>Sucursal asignada al usuario (null si todavía no tiene).</summary>
     public async Task<Guid?> SucursalDeAsync(Guid usuarioId)

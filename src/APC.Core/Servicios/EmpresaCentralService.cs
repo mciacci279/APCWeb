@@ -68,12 +68,111 @@ public class EmpresaCentralService
     public async Task<List<TenantConfig>> ListarAsync()
     {
         using var cn = await Db.AbrirAsync(Central);
-        return (await cn.QueryAsync<TenantConfig>(
+        const string sql =
             @"SELECT e.Id, e.Codigo, e.Nombre, e.NombreFantasia, e.ConnectionString, e.PuntoVenta, e.Ambiente, e.CertificadoPath, e.ClavePath,
                      e.Concepto, e.Moneda, e.Activa, e.MotivoSuspension, e.FechaAlta, e.LeyendaTicket,
                      (SELECT COUNT(*) FROM dbo.Usuario u WHERE u.EmpresaId = e.Id AND u.Activo = 1) AS CantidadUsuarios,
-                     CAST(CASE WHEN e.Logo IS NULL THEN 0 ELSE 1 END AS BIT) AS TieneLogo
-              FROM dbo.Empresa e ORDER BY e.Nombre")).ToList();
+                     CAST(CASE WHEN e.Logo IS NULL THEN 0 ELSE 1 END AS BIT) AS TieneLogo {0}
+              FROM dbo.Empresa e ORDER BY e.Nombre";
+        try
+        {
+            return (await cn.QueryAsync<TenantConfig>(
+                string.Format(sql, ", e.AbonoPagoHasta, e.AbonoDiasGracia, e.AbonoMonto, e.AbonoNotas"))).ToList();
+        }
+        catch (Microsoft.Data.SqlClient.SqlException)
+        {
+            // Todavía no se corrió el script 09 (abono)
+            return (await cn.QueryAsync<TenantConfig>(string.Format(sql, ""))).ToList();
+        }
+    }
+
+    // ------------------------------------------------------------------ abono
+
+    /// <summary>Guarda hasta qué día está pago el abono, los días de gracia, el monto y las notas.</summary>
+    public async Task<string> GuardarAbonoAsync(Guid empresaId, DateTime? pagoHasta, int diasGracia, decimal? monto, string notas)
+    {
+        if (diasGracia < 0 || diasGracia > 90) return "Los días de gracia deben estar entre 0 y 90.";
+        if (monto < 0) return "El monto no puede ser negativo.";
+        notas = string.IsNullOrWhiteSpace(notas) ? null : notas.Trim();
+        if (notas?.Length > 300) notas = notas[..300];
+        try
+        {
+            using var cn = await Db.AbrirAsync(Central);
+            await cn.ExecuteAsync(
+                @"UPDATE dbo.Empresa SET AbonoPagoHasta = @pagoHasta, AbonoDiasGracia = @diasGracia,
+                         AbonoMonto = @monto, AbonoNotas = @notas WHERE Id = @empresaId",
+                new { empresaId, pagoHasta = pagoHasta?.Date, diasGracia, monto, notas });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            return "No se pudo guardar el abono. ¿Se ejecutó el script 09 en APCWeb_Central? Detalle: " + ex.Message;
+        }
+        _tenants.Invalidar();
+        return null;
+    }
+
+    // ------------------------------------------------------------------ alta automática de la base
+
+    private static readonly Regex NombreBaseValido = new("^[A-Za-z][A-Za-z0-9_]{2,59}$");
+
+    /// <summary>
+    /// Crea la base de una empresa nueva copiando la base plantilla (backup + restore en el mismo
+    /// SQL Server de la base central). Devuelve la cadena de conexión de la base creada.
+    /// El usuario SQL de la conexión central necesita permiso para crear bases (dbcreator o sysadmin).
+    /// </summary>
+    public async Task<(string ConnectionString, string Error)> CrearBaseDesdePlantillaAsync(string nombreBase)
+    {
+        nombreBase = nombreBase?.Trim();
+        if (nombreBase == null || !NombreBaseValido.IsMatch(nombreBase))
+            return (null, "El nombre de la base debe empezar con una letra y tener solo letras, números o guion bajo (3 a 60 caracteres).");
+
+        var plantilla = _tenants.BasePlantilla;
+        if (string.IsNullOrWhiteSpace(plantilla) || !NombreBaseValido.IsMatch(plantilla))
+            return (null, "No está configurada la base plantilla (APC:BasePlantilla).");
+        if (string.Equals(plantilla, nombreBase, StringComparison.OrdinalIgnoreCase))
+            return (null, "La base nueva no puede llamarse igual que la plantilla.");
+
+        try
+        {
+            using var cn = await Db.AbrirAsync(Central);
+
+            if (await cn.ExecuteScalarAsync<int?>("SELECT DB_ID(@n)", new { n = plantilla }) == null)
+                return (null, $"No existe la base plantilla «{plantilla}» en el servidor. Creala (una base limpia, con los scripts 01 y 07 aplicados) o cambiá APC:BasePlantilla.");
+            if (await cn.ExecuteScalarAsync<int?>("SELECT DB_ID(@n)", new { n = nombreBase }) != null)
+                return (null, $"Ya existe una base llamada «{nombreBase}».");
+
+            var carpeta = (await cn.ExecuteScalarAsync<string>("SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS NVARCHAR(400))"))?.TrimEnd('\\');
+            if (string.IsNullOrWhiteSpace(carpeta))
+                return (null, "No se pudo averiguar la carpeta de datos del SQL Server.");
+            var respaldo = carpeta + "\\apcweb_plantilla.bak";
+
+            // Los nombres ya están validados contra NombreBaseValido: no pueden traer comillas ni corchetes.
+            await cn.ExecuteAsync(
+                $"BACKUP DATABASE [{plantilla}] TO DISK = @respaldo WITH COPY_ONLY, INIT", new { respaldo }, commandTimeout: 600);
+
+            var archivos = (await cn.QueryAsync("RESTORE FILELISTONLY FROM DISK = @respaldo", new { respaldo })).ToList();
+            var mover = new List<string>();
+            int nLog = 0, nDatos = 0;
+            foreach (var a in archivos)
+            {
+                string logico = a.LogicalName, tipo = a.Type;
+                var destino = tipo == "L"
+                    ? $"{carpeta}\\{nombreBase}_log{(nLog++ == 0 ? "" : nLog.ToString())}.ldf"
+                    : $"{carpeta}\\{nombreBase}{(nDatos++ == 0 ? "" : nDatos.ToString())}.mdf";
+                mover.Add($"MOVE N'{logico.Replace("'", "''")}' TO N'{destino.Replace("'", "''")}'");
+            }
+
+            await cn.ExecuteAsync(
+                $"RESTORE DATABASE [{nombreBase}] FROM DISK = @respaldo WITH {string.Join(", ", mover)}, RECOVERY",
+                new { respaldo }, commandTimeout: 600);
+
+            var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(Central) { InitialCatalog = nombreBase };
+            return (csb.ConnectionString, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, "No se pudo crear la base: " + ex.GetBaseException().Message);
+        }
     }
 
     /// <summary>Crea (Id vacío) o actualiza una empresa. El código no se puede cambiar después del alta.</summary>

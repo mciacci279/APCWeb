@@ -36,6 +36,22 @@ public class TenantConfig
     /// <summary>Solo se completa en el listado del panel.</summary>
     public bool TieneLogo { get; set; }
 
+    // ---- Abono (lo carga CM Tech en el panel) ----
+    /// <summary>Último día cubierto por el abono. Null = sin control de abono.</summary>
+    public DateTime? AbonoPagoHasta { get; set; }
+    /// <summary>Días que el sistema sigue funcionando después del vencimiento, mostrando un aviso.</summary>
+    public int AbonoDiasGracia { get; set; } = 10;
+    public decimal? AbonoMonto { get; set; }
+    public string AbonoNotas { get; set; }
+
+    public bool AbonoVencido => AbonoPagoHasta != null && DateTime.Today > AbonoPagoHasta.Value.Date;
+    /// <summary>Día a partir del cual la empresa queda suspendida si no se registra el pago.</summary>
+    public DateTime? AbonoFechaSuspension => AbonoPagoHasta?.Date.AddDays(Math.Max(0, AbonoDiasGracia) + 1);
+    public bool SuspendidaPorAbono => AbonoFechaSuspension != null && DateTime.Today >= AbonoFechaSuspension.Value;
+    public int AbonoDiasParaSuspension => AbonoFechaSuspension == null ? 0 : (AbonoFechaSuspension.Value - DateTime.Today).Days;
+    /// <summary>La empresa puede usar el sistema: no está suspendida a mano ni por falta de pago.</summary>
+    public bool Habilitada => Activa && !SuspendidaPorAbono;
+
     public bool EsProduccion => string.Equals(Ambiente?.Trim(), "PROD", StringComparison.OrdinalIgnoreCase);
 
     public string UrlWsaa => EsProduccion
@@ -61,6 +77,8 @@ public class TenantOptions
     /// Si está vacía se usa la del pedido (solo recomendable en desarrollo).
     /// </summary>
     public string UrlPublica { get; set; }
+    /// <summary>Base limpia que se clona al dar de alta una empresa desde el panel.</summary>
+    public string BasePlantilla { get; set; } = "SuperMarketDB_Plantilla";
     /// <summary>Conexión a la base central APCWeb_Central (ConnectionStrings:Central).</summary>
     public string CentralConnectionString { get; set; }
 }

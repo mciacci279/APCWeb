@@ -60,8 +60,10 @@
                             <td class="der">@e.PuntoVenta</td>
                             <td class="der">@e.CantidadUsuarios</td>
                             <td>
-                                @if (e.Activa) { <span>Activa</span> }
-                                else { <span class="etiqueta etiqueta-falta">Suspendida</span> }
+                                @if (!e.Activa) { <span class="etiqueta etiqueta-falta">Suspendida</span> }
+                                else if (e.SuspendidaPorAbono) { <span class="cert-chip cert-mal">Suspendida por abono</span> }
+                                else if (e.AbonoVencido) { <span class="cert-chip cert-aviso">Abono vencido · @e.AbonoDiasParaSuspension días</span> }
+                                else { <span>Activa</span> }
                             </td>
                         </tr>
                     }
@@ -100,6 +102,15 @@
                         <label for="e-cs">Conexión a la base de la empresa</label>
                         <textarea id="e-cs" class="input input-area mono" rows="3" @bind="edit.ConnectionString"
                                   placeholder="Server=.\SQLEXPRESS;Database=SuperMarketDB_Cliente;User ID=apcweb;Password=…;Encrypt=False;TrustServerCertificate=True"></textarea>
+                        @if (esNueva)
+                        {
+                            <div class="fila-btns">
+                                <label class="sr-only" for="e-base">Nombre de la base nueva</label>
+                                <input id="e-base" class="input mono crece" maxlength="60" @bind="nombreBase" placeholder="@("SuperMarketDB_" + (edit.Codigo ?? "cliente").ToUpperInvariant())" />
+                                <button type="button" class="btn btn-chico btn-primario" disabled="@(ocupado || !CodigoListo)" @onclick="CrearBase">@(creandoBase ? "Creando la base…" : "Crear base desde la plantilla")</button>
+                            </div>
+                            <span class="sub">Copia la base plantilla con ese nombre y completa la conexión sola. Si la base ya existe, pegá la conexión a mano.</span>
+                        }
                         <div class="fila-btns">
                             <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="Probar">Probar conexión</button>
                             @if (prueba != null)
@@ -222,6 +233,38 @@
                 }
                 else
                 {
+                    <h2>Abono</h2>
+                    @if (edit.SuspendidaPorAbono)
+                    {
+                        <p class="alerta alerta-error">Suspendida por abono vencido desde el @edit.AbonoFechaSuspension?.ToString("dd/MM/yyyy"). Al registrar el pago vuelve a funcionar en el momento.</p>
+                    }
+                    else if (edit.AbonoVencido)
+                    {
+                        <p class="alerta alerta-aviso">El abono venció el @edit.AbonoPagoHasta?.ToString("dd/MM/yyyy"). El cliente ve un aviso y se suspende sola en @edit.AbonoDiasParaSuspension días.</p>
+                    }
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="ab-hasta">Pago hasta</label>
+                            <input id="ab-hasta" class="input" type="date" @bind="edit.AbonoPagoHasta" />
+                        </div>
+                        <div class="campo">
+                            <label for="ab-gracia">Días de gracia</label>
+                            <input id="ab-gracia" class="input mono input-chico" type="number" min="0" max="90" @bind="edit.AbonoDiasGracia" />
+                        </div>
+                        <div class="campo">
+                            <label for="ab-monto">Monto mensual</label>
+                            <input id="ab-monto" class="input mono input-chico" type="number" step="0.01" min="0" @bind="edit.AbonoMonto" />
+                        </div>
+                    </div>
+                    <div class="campo"><label for="ab-notas">Notas</label><input id="ab-notas" class="input" maxlength="300" @bind="edit.AbonoNotas" placeholder="ej. paga por transferencia los días 10" /></div>
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarAbono">Guardar abono</button>
+                        <button type="button" class="btn" disabled="@ocupado" @onclick="() => SumarMeses(1)">Registrar pago: +1 mes</button>
+                        <button type="button" class="btn" disabled="@ocupado" @onclick="QuitarControlAbono">Sin control de abono</button>
+                    </div>
+                    <p class="sub">Vacío en «Pago hasta» = no se controla el abono. Vencido el día, el cliente ve un aviso; pasados los días de gracia, la empresa se suspende sola.</p>
+
+                    <h2>Suspensión manual</h2>
                     @if (edit.Activa)
                     {
                         <p>La empresa está <strong>activa</strong>. Si la suspendés, nadie de esa empresa puede ingresar y quienes estén adentro salen en su próximo movimiento. Sus datos no se borran.</p>
@@ -262,6 +305,51 @@
     private bool pruebaOk;
     private string motivo;
     private bool confirmarSuspension;
+    private string nombreBase;
+    private bool creandoBase;
+
+    private async Task CrearBase()
+    {
+        ocupado = true;
+        creandoBase = true;
+        StateHasChanged();
+        try
+        {
+            var nombre = string.IsNullOrWhiteSpace(nombreBase) ? "SuperMarketDB_" + edit.Codigo.Trim().ToUpperInvariant().Replace("-", "_") : nombreBase.Trim();
+            var (cs, err) = await EmpresaSrv.CrearBaseDesdePlantillaAsync(nombre);
+            if (err != null) { Aviso(false, err); return; }
+            edit.ConnectionString = cs;
+            nombreBase = nombre;
+            Aviso(true, $"Base «{nombre}» creada desde la plantilla. Cargá los datos fiscales de la empresa en su tabla Empresa, subí el certificado y tocá «Crear empresa».");
+        }
+        finally { ocupado = false; creandoBase = false; }
+    }
+
+    private async Task GuardarAbono()
+    {
+        ocupado = true;
+        try
+        {
+            var err = await EmpresaSrv.GuardarAbonoAsync(edit.Id, edit.AbonoPagoHasta, edit.AbonoDiasGracia, edit.AbonoMonto, edit.AbonoNotas);
+            Aviso(err == null, err ?? "Abono guardado.");
+            if (err == null) { var p = pestania; await Recargar(); pestania = p; }
+        }
+        finally { ocupado = false; }
+    }
+
+    /// <summary>Registrar un pago: corre el vencimiento N meses desde el último día pago (o desde hoy si estaba vencido hace mucho).</summary>
+    private async Task SumarMeses(int meses)
+    {
+        var desde = edit.AbonoPagoHasta ?? DateTime.Today;
+        edit.AbonoPagoHasta = desde.AddMonths(meses);
+        await GuardarAbono();
+    }
+
+    private async Task QuitarControlAbono()
+    {
+        edit.AbonoPagoHasta = null;
+        await GuardarAbono();
+    }
     private CertificadoInfo certInfo;
     private string logoUri;
 
@@ -431,6 +519,7 @@
         Id = e.Id, Codigo = e.Codigo, Nombre = e.Nombre, NombreFantasia = e.NombreFantasia, ConnectionString = e.ConnectionString, PuntoVenta = e.PuntoVenta,
         Ambiente = e.Ambiente?.Trim(), CertificadoPath = e.CertificadoPath, ClavePath = e.ClavePath, Concepto = e.Concepto,
         Moneda = e.Moneda, Activa = e.Activa, MotivoSuspension = e.MotivoSuspension, FechaAlta = e.FechaAlta,
+        AbonoPagoHasta = e.AbonoPagoHasta, AbonoDiasGracia = e.AbonoDiasGracia, AbonoMonto = e.AbonoMonto, AbonoNotas = e.AbonoNotas,
         CantidadUsuarios = e.CantidadUsuarios, TieneLogo = e.TieneLogo, LeyendaTicket = e.LeyendaTicket
     };
 }
