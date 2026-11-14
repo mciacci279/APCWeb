@@ -47,6 +47,7 @@ Se ejecutan una sola vez, en orden. Los `*_central_*` van en `APCWeb_Central`; l
 | `07_apcweb_sucursales.sql` | empresa | Sucursales, stock por sucursal y movimientos |
 | `08_apcweb_central_sucursal_usuario.sql` | central | Sucursal asignada a cada usuario |
 | `09_apcweb_central_abono_2fa.sql` | central | Control de abono y verificación en dos pasos |
+| `10_apcweb_central_cobranzas.sql` | central | Cobranzas de CM Tech: facturadores, cobros y avisos |
 
 ## Primera vez después de clonar desde GitHub
 

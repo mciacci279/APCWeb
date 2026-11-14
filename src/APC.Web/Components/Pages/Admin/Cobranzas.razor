@@ -1,0 +1,441 @@
+@page "/admin/cobranzas"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Core.Seguridad
+@inject SesionService SesionSrv
+@inject CobranzaService CobranzaSrv
+
+<PageTitle>Cobranzas · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Cobranzas</h1>
+            <span class="sub">Abono mensual de cada empresa</span>
+        </div>
+        <div class="fila-campos">
+            <div class="campo">
+                <label for="periodo">Mes</label>
+                <input id="periodo" class="input" type="month" @bind="periodo" @bind:after="Cargar" />
+            </div>
+            <div class="campo">
+                <label for="filtro">Estado</label>
+                <select id="filtro" class="input" @bind="filtroEstado" @bind:after="Cargar">
+                    <option value="">Todos</option>
+                    <option value="@EstadoCobro.Pendiente">Sin avisar</option>
+                    <option value="@EstadoCobro.Enviado">Avisados, sin pagar</option>
+                    <option value="@EstadoCobro.Abonado">Abonados</option>
+                </select>
+            </div>
+            <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GenerarMes">Generar el mes</button>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <nav class="pestanias" aria-label="Secciones">
+        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Cobros del mes</button>
+        <button type="button" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="VerFacturadores">Quién factura</button>
+    </nav>
+
+    @if (pestania == 1)
+    {
+        <div class="arqueo-cols">
+            <section class="panel crece tabla-scroll">
+                <table class="tabla">
+                    <thead><tr><th>Nombre</th><th>CUIT</th><th>Alias</th><th>Banco</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @if (facturadores.Count == 0)
+                        {
+                            <tr><td colspan="5" class="sub">Cargá a quienes emiten las facturas del abono.</td></tr>
+                        }
+                        @foreach (var f in facturadores)
+                        {
+                            <tr class="@(f.Activo ? "" : "fila-baja")">
+                                <td><button type="button" class="link-fila" @onclick="() => editF = Copia(f)">@f.Nombre</button></td>
+                                <td class="mono">@f.Cuit</td>
+                                <td class="mono">@f.Alias</td>
+                                <td>@f.Banco</td>
+                                <td>@(f.Activo ? "Activo" : "Inactivo")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="fila-btns">
+                    <button type="button" class="btn" @onclick="() => editF = new Facturador()">+ Agregar</button>
+                </div>
+            </section>
+
+            @if (editF != null)
+            {
+                <aside class="panel cierre panel-ancho">
+                    <h2>@(editF.EsNuevo ? "Nuevo" : editF.Nombre)</h2>
+                    <div class="campo"><label for="f-nombre">Nombre</label><input id="f-nombre" class="input" maxlength="100" @bind="editF.Nombre" /></div>
+                    <div class="campo"><label for="f-cuit">CUIT</label><input id="f-cuit" class="input mono" maxlength="13" @bind="editF.Cuit" /></div>
+                    <div class="campo"><label for="f-alias">Alias para transferencias</label><input id="f-alias" class="input mono" maxlength="60" @bind="editF.Alias" /></div>
+                    <div class="campo"><label for="f-cbu">CBU</label><input id="f-cbu" class="input mono" maxlength="30" @bind="editF.Cbu" /></div>
+                    <div class="campo"><label for="f-banco">Banco</label><input id="f-banco" class="input" maxlength="60" @bind="editF.Banco" /></div>
+                    <label class="check"><input type="checkbox" @bind="editF.Activo" /> Activo</label>
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarFacturador">Guardar</button>
+                        <button type="button" class="btn" @onclick="() => editF = null">Cancelar</button>
+                    </div>
+                    <p class="sub">El alias y el nombre se usan en el mensaje de WhatsApp para que el cliente pueda transferir.</p>
+                </aside>
+            }
+        </div>
+    }
+    else if (resumen != null)
+    {
+        <div class="kpis">
+            <div class="kpi"><span class="sub">A cobrar</span><span class="mono kpi-num">@Pesos(resumen.Total)</span><span class="sub">@resumen.Cantidad empresas</span></div>
+            <div class="kpi kpi-fuerte"><span class="sub">Cobrado</span><span class="mono kpi-num">@Pesos(resumen.Cobrado)</span><span class="sub">@resumen.CantidadAbonada abonaron</span></div>
+            <div class="kpi @(resumen.Pendiente > 0 ? "falta" : "")"><span class="sub">Pendiente</span><span class="mono kpi-num">@Pesos(resumen.Pendiente)</span><span class="sub">@(resumen.Cantidad - resumen.CantidadAbonada) sin pagar</span></div>
+            <div class="kpi"><span class="sub">Sin avisar</span><span class="mono kpi-num">@resumen.SinAvisar</span><span class="sub">todavía no se les mandó</span></div>
+        </div>
+
+        <div class="panel tabla-scroll">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>Empresa</th><th>Contacto</th><th>Factura</th><th class="der">Importe</th>
+                        <th>Estado</th><th>Avisos</th><th><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (lista.Count == 0)
+                    {
+                        <tr><td colspan="7" class="sub">No hay cobros en este mes. Tocá «Generar el mes» para crearlos con el monto de abono de cada empresa.</td></tr>
+                    }
+                    @foreach (var c in lista)
+                    {
+                        <tr class="@(c.Anulado ? "fila-baja" : "") @(edit?.Id == c.Id ? "fila-sel" : "")">
+                            <td>
+                                <button type="button" class="link-fila" @onclick="() => Seleccionar(c)">@c.Comercio</button>
+                                <span class="sub mono">@c.EmpresaCodigo</span>
+                            </td>
+                            <td>
+                                @c.ContactoNombre
+                                @if (!string.IsNullOrWhiteSpace(c.ContactoTelefono)) { <span class="sub mono">@c.ContactoTelefono</span> }
+                                else { <span class="sub">sin teléfono</span> }
+                            </td>
+                            <td>
+                                <span class="sub">@c.Facturador</span>
+                                @if (!string.IsNullOrWhiteSpace(c.ComprobanteNro)) { <span class="mono">@c.ComprobanteNro</span> }
+                            </td>
+                            <td class="der fuerte">@Pesos(c.Monto)</td>
+                            <td>
+                                @if (c.Anulado) { <span class="etiqueta etiqueta-falta">Anulado</span> }
+                                else if (c.Abonado) { <span class="cert-chip cert-bien">Abonado @c.FechaPago?.ToString("dd/MM")</span> }
+                                else if (c.Estado == EstadoCobro.Enviado) { <span class="cert-chip cert-aviso">Avisado @c.FechaEnvio?.ToString("dd/MM")</span> }
+                                else { <span class="etiqueta etiqueta-empleado">Sin avisar</span> }
+                            </td>
+                            <td class="der">@(c.Avisos == 0 ? "—" : c.Avisos.ToString())</td>
+                            <td class="acciones">
+                                @if (!c.Anulado && !c.Abonado)
+                                {
+                                    <a class="btn btn-chico btn-whatsapp" href="@LinkWhatsApp(c)" target="_blank" rel="noopener"
+                                       @onclick="@(() => Avisar(c, "WhatsApp", c.ContactoTelefono))">WhatsApp</a>
+                                    <button type="button" class="btn btn-chico btn-primario" @onclick="() => AbrirPago(c)">Abonado</button>
+                                }
+                                else if (c.Abonado)
+                                {
+                                    <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => Desmarcar(c)">Deshacer</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (pagando != null)
+        {
+            <section class="panel anular" aria-label="Registrar el pago">
+                <h2>Registrar el pago de @pagando.Comercio · @Pesos(pagando.Monto)</h2>
+                <div class="fila-campos">
+                    <div class="campo"><label for="p-fecha">Fecha del pago</label><input id="p-fecha" class="input" type="date" @bind="pagoFecha" /></div>
+                    <div class="campo">
+                        <label for="p-medio">Medio</label>
+                        <select id="p-medio" class="input" @bind="pagoMedio">
+                            <option>Transferencia</option>
+                            <option>Efectivo</option>
+                            <option>Mercado Pago</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                    <div class="campo"><label for="p-nro">Nº de factura emitida</label><input id="p-nro" class="input mono" maxlength="40" @bind="pagoComprobante" /></div>
+                </div>
+                <label class="check"><input type="checkbox" @bind="extenderAbono" /> Dejar el abono pago hasta el final de @pagando.PeriodoTexto</label>
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="ConfirmarPago">Confirmar</button>
+                    <button type="button" class="btn" @onclick="() => pagando = null">Cancelar</button>
+                </div>
+            </section>
+        }
+
+        @if (edit != null)
+        {
+            <section class="panel panel-ancho" aria-label="Detalle del cobro">
+                <h2>@edit.Comercio · @edit.PeriodoTexto</h2>
+
+                <div class="fila-campos">
+                    <div class="campo"><label for="d-monto">Importe</label><input id="d-monto" class="input mono" type="number" step="0.01" min="0" @bind="edit.Monto" /></div>
+                    <div class="campo">
+                        <label for="d-fact">Factura</label>
+                        <select id="d-fact" class="input" @bind="FacturadorElegido">
+                            <option value="">(sin asignar)</option>
+                            @foreach (var f in facturadores.Where(x => x.Activo))
+                            {
+                                <option value="@f.Id">@f.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="campo"><label for="d-nro">Nº de factura</label><input id="d-nro" class="input mono" maxlength="40" @bind="edit.ComprobanteNro" /></div>
+                </div>
+                <div class="campo"><label for="d-obs">Observaciones</label><input id="d-obs" class="input" maxlength="300" @bind="edit.Observaciones" /></div>
+
+                <h3 class="sub-titulo">Contacto de la empresa</h3>
+                <div class="fila-campos">
+                    <div class="campo crece"><label for="d-cont">Nombre</label><input id="d-cont" class="input" maxlength="100" @bind="edit.ContactoNombre" /></div>
+                    <div class="campo"><label for="d-tel">WhatsApp</label><input id="d-tel" class="input mono" maxlength="50" @bind="edit.ContactoTelefono" placeholder="Con característica, sin 0 ni 15" /></div>
+                    <div class="campo crece"><label for="d-mail">Email</label><input id="d-mail" class="input" type="email" maxlength="100" @bind="edit.ContactoEmail" /></div>
+                </div>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarDetalle">Guardar</button>
+                    <button type="button" class="btn" @onclick="() => edit = null">Cerrar</button>
+                    <div class="crece"></div>
+                    @if (!edit.Abonado && !edit.Anulado)
+                    {
+                        <button type="button" class="btn" disabled="@ocupado" @onclick="() => Anular(edit)">Anular este cobro</button>
+                    }
+                </div>
+
+                @if (envios.Count > 0)
+                {
+                    <h3 class="sub-titulo">Avisos enviados</h3>
+                    <table class="tabla tabla-chica">
+                        <thead><tr><th>Fecha</th><th>Medio</th><th>A</th><th>Usuario</th></tr></thead>
+                        <tbody>
+                            @foreach (var e in envios)
+                            {
+                                <tr><td>@e.Fecha.ToString("dd/MM/yyyy HH:mm")</td><td>@e.Medio</td><td class="mono">@e.Destino</td><td class="mono">@e.Usuario</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                @if (historial.Count > 0)
+                {
+                    <h3 class="sub-titulo">Meses anteriores</h3>
+                    <table class="tabla tabla-chica">
+                        <thead><tr><th>Período</th><th class="der">Importe</th><th>Estado</th><th>Pago</th><th>Factura</th></tr></thead>
+                        <tbody>
+                            @foreach (var h in historial)
+                            {
+                                <tr>
+                                    <td>@h.PeriodoTexto</td>
+                                    <td class="der">@Pesos(h.Monto)</td>
+                                    <td>@(h.Abonado ? "Abonado" : h.Anulado ? "Anulado" : h.Estado == EstadoCobro.Enviado ? "Avisado" : "Sin avisar")</td>
+                                    <td>@h.FechaPago?.ToString("dd/MM/yyyy")</td>
+                                    <td class="mono">@h.ComprobanteNro</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    private SesionActual sesion;
+    private string periodo = CobranzaService.PeriodoDe(DateTime.Today);
+    private string filtroEstado = "";
+    private int pestania;
+
+    private List<Cobro> lista = new();
+    private List<Facturador> facturadores = new();
+    private ResumenCobranzas resumen;
+
+    private Cobro edit;
+    private List<EnvioCobro> envios = new();
+    private List<Cobro> historial = new();
+
+    private Cobro pagando;
+    private DateTime pagoFecha = DateTime.Today;
+    private string pagoMedio = "Transferencia";
+    private string pagoComprobante;
+    private bool extenderAbono = true;
+
+    private Facturador editF;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+
+    private string FacturadorElegido
+    {
+        get => edit.FacturadorId?.ToString() ?? "";
+        set => edit.FacturadorId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            facturadores = await CobranzaSrv.FacturadoresAsync();
+            lista = await CobranzaSrv.ListarAsync(periodo, string.IsNullOrEmpty(filtroEstado) ? null : filtroEstado);
+            resumen = await CobranzaSrv.ResumenAsync(periodo);
+        }
+        catch (Exception ex)
+        {
+            Aviso(false, "No se pudieron leer las cobranzas. ¿Se ejecutó el script 10 en APCWeb_Central? Detalle: " + ex.Message);
+        }
+    }
+
+    private async Task VerFacturadores()
+    {
+        pestania = 1;
+        facturadores = await CobranzaSrv.FacturadoresAsync();
+    }
+
+    private async Task GenerarMes()
+    {
+        ocupado = true;
+        try
+        {
+            var (creados, error) = await CobranzaSrv.GenerarMesAsync(periodo, sesion.UsuarioId);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, creados == 0
+                ? "No había cobros nuevos para crear: ya estaban todos, o las empresas no tienen monto de abono cargado."
+                : $"Se crearon {creados} cobro(s) de {Cobro.TextoDePeriodo(periodo)}.");
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Seleccionar(Cobro c)
+    {
+        edit = c;
+        mensaje = null;
+        envios = await CobranzaSrv.EnviosAsync(c.Id);
+        historial = (await CobranzaSrv.HistorialAsync(c.EmpresaId)).Where(h => h.Id != c.Id).ToList();
+    }
+
+    private async Task GuardarDetalle()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await CobranzaSrv.GuardarAsync(edit.Id, edit.Monto, edit.FacturadorId, edit.ComprobanteNro, edit.Observaciones);
+            if (error != null) { Aviso(false, error); return; }
+            await CobranzaSrv.GuardarContactoAsync(edit.EmpresaId, edit.ContactoNombre, edit.ContactoTelefono, edit.ContactoEmail);
+            Aviso(true, "Guardado.");
+            await Cargar();
+            edit = lista.FirstOrDefault(x => x.Id == edit.Id);
+        }
+        finally { ocupado = false; }
+    }
+
+    /// <summary>Mensaje de WhatsApp con el período, el importe y los datos para transferir.</summary>
+    private string LinkWhatsApp(Cobro c)
+    {
+        var facturador = facturadores.FirstOrDefault(f => f.Id == c.FacturadorId);
+        var texto = $"Hola{(string.IsNullOrWhiteSpace(c.ContactoNombre) ? "" : " " + c.ContactoNombre.Split(' ')[0])}! " +
+                    $"Te paso el abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
+        if (!string.IsNullOrWhiteSpace(c.ComprobanteNro)) texto += $" Factura {c.ComprobanteNro}.";
+        var datos = facturador?.DatosParaTransferir;
+        if (!string.IsNullOrWhiteSpace(datos)) texto += " " + datos + ".";
+        texto += " ¡Gracias!";
+        return EnlaceComprobante.WhatsApp(c.ContactoTelefono, texto);
+    }
+
+    private async Task Avisar(Cobro c, string medio, string destino)
+    {
+        await CobranzaSrv.RegistrarEnvioAsync(c.Id, sesion.UsuarioId, medio, destino);
+        await Cargar();
+    }
+
+    private void AbrirPago(Cobro c)
+    {
+        pagando = c;
+        pagoFecha = DateTime.Today;
+        pagoMedio = "Transferencia";
+        pagoComprobante = c.ComprobanteNro;
+        extenderAbono = true;
+        mensaje = null;
+    }
+
+    private async Task ConfirmarPago()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await CobranzaSrv.MarcarAbonadoAsync(pagando.Id, sesion.UsuarioId, pagoFecha, pagoMedio, pagoComprobante, extenderAbono);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, $"{pagando.Comercio}: pago registrado." + (extenderAbono ? " El abono quedó al día." : ""));
+            pagando = null;
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Desmarcar(Cobro c)
+    {
+        ocupado = true;
+        try
+        {
+            await CobranzaSrv.DesmarcarAsync(c.Id);
+            Aviso(true, "El cobro volvió a quedar pendiente. Ojo: el abono de la empresa no se modificó.");
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Anular(Cobro c)
+    {
+        ocupado = true;
+        try
+        {
+            await CobranzaSrv.AnularAsync(c.Id, "Anulado desde el panel");
+            Aviso(true, "Cobro anulado.");
+            edit = null;
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task GuardarFacturador()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await CobranzaSrv.GuardarFacturadorAsync(editF);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, "Guardado.");
+            editF = null;
+            facturadores = await CobranzaSrv.FacturadoresAsync();
+        }
+        finally { ocupado = false; }
+    }
+
+    private static Facturador Copia(Facturador f) => new()
+    {
+        Id = f.Id, Nombre = f.Nombre, Cuit = f.Cuit, Alias = f.Alias, Cbu = f.Cbu, Banco = f.Banco, Activo = f.Activo
+    };
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+}

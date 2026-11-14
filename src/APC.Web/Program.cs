@@ -68,6 +68,7 @@ builder.Services.AddSingleton<ClienteService>();
 builder.Services.AddSingleton<PadronService>();
 builder.Services.AddSingleton<SucursalService>();
 builder.Services.AddSingleton<TableroService>();
+builder.Services.AddSingleton<CobranzaService>();
 builder.Services.AddSingleton<ProductoService>();
 builder.Services.AddSingleton<ImportadorProductosService>();
 builder.Services.AddScoped<SesionService>();
