@@ -1,0 +1,27 @@
+# Compila APC Web en cada push. Si hay errores, GitHub los muestra con archivo y línea.
+name: Compilar
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Instalar .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restaurar paquetes NuGet
+        run: dotnet restore APC.Web8.sln
+
+      - name: Compilar (Release)
+        run: dotnet build APC.Web8.sln --configuration Release --no-restore
