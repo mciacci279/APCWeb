@@ -1,0 +1,153 @@
+@* Datos del cliente del comprobante: búsqueda en el fichero de clientes y traído de ARCA por CUIT. *@
+@inject SesionService SesionSrv
+@inject ClienteService ClienteSrv
+@inject PadronService Padron
+
+<section class="panel cliente" aria-label="Datos del cliente">
+    <div class="campo crece">
+        <label for="cli-buscar">Buscar en clientes</label>
+        <div class="buscador-cliente">
+            <input id="cli-buscar" class="input" autocomplete="off" placeholder="Nombre o documento"
+                   disabled="@Deshabilitado" @bind="texto" @bind:event="oninput" @onkeydown="BuscarKey" />
+            @if (resultados.Count > 0)
+            {
+                <ul class="resultados" role="listbox" aria-label="Clientes encontrados">
+                    @foreach (var c in resultados)
+                    {
+                        <li>
+                            <button type="button" class="resultado" @onclick="() => Elegir(c)">
+                                <span class="r-nombre">@c.NombreCompleto</span>
+                                <span class="r-cod">@c.Documento</span>
+                                <span class="r-precio">@c.CondicionIva</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+            else if (sinResultados)
+            {
+                <p class="sub">No se encontró ningún cliente. Cargá los datos a mano o traelos de ARCA.</p>
+            }
+        </div>
+    </div>
+
+    <div class="campo crece">
+        <label for="cli-nombre">Nombre / razón social</label>
+        <input id="cli-nombre" class="input" maxlength="50" disabled="@Deshabilitado" @bind="Datos.ClienteNombre" @bind:after="Aviso" />
+    </div>
+
+    <div class="campo">
+        <label for="cli-doc">CUIT / DNI</label>
+        <div class="fila-btns">
+            <input id="cli-doc" class="input mono crece" maxlength="13" inputmode="numeric"
+                   disabled="@Deshabilitado" @bind="Datos.ClienteDocumento" @bind:after="Aviso" />
+            <button type="button" class="btn" disabled="@(Deshabilitado || consultando)" @onclick="TraerDeArca">
+                @(consultando ? "Consultando…" : "ARCA")
+            </button>
+        </div>
+    </div>
+
+    <div class="campo crece">
+        <label for="cli-dom">Domicilio</label>
+        <input id="cli-dom" class="input" maxlength="100" disabled="@Deshabilitado" @bind="Datos.ClienteDomicilio" @bind:after="Aviso" />
+    </div>
+
+    <div class="campo">
+        <label for="cli-loc">Localidad</label>
+        <input id="cli-loc" class="input" maxlength="100" disabled="@Deshabilitado" @bind="Datos.ClienteLocalidad" @bind:after="Aviso" />
+    </div>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public NuevaFactura Datos { get; set; }
+    [Parameter] public bool Deshabilitado { get; set; }
+    /// <summary>Si el comprobante distingue la condición frente al IVA (la factura sí, el presupuesto no).</summary>
+    [Parameter] public bool AplicaCondicion { get; set; } = true;
+    [Parameter] public EventCallback OnCambio { get; set; }
+
+    private SesionActual sesion;
+    private string texto;
+    private List<ClienteItem> resultados = new();
+    private bool sinResultados;
+    private bool consultando;
+    private string mensaje;
+    private bool mensajeOk;
+
+    protected override async Task OnInitializedAsync() => sesion = await SesionSrv.ObtenerAsync();
+
+    private async Task BuscarKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { resultados.Clear(); sinResultados = false; return; }
+        if (e.Key != "Enter") return;
+        resultados = await ClienteSrv.BuscarAsync(sesion.Cs, texto, 10);
+        sinResultados = resultados.Count == 0;
+    }
+
+    private async Task Elegir(ClienteItem c)
+    {
+        Datos.ClienteId = c.Id;
+        Datos.ClienteNombre = c.NombreCompleto;
+        Datos.ClienteDocumento = c.NroDocumento;
+        Datos.ClienteDomicilio = c.Domicilio;
+        Datos.ClienteLocalidad = c.Localidad;
+        if (AplicaCondicion) Datos.Condicion = Condicion(c.CondicionIva);
+
+        texto = "";
+        resultados.Clear();
+        sinResultados = false;
+        mensaje = null;
+        await OnCambio.InvokeAsync();
+    }
+
+    private async Task TraerDeArca()
+    {
+        consultando = true;
+        mensaje = null;
+        StateHasChanged();
+        try
+        {
+            var p = await Padron.ConsultarAsync(sesion.Tenant, Datos.ClienteDocumento);
+            if (!p.Encontrada) { Mostrar(false, p.Error ?? "ARCA no devolvió datos para ese CUIT."); return; }
+
+            Datos.ClienteId = null;
+            Datos.ClienteNombre = p.NombreCompleto;
+            if (!string.IsNullOrWhiteSpace(p.Domicilio)) Datos.ClienteDomicilio = p.Domicilio;
+            if (!string.IsNullOrWhiteSpace(p.Localidad)) Datos.ClienteLocalidad = p.Localidad;
+            if (AplicaCondicion) Datos.Condicion = Condicion(p.CondicionIva);
+
+            Mostrar(true, "Datos traídos de ARCA: " + p.NombreCompleto);
+            await OnCambio.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Mostrar(false, "No se pudo consultar el padrón: " + ex.Message);
+        }
+        finally
+        {
+            consultando = false;
+        }
+    }
+
+    /// <summary>Si el operador edita los datos a mano, deja de ser el cliente del fichero.</summary>
+    private async Task Aviso()
+    {
+        Datos.ClienteId = null;
+        await OnCambio.InvokeAsync();
+    }
+
+    private void Mostrar(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+
+    private static CondicionReceptor Condicion(string texto)
+    {
+        var t = (texto ?? "").ToUpperInvariant();
+        if (t.Contains("INSCRIPTO")) return CondicionReceptor.ResponsableInscripto;
+        if (t.Contains("MONOTRIBUT")) return CondicionReceptor.Monotributo;
+        if (t.Contains("EXENT")) return CondicionReceptor.Exento;
+        return CondicionReceptor.ConsumidorFinal;
+    }
+}

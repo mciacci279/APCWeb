@@ -54,24 +54,7 @@ else
 
         @if (verCliente)
         {
-            <section class="panel cliente" aria-label="Datos del cliente">
-                <div class="campo crece">
-                    <label for="cli-nombre">Nombre / razón social</label>
-                    <input id="cli-nombre" class="input" @bind="factura.ClienteNombre" maxlength="50" />
-                </div>
-                <div class="campo">
-                    <label for="cli-doc">CUIT / DNI</label>
-                    <input id="cli-doc" class="input" @bind="factura.ClienteDocumento" maxlength="13" inputmode="numeric" />
-                </div>
-                <div class="campo crece">
-                    <label for="cli-dom">Domicilio</label>
-                    <input id="cli-dom" class="input" @bind="factura.ClienteDomicilio" maxlength="100" />
-                </div>
-                <div class="campo">
-                    <label for="cli-loc">Localidad</label>
-                    <input id="cli-loc" class="input" @bind="factura.ClienteLocalidad" maxlength="100" />
-                </div>
-            </section>
+            <DatosCliente Datos="factura" OnCambio="Recalcular" Deshabilitado="@(resultado != null)" />
         }
 
         <div class="buscador">

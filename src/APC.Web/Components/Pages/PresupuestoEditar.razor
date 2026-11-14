@@ -40,24 +40,7 @@ else
 
         @if (verCliente)
         {
-            <section class="panel cliente" aria-label="Datos del cliente">
-                <div class="campo crece">
-                    <label for="cli-nombre">Nombre / razón social</label>
-                    <input id="cli-nombre" class="input" @bind="datos.ClienteNombre" maxlength="50" disabled="@soloLectura" />
-                </div>
-                <div class="campo">
-                    <label for="cli-doc">CUIT / DNI</label>
-                    <input id="cli-doc" class="input" @bind="datos.ClienteDocumento" maxlength="13" inputmode="numeric" disabled="@soloLectura" />
-                </div>
-                <div class="campo crece">
-                    <label for="cli-dom">Domicilio</label>
-                    <input id="cli-dom" class="input" @bind="datos.ClienteDomicilio" maxlength="100" disabled="@soloLectura" />
-                </div>
-                <div class="campo">
-                    <label for="cli-loc">Localidad</label>
-                    <input id="cli-loc" class="input" @bind="datos.ClienteLocalidad" maxlength="100" disabled="@soloLectura" />
-                </div>
-            </section>
+            <DatosCliente Datos="datos" AplicaCondicion="false" Deshabilitado="@soloLectura" OnCambio="Cambio" />
         }
 
         @if (!soloLectura)

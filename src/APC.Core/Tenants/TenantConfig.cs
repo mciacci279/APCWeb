@@ -42,6 +42,9 @@ public class TenantConfig
         ? "https://wsaa.afip.gov.ar/ws/services/LoginCms"
         : "https://wsaahomo.afip.gov.ar/ws/services/LoginCms";
 
+    /// <summary>Padrón A13: consulta de datos por CUIT.</summary>
+    public string UrlPadron => APC.Arca.PadronA13Client.Url(EsProduccion);
+
     public string UrlWsfe => EsProduccion
         ? "https://servicios1.afip.gov.ar/wsfev1/service.asmx"
         : "https://wswhomo.afip.gov.ar/wsfev1/service.asmx";

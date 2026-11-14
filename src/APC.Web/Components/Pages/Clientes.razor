@@ -1,0 +1,254 @@
+@page "/clientes"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@inject SesionService SesionSrv
+@inject ClienteService ClienteSrv
+@inject PadronService Padron
+
+<PageTitle>Clientes · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Clientes</h1><span class="sub">@lista.Count @(lista.Count == 1 ? "cliente" : "clientes")</span></div>
+        <div class="fila-campos">
+            <div class="campo crece">
+                <label for="buscar-cli">Buscar</label>
+                <input id="buscar-cli" class="input" placeholder="Nombre, razón social o documento"
+                       @bind="texto" @bind:event="oninput" @onkeydown="BuscarKey" />
+            </div>
+            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+            <button type="button" class="btn btn-primario" @onclick="Nuevo">+ Nuevo cliente</button>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <div class="arqueo-cols">
+        <section class="panel crece tabla-scroll">
+            <table class="tabla">
+                <thead><tr><th>Cliente</th><th>Documento</th><th>Condición IVA</th><th>Domicilio</th><th>Teléfono</th></tr></thead>
+                <tbody>
+                    @if (lista.Count == 0)
+                    {
+                        <tr><td colspan="5" class="sub">No hay clientes que coincidan. Creá el primero con «Nuevo cliente».</td></tr>
+                    }
+                    @foreach (var c in lista)
+                    {
+                        <tr class="@(edit?.Id == c.Id ? "fila-sel" : "")">
+                            <td><button type="button" class="link-fila" @onclick="() => Seleccionar(c)">@c.NombreCompleto</button></td>
+                            <td class="mono">@c.Documento</td>
+                            <td>@c.CondicionIva</td>
+                            <td>@c.Domicilio@(string.IsNullOrWhiteSpace(c.Localidad) ? "" : " - " + c.Localidad)</td>
+                            <td>@c.Telefono1</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (edit != null)
+        {
+            <aside class="panel cierre panel-ancho">
+                <h2>@(edit.EsNuevo ? "Nuevo cliente" : "Editar cliente")</h2>
+
+                <div class="campo">
+                    <label for="c-doc">CUIT / DNI</label>
+                    <div class="fila-btns">
+                        <input id="c-doc" class="input mono crece" maxlength="13" inputmode="numeric" @bind="edit.NroDocumento" />
+                        <button type="button" class="btn" disabled="@ocupado" @onclick="TraerDeArca">Traer de ARCA</button>
+                    </div>
+                    <span class="sub">Con el CUIT, ARCA devuelve la razón social, el domicilio y la condición frente al IVA.</span>
+                </div>
+
+                <div class="campo">
+                    <label for="c-tipodoc">Tipo de documento</label>
+                    <select id="c-tipodoc" class="input" @bind="TipoDocumentoElegido">
+                        <option value="">(sin especificar)</option>
+                        @foreach (var t in tiposDocumento)
+                        {
+                            <option value="@t.Id">@t.Nombre</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="campo"><label for="c-apellido">Apellido / Razón social</label><input id="c-apellido" class="input" maxlength="50" @bind="edit.Apellido" /></div>
+                <div class="campo"><label for="c-nombre">Nombre</label><input id="c-nombre" class="input" maxlength="50" @bind="edit.Nombre" /></div>
+
+                <div class="campo">
+                    <label for="c-iva">Condición frente al IVA</label>
+                    <select id="c-iva" class="input" @bind="CondicionElegida">
+                        <option value="">(sin especificar)</option>
+                        @foreach (var i in condicionesIva)
+                        {
+                            <option value="@i.Id">@i.Nombre</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="fila-campos">
+                    <div class="campo crece"><label for="c-dom">Domicilio</label><input id="c-dom" class="input" maxlength="100" @bind="edit.Domicilio" /></div>
+                    <div class="campo"><label for="c-nro">Número</label><input id="c-nro" class="input" maxlength="10" @bind="edit.NroCalle" /></div>
+                </div>
+                <div class="fila-campos">
+                    <div class="campo crece"><label for="c-loc">Localidad</label><input id="c-loc" class="input" maxlength="150" @bind="edit.Localidad" /></div>
+                    <div class="campo"><label for="c-cp">C.P.</label><input id="c-cp" class="input" maxlength="10" @bind="edit.Cp" /></div>
+                </div>
+                <div class="campo"><label for="c-barrio">Barrio</label><input id="c-barrio" class="input" maxlength="50" @bind="edit.Barrio" /></div>
+                <div class="fila-campos">
+                    <div class="campo crece"><label for="c-tel">Teléfono</label><input id="c-tel" class="input" maxlength="50" @bind="edit.Telefono1" /></div>
+                    <div class="campo crece"><label for="c-tel2">Otro teléfono</label><input id="c-tel2" class="input" maxlength="50" @bind="edit.Telefono2" /></div>
+                </div>
+                <div class="campo"><label for="c-mail">Email</label><input id="c-mail" class="input" type="email" maxlength="100" @bind="edit.Email" /></div>
+                <div class="campo"><label for="c-ib">Ingresos Brutos</label><input id="c-ib" class="input" maxlength="50" @bind="edit.IngresosBrutos" /></div>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNuevo ? "Crear cliente" : "Guardar cambios")</button>
+                    <button type="button" class="btn" disabled="@ocupado" @onclick="() => edit = null">Cancelar</button>
+                    @if (!edit.EsNuevo)
+                    {
+                        <div class="crece"></div>
+                        @if (confirmarBaja)
+                        {
+                            <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Eliminar">Confirmar baja</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn" disabled="@ocupado" @onclick="() => confirmarBaja = true">Dar de baja</button>
+                        }
+                    }
+                </div>
+            </aside>
+        }
+    </div>
+</div>
+
+@code {
+    private SesionActual sesion;
+    private List<ClienteItem> lista = new();
+    private List<OpcionItem> tiposDocumento = new();
+    private List<OpcionItem> condicionesIva = new();
+    private ClienteDetalle edit;
+    private string texto;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+    private bool confirmarBaja;
+
+    private string TipoDocumentoElegido
+    {
+        get => edit.TipoDocumentoId?.ToString() ?? "";
+        set => edit.TipoDocumentoId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    private string CondicionElegida
+    {
+        get => edit.IvaId?.ToString() ?? "";
+        set => edit.IvaId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        tiposDocumento = await ClienteSrv.TiposDocumentoAsync(sesion.Cs);
+        condicionesIva = await ClienteSrv.CondicionesIvaAsync(sesion.Cs);
+        await Buscar();
+    }
+
+    private async Task BuscarKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Buscar();
+    }
+
+    private async Task Buscar() => lista = await ClienteSrv.BuscarAsync(sesion.Cs, texto);
+
+    private void Nuevo()
+    {
+        edit = new ClienteDetalle();
+        confirmarBaja = false;
+        mensaje = null;
+    }
+
+    private async Task Seleccionar(ClienteItem c)
+    {
+        edit = await ClienteSrv.ObtenerAsync(sesion.Cs, c.Id);
+        confirmarBaja = false;
+        mensaje = null;
+    }
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await ClienteSrv.GuardarAsync(sesion.Cs, edit);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, edit.EsNuevo ? "Cliente creado." : "Cliente actualizado.");
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Eliminar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await ClienteSrv.EliminarAsync(sesion.Cs, edit.Id);
+            if (error != null) { Aviso(false, error); confirmarBaja = false; return; }
+            Aviso(true, "Cliente dado de baja.");
+            edit = null;
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task TraerDeArca()
+    {
+        ocupado = true;
+        mensaje = null;
+        StateHasChanged();
+        try
+        {
+            var p = await Padron.ConsultarAsync(sesion.Tenant, edit.NroDocumento);
+            if (!p.Encontrada) { Aviso(false, p.Error ?? "ARCA no devolvió datos para ese CUIT."); return; }
+
+            edit.Apellido = p.NombreCompleto;
+            if (!string.IsNullOrWhiteSpace(p.RazonSocial)) edit.Nombre = null;
+            else edit.Nombre = p.Nombre;
+            if (!string.IsNullOrWhiteSpace(p.Domicilio)) edit.Domicilio = p.Domicilio;
+            if (!string.IsNullOrWhiteSpace(p.Localidad)) edit.Localidad = p.Localidad;
+            if (!string.IsNullOrWhiteSpace(p.CodigoPostal)) edit.Cp = p.CodigoPostal;
+
+            var tipoCuit = tiposDocumento.FirstOrDefault(t => (t.Nombre ?? "").Contains("CUIT", StringComparison.OrdinalIgnoreCase));
+            if (tipoCuit != null) edit.TipoDocumentoId = tipoCuit.Id;
+
+            var condicion = BuscarCondicion(p.CondicionIva);
+            if (condicion != null) edit.IvaId = condicion.Id;
+
+            Aviso(true, $"Datos traídos de ARCA: {p.NombreCompleto}." +
+                        (condicion == null && p.CondicionIva != null ? " Revisá la condición frente al IVA." : ""));
+        }
+        catch (Exception ex)
+        {
+            Aviso(false, "No se pudo consultar el padrón: " + ex.Message);
+        }
+        finally { ocupado = false; }
+    }
+
+    /// <summary>Busca en la tabla Iva la fila que corresponde a lo que informó ARCA.</summary>
+    private OpcionItem BuscarCondicion(string condicionArca) => condicionArca switch
+    {
+        "RESPONSABLE_INSCRIPTO" => Primera("inscripto"),
+        "MONOTRIBUTO" => Primera("monotributo"),
+        "EXENTO" => Primera("exento"),
+        "CONSUMIDOR_FINAL" => Primera("final"),
+        _ => null
+    };
+
+    private OpcionItem Primera(string parte) =>
+        condicionesIva.FirstOrDefault(i => (i.Nombre ?? "").Contains(parte, StringComparison.OrdinalIgnoreCase));
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

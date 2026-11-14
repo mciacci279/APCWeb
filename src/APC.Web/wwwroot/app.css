@@ -400,3 +400,7 @@ input.input-ajuste { width: 72px; text-align: right; }
 /* ---- Reportes ---- */
 .kpi-fuerte { border-color: var(--azul); border-width: 2px; }
 .kpi-fuerte .kpi-num { color: var(--azul); }
+
+/* ---- Buscador de clientes ---- */
+.buscador-cliente { position: relative; }
+.buscador-cliente .resultados { top: 100%; }
