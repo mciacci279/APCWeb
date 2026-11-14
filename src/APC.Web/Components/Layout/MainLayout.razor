@@ -1,0 +1,78 @@
+@inherits LayoutComponentBase
+@inject SesionService SesionSrv
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider Auth
+
+<div class="app">
+    <nav class="rail" aria-label="Menú principal">
+        <div class="rail-logo">APC</div>
+
+        <AuthorizeView Roles="@SesionService.RolEmpleado">
+            <NavLink class="rail-btn" href="/" Match="NavLinkMatch.All" title="Facturar" aria-label="Facturar">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6M9 12h6"></path></svg>
+                <span>Facturar</span>
+            </NavLink>
+            <NavLink class="rail-btn" href="/arqueo" title="Arqueo de caja" aria-label="Arqueo de caja">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"></rect><path d="M3 10h18M7 15h3"></path></svg>
+                <span>Arqueo</span>
+            </NavLink>
+            <NavLink class="rail-btn rail-presu" href="/presupuestos" title="Presupuestos" aria-label="Presupuestos">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6v18h12V7z"></path><path d="M14 3v4h4"></path><path d="M9 13h6M9 17h4"></path></svg>
+                <span>Presup.</span>
+            </NavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="@SesionService.RolAdmin">
+            <NavLink class="rail-btn" href="/productos" title="Productos" aria-label="Productos">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg>
+                <span>Productos</span>
+            </NavLink>
+            <NavLink class="rail-btn" href="/comprobantes" title="Comprobantes" aria-label="Comprobantes">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"></path></svg>
+                <span>Comprob.</span>
+            </NavLink>
+            <NavLink class="rail-btn" href="/usuarios" title="Usuarios" aria-label="Usuarios">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"></circle><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path></svg>
+                <span>Usuarios</span>
+            </NavLink>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="@SesionService.RolSuperAdmin">
+            <NavLink class="rail-btn" href="/admin/empresas" title="Empresas" aria-label="Empresas">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path></svg>
+                <span>Empresas</span>
+            </NavLink>
+            <NavLink class="rail-btn" href="/admin/ingresos" title="Registro de ingresos" aria-label="Registro de ingresos">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                <span>Ingresos</span>
+            </NavLink>
+        </AuthorizeView>
+
+        <div class="rail-spacer"></div>
+        <form method="post" action="/cuenta/salir" data-enhance="false">
+            <AntiforgeryToken />
+            <button type="submit" class="rail-btn" title="Salir" aria-label="Salir">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4v16h-4"></path><path d="M10 8l-4 4 4 4M6 12h10"></path></svg>
+                <span>Salir</span>
+            </button>
+        </form>
+    </nav>
+    <div class="app-main">
+        @Body
+    </div>
+</div>
+
+<div id="blazor-error-ui" class="error-ui">
+    Se perdió la conexión con el servidor.
+    <a href="" class="reload">Recargar</a>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        // Si la empresa fue suspendida con el usuario adentro, se cierra la sesión
+        var user = (await Auth.GetAuthenticationStateAsync()).User;
+        if (user?.Identity?.IsAuthenticated == true && await SesionSrv.ObtenerAsync() == null)
+            Nav.NavigateTo("/cuenta/expirada", forceLoad: true);
+    }
+}

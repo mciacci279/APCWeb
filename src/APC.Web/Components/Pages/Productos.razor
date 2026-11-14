@@ -1,0 +1,510 @@
+@page "/productos"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@inject SesionService SesionSrv
+@inject ProductoService ProductoSrv
+@inject ImportadorProductosService ImportadorSrv
+
+<PageTitle>Productos · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Productos</h1><span class="sub">@lista.Count productos@(lista.Count >= 200 ? " (se muestran los primeros 200, refiná la búsqueda)" : "")</span></div>
+        @if (esAdmin)
+        {
+            <div class="fila-btns">
+                <button type="button" class="btn" @onclick="VerHistorialGeneral">Historial de cambios</button>
+                <button type="button" class="btn" @onclick="AbrirMasivo">Aumento masivo</button>
+                <button type="button" class="btn" @onclick="AbrirImportar">Importar Excel</button>
+                <button type="button" class="btn btn-primario" @onclick="Nuevo">+ Nuevo producto</button>
+            </div>
+        }
+    </header>
+
+    <div class="fila-campos">
+        <div class="campo crece">
+            <label for="prod-buscar">Buscar</label>
+            <input id="prod-buscar" class="input" placeholder="Código o descripción" @bind="texto" @bind:event="oninput" @onkeydown="BuscarKey" />
+        </div>
+        <div class="campo">
+            <label for="prod-rubro">Rubro</label>
+            <select id="prod-rubro" class="input" @bind="filtroRubro" @bind:after="Buscar">
+                <option value="">Todos</option>
+                @foreach (var r in rubros) { <option value="@r.Id">@r.Nombre</option> }
+            </select>
+        </div>
+        <label class="check"><input type="checkbox" @bind="verInactivos" @bind:after="Buscar" /> Ver dados de baja</label>
+        <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+    </div>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <div class="arqueo-cols">
+        <section class="panel crece tabla-scroll">
+            <table class="tabla">
+                <thead>
+                    <tr><th>Código</th><th>Descripción</th><th>Rubro</th><th class="der">Stock</th><th class="der">Costo</th><th class="der">@listas.Titulo1</th><th>IVA</th></tr>
+                </thead>
+                <tbody>
+                    @if (lista.Count == 0)
+                    {
+                        <tr><td colspan="7" class="sub">No hay productos para mostrar.</td></tr>
+                    }
+                    @foreach (var p in lista)
+                    {
+                        <tr class="fila-click @(sel?.Id == p.Id ? "fila-sel" : "") @(p.Activo ? "" : "fila-baja")">
+                            <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@(string.IsNullOrWhiteSpace(p.Codigo) ? "—" : p.Codigo)</button></td>
+                            <td>@p.Nombre @(p.Activo ? "" : "(baja)")</td>
+                            <td>@p.Rubro</td>
+                            <td class="der @(p.Stock <= p.StockMinimo && !p.OmitirControlStock ? "stock-bajo" : "")">@p.Stock.ToString("0.###", Ar)</td>
+                            <td class="der">@Pesos(p.PrecioCosto)</td>
+                            <td class="der fuerte">@(p.PrecioVenta1 <= 0 ? "Libre" : Pesos(p.PrecioVenta1))</td>
+                            <td>@EtiquetaIva(p)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (modo != Modo.Ninguno)
+        {
+            <aside class="panel cierre panel-producto">
+                <div class="fila-btns entre">
+                    <h2>@TituloPanel</h2>
+                    <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
+                </div>
+
+                @if (modo == Modo.Nuevo || modo == Modo.Editar)
+                {
+                    @if (modo == Modo.Editar)
+                    {
+                        <div class="pestanias" role="tablist">
+                            <button type="button" role="tab" aria-selected="@((pestania == 0) ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
+                            <button type="button" role="tab" aria-selected="@((pestania == 1) ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Precio y stock</button>
+                            <button type="button" role="tab" aria-selected="@((pestania == 2) ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="CargarHistorialProducto">Historial</button>
+                        </div>
+                    }
+
+                    @if (modo == Modo.Nuevo || pestania == 0)
+                    {
+                        <div class="campo"><label for="p-nombre">Descripción</label><input id="p-nombre" class="input" maxlength="100" @bind="edit.Nombre" disabled="@(!esAdmin)" /></div>
+                        <div class="campo"><label for="p-codigo">Código</label><input id="p-codigo" class="input mono" maxlength="100" @bind="edit.Codigo" disabled="@(!esAdmin)" /></div>
+                        <div class="campo">
+                            <label for="p-rubro">Rubro</label>
+                            <select id="p-rubro" class="input" @bind="edit.RubroId" disabled="@(!esAdmin)">
+                                <option value="">Sin rubro</option>
+                                @foreach (var r in rubros) { <option value="@r.Id">@r.Nombre</option> }
+                            </select>
+                        </div>
+                        <div class="campo">
+                            <label for="p-iva">IVA</label>
+                            <select id="p-iva" class="input" @bind="ivaSel" disabled="@(!esAdmin)">
+                                <option value="general">General</option>
+                                <option value="diferenciado">Diferenciado (10,5 %)</option>
+                                <option value="exento">Exento / no gravado</option>
+                            </select>
+                        </div>
+                        <div class="fila-campos">
+                            <div class="campo"><label for="p-smin">Stock mínimo</label><input id="p-smin" class="input" type="number" step="0.001" @bind="edit.StockMinimo" disabled="@(!esAdmin)" /></div>
+                            <div class="campo"><label for="p-smax">Stock máximo</label><input id="p-smax" class="input" type="number" step="0.001" @bind="edit.StockMaximo" disabled="@(!esAdmin)" /></div>
+                        </div>
+                        <label class="check"><input type="checkbox" @bind="edit.OmitirControlStock" disabled="@(!esAdmin)" /> No controlar stock</label>
+
+                        @if (modo == Modo.Nuevo)
+                        {
+                            <h2>Precios y stock inicial</h2>
+                            <div class="fila-campos">
+                                <div class="campo"><label for="n-costo">Costo</label><input id="n-costo" class="input mono" type="number" step="0.01" min="0" @bind="edit.PrecioCosto" /></div>
+                                <div class="campo"><label for="n-stock">Stock inicial</label><input id="n-stock" class="input mono" type="number" step="0.001" @bind="edit.Stock" /></div>
+                            </div>
+                            <button type="button" class="btn btn-chico" @onclick="CalcularNuevo">Calcular precios desde el costo</button>
+                            <div class="fila-campos">
+                                <div class="campo"><label for="n-pv1">@listas.Titulo1</label><input id="n-pv1" class="input mono" type="number" step="0.01" min="0" @bind="edit.PrecioVenta1" /></div>
+                                <div class="campo"><label for="n-pv2">@listas.Titulo2</label><input id="n-pv2" class="input mono" type="number" step="0.01" min="0" @bind="edit.PrecioVenta2" /></div>
+                                <div class="campo"><label for="n-pv3">@listas.Titulo3</label><input id="n-pv3" class="input mono" type="number" step="0.01" min="0" @bind="edit.PrecioVenta3" /></div>
+                            </div>
+                            <p class="sub">Dejá el @listas.Titulo1 en 0 para que el vendedor escriba el precio al facturar (ej. «varios»).</p>
+                            <button type="button" class="btn btn-primario btn-grande" @onclick="GuardarNuevo">Crear producto</button>
+                        }
+                        else if (esAdmin)
+                        {
+                            <label class="check"><input type="checkbox" @bind="edit.Activo" /> Activo (desmarcar para dar de baja)</label>
+                            <button type="button" class="btn btn-primario btn-grande" @onclick="GuardarDatos">Guardar datos</button>
+                        }
+                    }
+                    else if (pestania == 1)
+                    {
+                        <div class="t-fila"><span class="sub">Stock actual</span><span class="mono fuerte">@sel.Stock.ToString("0.###", Ar)</span></div>
+                        <div class="campo">
+                            <label for="c-cant">Ingreso (+) o egreso (−) de stock</label>
+                            <input id="c-cant" class="input mono" type="number" step="0.001" @bind="cambio.CantidadStock" @bind:event="oninput" disabled="@(!esAdmin)" />
+                            <span class="sub">Stock resultante: @((sel.Stock + cambio.CantidadStock).ToString("0.###", Ar))</span>
+                        </div>
+                        <div class="campo"><label for="c-costo">Costo</label><input id="c-costo" class="input mono" type="number" step="0.01" min="0" @bind="cambio.PrecioCosto" disabled="@(!esAdmin)" /></div>
+                        @if (esAdmin)
+                        {
+                            <button type="button" class="btn btn-chico" @onclick="CalcularCambio">Calcular precios desde el costo (@listas.Lista1.ToString("0.##", Ar) %)</button>
+                        }
+                        <div class="campo"><label for="c-pv1">@listas.Titulo1 <span class="sub">(antes @Pesos(sel.PrecioVenta1))</span></label><input id="c-pv1" class="input mono" type="number" step="0.01" min="0" @bind="cambio.PrecioVenta1" disabled="@(!esAdmin)" /></div>
+                        <div class="fila-campos">
+                            <div class="campo"><label for="c-pv2">@listas.Titulo2</label><input id="c-pv2" class="input mono" type="number" step="0.01" min="0" @bind="cambio.PrecioVenta2" disabled="@(!esAdmin)" /></div>
+                            <div class="campo"><label for="c-pv3">@listas.Titulo3</label><input id="c-pv3" class="input mono" type="number" step="0.01" min="0" @bind="cambio.PrecioVenta3" disabled="@(!esAdmin)" /></div>
+                        </div>
+                        <div class="campo"><label for="c-obs">Observaciones</label><input id="c-obs" class="input" maxlength="500" placeholder="Ej. remito 1234, aumento proveedor" @bind="cambio.Observaciones" disabled="@(!esAdmin)" /></div>
+                        @if (esAdmin)
+                        {
+                            <button type="button" class="btn btn-primario btn-grande" @onclick="GuardarCambio">Guardar cambio</button>
+                            <p class="sub">El cambio queda registrado en el historial con tu usuario.</p>
+                        }
+                    }
+                    else
+                    {
+                        <TablaHistorial Filas="historial" MostrarProducto="false" />
+                    }
+                }
+                else if (modo == Modo.Masivo)
+                {
+                    <div class="campo">
+                        <label for="m-rubro">Aplicar a</label>
+                        <select id="m-rubro" class="input" @bind="masivoRubro">
+                            <option value="">Todos los productos activos</option>
+                            @foreach (var r in rubros) { <option value="@r.Id">Rubro: @r.Nombre</option> }
+                        </select>
+                    </div>
+                    <div class="pestanias" role="radiogroup" aria-label="Tipo de aumento">
+                        <button type="button" role="radio" aria-checked="@((masivo.Tipo == TipoAumento.Porcentaje) ? "true" : "false")" class="pestania @(masivo.Tipo == TipoAumento.Porcentaje ? "activa" : "")" @onclick="() => masivo.Tipo = TipoAumento.Porcentaje">Porcentaje</button>
+                        <button type="button" role="radio" aria-checked="@((masivo.Tipo == TipoAumento.Pesos) ? "true" : "false")" class="pestania @(masivo.Tipo == TipoAumento.Pesos ? "activa" : "")" @onclick="() => masivo.Tipo = TipoAumento.Pesos">Monto fijo $</button>
+                    </div>
+                    <div class="campo">
+                        <label for="m-valor">@(masivo.Tipo == TipoAumento.Porcentaje ? "Porcentaje (negativo para bajar)" : "Monto en $ (negativo para bajar)")</label>
+                        <input id="m-valor" class="input input-buscar mono" type="number" step="0.01" @bind="masivo.Valor" />
+                    </div>
+                    <label class="check"><input type="checkbox" @bind="masivo.IncluirCosto" /> Aplicar también al costo</label>
+                    <div class="campo"><label for="m-obs">Observaciones</label><input id="m-obs" class="input" maxlength="300" @bind="masivo.Observaciones" /></div>
+                    <p class="sub">Los productos con precio libre (0) no se modifican. Cada producto queda en el historial.</p>
+                    @if (confirmarMasivo)
+                    {
+                        <p class="alerta alerta-aviso">¿Aplicar @(masivo.Tipo == TipoAumento.Porcentaje ? masivo.Valor.ToString("0.##", Ar) + " %" : Pesos(masivo.Valor)) a @(masivoRubro == null ? "TODOS los productos" : "el rubro elegido")? No se puede deshacer automáticamente.</p>
+                        <div class="fila-btns">
+                            <button type="button" class="btn" @onclick="() => confirmarMasivo = false">Cancelar</button>
+                            <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="AplicarMasivo">Sí, aplicar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-rojo btn-grande" disabled="@(masivo.Valor == 0)" @onclick="() => confirmarMasivo = true">Aplicar aumento</button>
+                    }
+                }
+                else if (modo == Modo.Importar)
+                {
+                    @if (resultadoImp != null)
+                    {
+                        <div class="cert-info ok">
+                            <strong>Importación terminada</strong>
+                            <span>@resultadoImp.Nuevos productos nuevos · @resultadoImp.Actualizados actualizados · @resultadoImp.RubrosCreados rubros creados</span>
+                            <span>Cada producto quedó registrado en el historial de cambios.</span>
+                        </div>
+                        <button type="button" class="btn" @onclick="AbrirImportar">Importar otro archivo</button>
+                    }
+                    else if (lectura == null)
+                    {
+                        <p>Subí el Excel con las mismas columnas que exporta APC (fila 1 con los títulos):</p>
+                        <p class="mono sub">@string.Join(" · ", ImportadorProductosService.Columnas)</p>
+                        <a class="btn btn-chico" href="/plantillas/plantilla_productos.xlsx" download>Descargar plantilla vacía</a>
+                        <ul class="sub lista-reglas">
+                            <li>Busca cada producto por <strong>CODIGOBARRA</strong>: si existe lo actualiza, si no lo crea.</li>
+                            <li><strong>FAMILIA</strong> es el rubro; si no existe, se crea.</li>
+                            <li>Los precios en 0 no reemplazan los precios actuales.</li>
+                            <li><strong>IVADIFERENCIADO</strong> y <strong>ACTIVO</strong>: 1/0, Sí/No o Verdadero/Falso.</li>
+                        </ul>
+                        <div class="campo">
+                            <label for="imp-archivo">Archivo Excel (.xls o .xlsx)</label>
+                            <InputFile id="imp-archivo" class="input input-file" accept=".xls,.xlsx" disabled="@ocupado" OnChange="LeerExcel" />
+                        </div>
+                        @if (ocupado) { <p class="sub">Leyendo el archivo…</p> }
+                    }
+                    else
+                    {
+                        <div class="kpis kpis-chicos">
+                            <div class="kpi"><span class="sub">Productos en el archivo</span><span class="mono kpi-num">@lectura.Filas.Count</span></div>
+                            <div class="kpi"><span class="sub">Nuevos</span><span class="mono kpi-num">@lectura.Nuevos</span></div>
+                            <div class="kpi"><span class="sub">Se actualizan</span><span class="mono kpi-num">@lectura.Existentes</span></div>
+                            <div class="kpi"><span class="sub">Rubros nuevos</span><span class="mono kpi-num">@lectura.RubrosNuevos.Count</span></div>
+                        </div>
+                        @if (lectura.FilasSinCodigo > 0 || lectura.CodigosRepetidos > 0 || lectura.Avisos.Count > 0)
+                        {
+                            <div class="alerta alerta-aviso">
+                                @if (lectura.FilasSinCodigo > 0) { <span>@lectura.FilasSinCodigo filas sin CODIGOBARRA se van a ignorar.</span> }
+                                @if (lectura.CodigosRepetidos > 0) { <span>@lectura.CodigosRepetidos filas tienen un código repetido: se suman las cantidades y se usa el último precio.</span> }
+                                @foreach (var a in lectura.Avisos) { <span>@a</span> }
+                            </div>
+                        }
+                        @if (lectura.RubrosNuevos.Count > 0)
+                        {
+                            <p class="sub">Rubros a crear: @string.Join(", ", lectura.RubrosNuevos.Take(15))@(lectura.RubrosNuevos.Count > 15 ? "…" : "")</p>
+                        }
+
+                        <div class="tabla-scroll">
+                            <table class="tabla tabla-chica">
+                                <thead><tr><th></th><th>Código</th><th>Descripción</th><th class="der">Cant.</th><th class="der">Costo</th><th class="der">Precio 1</th><th>Familia</th></tr></thead>
+                                <tbody>
+                                    @foreach (var f in lectura.Filas.Take(25))
+                                    {
+                                        <tr>
+                                            <td><span class="etiqueta @(f.Existe ? "etiqueta-empleado" : "etiqueta-admin")">@(f.Existe ? "Actualiza" : "Nuevo")</span></td>
+                                            <td class="mono">@f.Codigo</td>
+                                            <td>@f.Descripcion</td>
+                                            <td class="der">@f.Cantidad.ToString("0.###", Ar)</td>
+                                            <td class="der">@f.PrecioCosto.ToString("N2", Ar)</td>
+                                            <td class="der">@f.PrecioVenta1.ToString("N2", Ar)</td>
+                                            <td>@f.Familia</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (lectura.Filas.Count > 25) { <p class="sub">Se muestran los primeros 25 de @lectura.Filas.Count.</p> }
+
+                        <div class="pestanias" role="radiogroup" aria-label="Qué hacer con la cantidad">
+                            <button type="button" role="radio" aria-checked="@(impReemplazarStock ? "false" : "true")" class="pestania @(impReemplazarStock ? "" : "activa")" @onclick="() => impReemplazarStock = false">Sumar CANTIDAD al stock</button>
+                            <button type="button" role="radio" aria-checked="@(impReemplazarStock ? "true" : "false")" class="pestania @(impReemplazarStock ? "activa" : "")" @onclick="() => impReemplazarStock = true">Reemplazar el stock</button>
+                        </div>
+                        <label class="check"><input type="checkbox" @bind="impSobreescribir" /> Reemplazar la descripción de los productos que ya existen</label>
+
+                        @if (confirmarImp)
+                        {
+                            <p class="alerta alerta-aviso">¿Importar @lectura.Filas.Count productos? Se crean @lectura.Nuevos y se actualizan @lectura.Existentes. No se puede deshacer automáticamente.</p>
+                            <div class="fila-btns">
+                                <button type="button" class="btn" disabled="@ocupado" @onclick="() => confirmarImp = false">Cancelar</button>
+                                <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Importar">@(ocupado ? "Importando…" : "Sí, importar")</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fila-btns">
+                                <button type="button" class="btn" @onclick="AbrirImportar">Elegir otro archivo</button>
+                                <button type="button" class="btn btn-primario" @onclick="() => confirmarImp = true">Importar @lectura.Filas.Count productos</button>
+                            </div>
+                        }
+                    }
+                }
+                else if (modo == Modo.Historial)
+                {
+                    <div class="fila-campos">
+                        <div class="campo"><label for="h-desde">Desde</label><input id="h-desde" class="input" type="date" @bind="hDesde" @bind:after="CargarHistorialGeneral" /></div>
+                        <div class="campo"><label for="h-hasta">Hasta</label><input id="h-hasta" class="input" type="date" @bind="hHasta" @bind:after="CargarHistorialGeneral" /></div>
+                    </div>
+                    <TablaHistorial Filas="historial" MostrarProducto="true" />
+                }
+            </aside>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private enum Modo { Ninguno, Nuevo, Editar, Masivo, Historial, Importar }
+
+    private SesionActual sesion;
+    private bool esAdmin;
+    private PorcentajesListas listas = new();
+    private List<RubroItem> rubros = new();
+    private List<ProductoDetalle> lista = new();
+    private string texto;
+    private Guid? filtroRubro;
+    private bool verInactivos;
+
+    private Modo modo = Modo.Ninguno;
+    private int pestania;
+    private ProductoDetalle sel;
+    private ProductoDetalle edit = new();
+    private CambioProducto cambio = new();
+    private List<CambioProductoHistorial> historial = new();
+    private AumentoMasivo masivo = new();
+    private Guid? masivoRubro;
+    private bool confirmarMasivo;
+    private bool ocupado;
+    private DateTime hDesde = DateTime.Today.AddDays(-30), hHasta = DateTime.Today;
+    private string mensaje;
+    private bool mensajeOk;
+
+    private string ivaSel
+    {
+        get => edit.IvaExento ? "exento" : edit.IvaDiferenciado ? "diferenciado" : "general";
+        set { edit.IvaExento = value == "exento"; edit.IvaDiferenciado = value == "diferenciado"; }
+    }
+
+    private string TituloPanel => modo switch
+    {
+        Modo.Nuevo => "Nuevo producto",
+        Modo.Editar => sel?.Nombre,
+        Modo.Masivo => "Aumento masivo de precios",
+        Modo.Historial => "Historial de cambios",
+        Modo.Importar => "Importar productos desde Excel",
+        _ => ""
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        esAdmin = sesion.EsAdmin;
+        listas = await ProductoSrv.ListasAsync(sesion.Cs);
+        rubros = await ProductoSrv.RubrosAsync(sesion.Cs);
+        await Buscar();
+    }
+
+    private async Task BuscarKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
+
+    private async Task Buscar() => lista = await ProductoSrv.ListarAsync(sesion.Cs, texto, filtroRubro, verInactivos);
+
+    private async Task Seleccionar(Guid id)
+    {
+        sel = await ProductoSrv.ObtenerAsync(sesion.Cs, id);
+        if (sel == null) return;
+        edit = Copia(sel);
+        cambio = new CambioProducto
+        {
+            PrecioCosto = sel.PrecioCosto, PrecioVenta1 = sel.PrecioVenta1,
+            PrecioVenta2 = sel.PrecioVenta2, PrecioVenta3 = sel.PrecioVenta3
+        };
+        modo = Modo.Editar;
+        mensaje = null;
+        if (pestania == 2) await CargarHistorialProducto();
+    }
+
+    private void Nuevo()
+    {
+        sel = null;
+        edit = new ProductoDetalle { Activo = true };
+        modo = Modo.Nuevo;
+        mensaje = null;
+    }
+
+    private LecturaImportacion lectura;
+    private ResultadoImportacion resultadoImp;
+    private bool impReemplazarStock;
+    private bool impSobreescribir;
+    private bool confirmarImp;
+
+    private void AbrirImportar()
+    {
+        lectura = null;
+        resultadoImp = null;
+        impReemplazarStock = false;
+        impSobreescribir = false;
+        confirmarImp = false;
+        mensaje = null;
+        modo = Modo.Importar;
+    }
+
+    private async Task LeerExcel(InputFileChangeEventArgs e)
+    {
+        ocupado = true;
+        mensaje = null;
+        try
+        {
+            if (e.File.Size > ImportadorProductosService.TamanioMaximo) { Aviso(false, "El archivo supera los 15 MB."); return; }
+            using var ms = new MemoryStream();
+            await using (var st = e.File.OpenReadStream(ImportadorProductosService.TamanioMaximo))
+                await st.CopyToAsync(ms);
+            ms.Position = 0;
+            var l = ImportadorSrv.Leer(ms);
+            if (l.Error != null) { Aviso(false, l.Error); return; }
+            await ImportadorSrv.AnalizarAsync(sesion.Cs, l);
+            lectura = l;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Importar()
+    {
+        ocupado = true;
+        try
+        {
+            var r = await ImportadorSrv.ImportarAsync(sesion.Cs, sesion.UsuarioId, lectura.Filas, impSobreescribir, impReemplazarStock);
+            confirmarImp = false;
+            if (!r.Ok) { Aviso(false, r.Error); return; }
+            resultadoImp = r;
+            lectura = null;
+            rubros = await ProductoSrv.RubrosAsync(sesion.Cs);
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private void AbrirMasivo() { masivo = new AumentoMasivo(); masivoRubro = null; confirmarMasivo = false; modo = Modo.Masivo; mensaje = null; }
+
+    private async Task VerHistorialGeneral() { modo = Modo.Historial; await CargarHistorialGeneral(); }
+
+    private async Task CargarHistorialGeneral() => historial = await ProductoSrv.HistorialAsync(sesion.Cs, null, hDesde, hHasta);
+
+    private async Task CargarHistorialProducto()
+    {
+        pestania = 2;
+        if (sel != null) historial = await ProductoSrv.HistorialAsync(sesion.Cs, sel.Id, null, null, 100);
+    }
+
+    private void Cerrar() { modo = Modo.Ninguno; sel = null; }
+
+    private void CalcularNuevo()
+    {
+        var (a, b, c) = ProductoService.PreciosDesdeCosto(edit.PrecioCosto, listas);
+        edit.PrecioVenta1 = a; edit.PrecioVenta2 = b; edit.PrecioVenta3 = c;
+    }
+
+    private void CalcularCambio()
+    {
+        var (a, b, c) = ProductoService.PreciosDesdeCosto(cambio.PrecioCosto, listas);
+        cambio.PrecioVenta1 = a; cambio.PrecioVenta2 = b; cambio.PrecioVenta3 = c;
+    }
+
+    private async Task GuardarNuevo()
+    {
+        var err = await ProductoSrv.CrearAsync(sesion.Cs, sesion.UsuarioId, edit);
+        Aviso(err == null, err ?? $"Producto «{edit.Nombre}» creado.");
+        if (err == null) { await Buscar(); await Seleccionar(edit.Id); }
+    }
+
+    private async Task GuardarDatos()
+    {
+        var err = await ProductoSrv.ActualizarDatosAsync(sesion.Cs, edit);
+        Aviso(err == null, err ?? "Datos guardados.");
+        if (err == null) { await Buscar(); await Seleccionar(edit.Id); }
+    }
+
+    private async Task GuardarCambio()
+    {
+        var err = await ProductoSrv.CambiarPrecioStockAsync(sesion.Cs, sesion.UsuarioId, sel.Id, cambio);
+        Aviso(err == null, err ?? "Cambio registrado en el historial.");
+        if (err == null) { await Buscar(); await Seleccionar(sel.Id); }
+    }
+
+    private async Task AplicarMasivo()
+    {
+        ocupado = true;
+        try
+        {
+            masivo.RubroId = masivoRubro;
+            var (n, err) = await ProductoSrv.AumentoMasivoAsync(sesion.Cs, sesion.UsuarioId, masivo);
+            Aviso(err == null, err ?? $"Se actualizaron {n} productos.");
+            confirmarMasivo = false;
+            if (err == null) { await Buscar(); modo = Modo.Historial; hDesde = DateTime.Today; hHasta = DateTime.Today; await CargarHistorialGeneral(); }
+        }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+
+    private static ProductoDetalle Copia(ProductoDetalle p) => new()
+    {
+        Id = p.Id, Codigo = p.Codigo, Nombre = p.Nombre, Stock = p.Stock, PrecioCosto = p.PrecioCosto,
+        PrecioVenta1 = p.PrecioVenta1, PrecioVenta2 = p.PrecioVenta2, PrecioVenta3 = p.PrecioVenta3,
+        StockMinimo = p.StockMinimo, StockMaximo = p.StockMaximo, RubroId = p.RubroId, Rubro = p.Rubro,
+        IvaDiferenciado = p.IvaDiferenciado, IvaExento = p.IvaExento, OmitirControlStock = p.OmitirControlStock, Activo = p.Activo
+    };
+
+    private static string EtiquetaIva(ProductoDetalle p) => p.IvaExento ? "Exento" : p.IvaDiferenciado ? "10,5 %" : "General";
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+}

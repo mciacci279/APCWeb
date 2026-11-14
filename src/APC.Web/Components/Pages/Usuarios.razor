@@ -1,0 +1,41 @@
+@page "/usuarios"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@inject SesionService SesionSrv
+@inject UsuarioService UsuarioSrv
+
+<PageTitle>Usuarios · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Usuarios</h1><span class="sub">@sesion?.Tenant?.Nombre</span></div>
+    </header>
+
+    @if (sesion != null)
+    {
+        <GestionUsuarios Tenant="sesion.Tenant" UsuarioActualId="sesion.UsuarioId" />
+
+        <section class="panel">
+            <div class="fila-btns entre">
+                <h2>Últimos ingresos</h2>
+                <button type="button" class="btn btn-chico" @onclick="CargarIngresos">Actualizar</button>
+            </div>
+            <TablaIngresos Filas="ingresos" />
+            <p class="sub">Se muestran los últimos 15 días. Varios rechazos seguidos bloquean al usuario 15 minutos: para destrabarlo, cambiale la clave.</p>
+        </section>
+    }
+</div>
+
+@code {
+    private SesionActual sesion;
+
+    private List<IngresoRegistro> ingresos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await CargarIngresos();
+    }
+
+    private async Task CargarIngresos() =>
+        ingresos = await UsuarioSrv.IngresosAsync(sesion.Tenant.Codigo, DateTime.Today.AddDays(-15), DateTime.Today, false, 100);
+}

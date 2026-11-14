@@ -1,0 +1,41 @@
+<div class="tabla-scroll">
+    <table class="tabla tabla-chica">
+        <thead>
+            <tr>
+                <th>Fecha y hora</th>
+                @if (MostrarEmpresa) { <th>Empresa</th> }
+                <th>Usuario</th><th>Resultado</th><th>Detalle</th><th>IP</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Filas == null || Filas.Count == 0)
+            {
+                <tr><td colspan="@(MostrarEmpresa ? 6 : 5)" class="sub">No hay registros en el período.</td></tr>
+            }
+            else
+            {
+                @foreach (var f in Filas)
+                {
+                    <tr>
+                        <td>@f.Fecha.ToString("dd/MM/yy HH:mm:ss")</td>
+                        @if (MostrarEmpresa) { <td class="mono">@f.EmpresaCodigo</td> }
+                        <td class="fuerte">@f.NombreUsuario</td>
+                        <td>
+                            @if (f.Exito) { <span class="etiqueta etiqueta-empleado">@(EsRecupero(f) ? "OK" : "Ingresó")</span> }
+                            else { <span class="etiqueta etiqueta-falta">@(EsRecupero(f) ? "Falló" : "Rechazado")</span> }
+                        </td>
+                        <td>@(f.Motivo ?? "Ingreso correcto")</td>
+                        <td class="mono sub">@f.Ip</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public List<IngresoRegistro> Filas { get; set; }
+    [Parameter] public bool MostrarEmpresa { get; set; }
+
+    private static bool EsRecupero(IngresoRegistro f) => f.Motivo != null && f.Motivo.StartsWith("Recupero");
+}

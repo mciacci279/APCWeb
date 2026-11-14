@@ -1,0 +1,51 @@
+@page "/recuperar"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@inject RecuperoClaveService Recupero
+
+<PageTitle>Recuperar clave · APC Web</PageTitle>
+
+<main class="login">
+    <form class="login-card" method="post" action="/cuenta/recuperar" data-enhance="false">
+        <AntiforgeryToken />
+        <div class="login-brand">
+            <div class="rail-logo">APC</div>
+            <div>
+                <h1>Recuperar clave</h1>
+                <p>Te mandamos un link a tu email</p>
+            </div>
+        </div>
+
+        @if (Enviado == 1)
+        {
+            <p class="alerta alerta-ok" role="status">Si los datos son correctos y tu usuario tiene un email cargado, en unos minutos te llega un link para elegir una clave nueva. Revisá también la carpeta de spam.</p>
+            <p class="sub">¿No te llega? Pedile al administrador de tu empresa que te cambie la clave desde Usuarios.</p>
+            <a class="btn btn-grande" href="@LinkIngreso">Volver al ingreso</a>
+        }
+        else if (!Recupero.EmailConfigurado)
+        {
+            <p class="alerta alerta-aviso">El envío de emails todavía no está configurado. Pedile al administrador de tu empresa que te cambie la clave desde Usuarios.</p>
+            <a class="btn btn-grande" href="/ingresar">Volver al ingreso</a>
+        }
+        else
+        {
+            @if (Error == "envio")
+            {
+                <p class="alerta alerta-error" role="alert">No se pudo enviar el email. Probá de nuevo en unos minutos o pedile al administrador que te cambie la clave.</p>
+            }
+            <label for="empresa">Empresa</label>
+            <input id="empresa" name="empresa" value="@E" autocomplete="organization" required />
+            <label for="usuario">Usuario</label>
+            <input id="usuario" name="usuario" autocomplete="username" required />
+            <button type="submit" class="btn btn-primario btn-grande">Enviarme el link</button>
+            <a class="login-link" href="@LinkIngreso">Volver al ingreso</a>
+        }
+    </form>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "enviado")] public int? Enviado { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string Error { get; set; }
+    [SupplyParameterFromQuery(Name = "e")] public string E { get; set; }
+    private string LinkIngreso => string.IsNullOrEmpty(E) ? "/ingresar" : "/ingresar?e=" + Uri.EscapeDataString(E);
+}

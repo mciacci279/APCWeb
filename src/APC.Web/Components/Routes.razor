@@ -1,0 +1,26 @@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="page-pad">
+                        <h1>No tenés permiso</h1>
+                        <p>Tu usuario no tiene acceso a esta sección.</p>
+                        <a class="btn" href="@(context.User.IsInRole(SesionService.RolSuperAdmin) ? "/admin/empresas" : "/")">Volver al inicio</a>
+                    </div>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <div class="page-pad"><h1>No encontrado</h1><p>La página no existe.</p></div>
+        </LayoutView>
+    </NotFound>
+</Router>

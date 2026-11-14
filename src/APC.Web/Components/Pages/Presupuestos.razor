@@ -1,0 +1,96 @@
+@page "/presupuestos"
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@inject SesionService SesionSrv
+@inject PresupuestoService PresupuestoSrv
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Presupuestos · APC Web</PageTitle>
+
+<div class="page-pad pagina-presu">
+    <header class="fact-head">
+        <div class="fact-titulo cab-presu"><h1>Presupuestos</h1><span class="sub">No entran en la caja ni descuentan stock</span></div>
+        <div class="fila-campos">
+            <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
+            <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
+            <label class="check"><input type="checkbox" @bind="soloMios" /> Solo los míos</label>
+            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+            <a class="btn btn-presupuesto" href="/presupuestos/nuevo">Nuevo presupuesto</a>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta alerta-ok" role="status">@mensaje</p>
+    }
+
+    <div class="panel tabla-scroll">
+        <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Forma de pago</th><th>Usuario</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+                @if (lista.Count == 0)
+                {
+                    <tr><td colspan="8" class="sub">No hay presupuestos en el período.</td></tr>
+                }
+                @foreach (var p in lista)
+                {
+                    <tr class="@(p.Cancelado ? "fila-baja" : "")">
+                        <td>@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="mono num-presu"><a href="/presupuestos/@p.Id">PRESUP. @p.NumeroCompleto</a></td>
+                        <td>@p.ClienteNombre</td>
+                        <td>@p.FormaPago</td>
+                        <td>@p.Usuario</td>
+                        <td class="der fuerte">@Pesos(p.MontoTotal)</td>
+                        <td>
+                            @if (p.Cancelado) { <span class="etiqueta etiqueta-falta">Cancelado</span> }
+                            else if (p.Facturado) { <span class="etiqueta etiqueta-admin">Facturado</span> }
+                            else { <span class="etiqueta etiqueta-presu">Pendiente</span> }
+                        </td>
+                        <td class="acciones">
+                            <a class="btn btn-chico" href="/presupuestos/@p.Id">@(p.Cancelado || p.Facturado ? "Ver" : "Editar")</a>
+                            <button type="button" class="btn btn-chico" @onclick="() => Imprimir(p.Id)">A4</button>
+                            @if (!p.Cancelado && !p.Facturado)
+                            {
+                                <button type="button" class="btn btn-chico btn-primario" @onclick="() => Facturar(p.Id)">Pasar a factura</button>
+                                <button type="button" class="btn btn-chico" @onclick="() => Cancelar(p)">Cancelar</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private SesionActual sesion;
+    private DateTime desde = DateTime.Today.AddDays(-30), hasta = DateTime.Today;
+    private bool soloMios;
+    private List<PresupuestoListado> lista = new();
+    private string mensaje;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        lista = await PresupuestoSrv.ListarAsync(sesion.Cs, desde, hasta, soloMios ? sesion.UsuarioId : null);
+    }
+
+    private async Task Imprimir(Guid id) => await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{id}");
+
+    private void Facturar(Guid id) => Nav.NavigateTo($"/?presupuesto={id}");
+
+    private async Task Cancelar(PresupuestoListado p)
+    {
+        await PresupuestoSrv.CancelarAsync(sesion.Cs, p.Id);
+        mensaje = $"Presupuesto {p.NumeroCompleto} cancelado.";
+        await Buscar();
+    }
+
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+}

@@ -1,0 +1,30 @@
+@* Descuento y recargo sobre el total (%), como nupDescuentoTotal / nupRecargo de APC.WinForms. *@
+<div class="ajuste-total">
+    <div class="campo">
+        <label for="desc-total" class="sub-claro">Descuento total %</label>
+        <input id="desc-total" class="input-oscuro mono" type="number" step="0.01" min="0" max="99.99" disabled="@Deshabilitado"
+               value="@Mostrar(Datos.DescuentoTotalPorc)" @onchange="e => Cambiar(e, true)" />
+    </div>
+    <div class="campo">
+        <label for="rec-total" class="sub-claro">Recargo total %</label>
+        <input id="rec-total" class="input-oscuro mono" type="number" step="0.01" min="0" disabled="@Deshabilitado"
+               value="@Mostrar(Datos.RecargoTotalPorc)" @onchange="e => Cambiar(e, false)" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public NuevaFactura Datos { get; set; }
+    [Parameter] public bool Deshabilitado { get; set; }
+    [Parameter] public EventCallback OnCambio { get; set; }
+
+    private static string Mostrar(decimal v) => v > 0 ? v.ToString(CultureInfo.InvariantCulture) : "";
+
+    private async Task Cambiar(ChangeEventArgs e, bool esDescuento)
+    {
+        decimal.TryParse(e.Value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var v);
+        v = Math.Max(0, Math.Round(v, 2));
+        if (esDescuento) Datos.DescuentoTotalPorc = Math.Min(v, 99.99m);
+        else Datos.RecargoTotalPorc = v;
+        await OnCambio.InvokeAsync();
+    }
+}

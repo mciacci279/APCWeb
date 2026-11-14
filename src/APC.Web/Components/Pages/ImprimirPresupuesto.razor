@@ -1,0 +1,139 @@
+@page "/imprimir/presupuesto/{Id:guid}"
+@layout VacioLayout
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@inject SesionService SesionSrv
+@inject CatalogoService Catalogo
+@inject PresupuestoService PresupuestoSrv
+@inject EmpresaCentralService EmpresaSrv
+
+<PageTitle>@(p == null || empresa == null ? "Presupuesto" : $"Presupuesto {p.NumeroCompleto} - CUIT {FormatoCuit(empresa.Cuit)}")</PageTitle>
+
+@if (p == null)
+{
+    <p class="page-pad">Presupuesto no encontrado.</p>
+}
+else
+{
+    <div class="impresion hoja-a4" data-autoprint="true">
+        <header class="fa-caja fa-cab">
+            <div class="fa-emisor">
+                @if (logo != null)
+                {
+                    <img class="imp-logo" src="@logo" alt="@empresa.Nombre" />
+                }
+                else
+                {
+                    <div class="fa-nombre-grande">@empresa.Nombre</div>
+                }
+                <div class="fa-datos">
+                    <div><span class="fa-et">Razón Social:</span> <strong>@empresa.Nombre</strong></div>
+                    <div><span class="fa-et">Domicilio Comercial:</span> @empresa.Domicilio</div>
+                    <div><span class="fa-et">C.P.:</span> @empresa.CP <span class="fa-et fa-sep">Tel.:</span> @empresa.Telefono1</div>
+                </div>
+            </div>
+
+            <div class="fa-letra">
+                <span class="fa-letra-l">X</span>
+                <span class="fa-letra-c">NO VÁLIDO COMO FACTURA</span>
+            </div>
+
+            <div class="fa-comp">
+                <div class="fa-titulo">PRESUPUESTO</div>
+                <div class="fa-grid">
+                    <span class="fa-et">Nº:</span><strong>@p.NumeroCompleto.Replace("-", " - ")</strong>
+                    <span class="fa-et">Fecha:</span><span>@p.Fecha.ToString("dd-MM-yyyy  HH:mm")</span>
+                </div>
+                <div class="fa-grid fa-grid-baja">
+                    <span class="fa-et">CUIT Nro:</span><span>@FormatoCuit(empresa.Cuit)</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="fa-caja fa-cliente">
+            <div><span class="fa-et">Cliente:</span> @cli.Nombre</div>
+            <div><span class="fa-et">CUIT / DNI:</span> @cli.Documento</div>
+            <div><span class="fa-et">Domicilio:</span> @cli.Domicilio@(string.IsNullOrWhiteSpace(cli.Localidad) ? "" : " - " + cli.Localidad)</div>
+            <div><span class="fa-et">Forma de pago:</span> @p.FormaPago</div>
+            <div><span class="fa-et">Atendido por:</span> @p.Usuario</div>
+        </section>
+
+        <table class="fa-renglones">
+            <thead>
+                <tr>
+                    <th>(Código) Producto</th>
+                    <th class="der">Precio U.</th>
+                    <th class="der">Cantidad</th>
+                    <th class="der">Desc. / Incr.</th>
+                    <th class="der">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in p.Renglones)
+                {
+                    <tr>
+                        <td>@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@r.Producto</td>
+                        <td class="der">@r.Pu.ToString("N2", Ar)</td>
+                        <td class="der">@r.CantidadRenglon.ToString("N3", Ar)</td>
+                        <td class="der">@AjusteTexto(r.DescuentoRenglon)</td>
+                        <td class="der">@r.MontoRenglon.ToString("N2", Ar)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <div class="fa-medio">
+            <div class="fa-izq"></div>
+            <div class="fa-totales">
+                @if (p.MontoDescuento > 0) { <div><span>Descuentos@(p.DescuentoTotalPorc > 0 ? $" (incl. {p.DescuentoTotalPorc.ToString("0.##", Ar)} % s/total)" : ""): $</span><span>−@p.MontoDescuento.ToString("N2", Ar)</span></div> }
+                @if (p.MontoRecargo > 0) { <div><span>Recargos@(p.RecargoTotalPorc > 0 ? $" (incl. {p.RecargoTotalPorc.ToString("0.##", Ar)} % s/total)" : ""): $</span><span>+@p.MontoRecargo.ToString("N2", Ar)</span></div> }
+                <div class="fa-total"><span>Total presupuestado: $</span><span>@p.MontoTotal.ToString("N2", Ar)</span></div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(cli.Observaciones))
+        {
+            <div class="fa-obs"><span class="fa-et">Observaciones:</span> @cli.Observaciones</div>
+        }
+
+        <footer class="fa-pie">
+            <div class="fa-autorizado">
+                <strong>PRESUPUESTO — DOCUMENTO NO VÁLIDO COMO FACTURA</strong>
+                <span class="fa-chico">Precios sujetos a modificación sin previo aviso.</span>
+            </div>
+        </footer>
+
+        <div class="no-imprimir imp-acciones">
+            <button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    [Parameter] public Guid Id { get; set; }
+
+    private PresupuestoImpresion p;
+    private PresupuestoCliente cli;
+    private EmpresaDatos empresa;
+    private string logo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var s = await SesionSrv.ObtenerAsync();
+        p = await PresupuestoSrv.ObtenerAsync(s.Cs, Id);
+        if (p != null) cli = p.Cliente;
+        empresa = await Catalogo.EmpresaAsync(s.Cs);
+        logo = await EmpresaSrv.LogoDataUriAsync(s.Tenant.Id);
+    }
+
+    /// <summary>Descuento del renglón; en negativo es un incremento (DetallePresupuesto solo tiene DescuentoRenglon).</summary>
+    private static string AjusteTexto(decimal v) =>
+        v == 0 ? "" : v > 0 ? "−" + v.ToString("0.##", Ar) + " %" : "+" + (-v).ToString("0.##", Ar) + " %";
+
+    private static string FormatoCuit(string cuit)
+    {
+        var d = new string((cuit ?? "").Where(char.IsDigit).ToArray());
+        return d.Length == 11 ? $"{d[..2]}-{d[2..10]}-{d[10]}" : cuit;
+    }
+}

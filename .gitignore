@@ -1,0 +1,34 @@
+## APC Web — lo que NO se sube a GitHub
+
+# Secretos y credenciales
+appsettings.Secretos.json
+appsettings.Tenants.json
+*.PublishSettings
+*.pubxml.user
+Credenciales*.txt
+*credenciales*
+*.key
+*.crt
+*.pfx
+*.p12
+
+# Visual Studio / compilación
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+[Dd]ebug/
+[Rr]elease/
+publish/
+*.log
+TestResults/
+
+# Sistema operativo
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Perfiles de publicación (servidor y usuario del VPS)
+**/PublishProfiles/

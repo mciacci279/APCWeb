@@ -1,0 +1,193 @@
+@page "/arqueo"
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@inject SesionService SesionSrv
+@inject CajaService Caja
+
+<PageTitle>Arqueo de caja · APC Web</PageTitle>
+
+<div class="page-pad">
+@if (cargando || (turno != null && arqueo == null))
+{
+    <p>Cargando…</p>
+}
+else if (turno == null)
+{
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Arqueo de caja</h1><span class="sub">No tenés un turno abierto</span></div>
+    </header>
+
+    @if (cerrado != null)
+    {
+        <section class="panel">
+            <h2>Turno cerrado</h2>
+            <div class="kpis">
+                <div class="kpi"><span class="sub">Efectivo esperado</span><span class="mono kpi-num">@Pesos(cerrado.Turno.EfectivoEsperado ?? 0)</span></div>
+                <div class="kpi"><span class="sub">Efectivo contado</span><span class="mono kpi-num">@Pesos(cerrado.Turno.EfectivoContado ?? 0)</span></div>
+                <div class="kpi @ClaseDif(cerrado.Turno.Diferencia ?? 0)"><span class="sub">Diferencia</span><span class="mono kpi-num">@Pesos(cerrado.Turno.Diferencia ?? 0)</span></div>
+            </div>
+            <a class="btn" href="/imprimir/arqueo/@cerrado.Turno.Id" target="_blank">Imprimir cierre</a>
+        </section>
+    }
+
+    <section class="panel apertura">
+        <h2>Abrir caja</h2>
+        <div class="campo">
+            <label for="monto-inicial">Monto inicial en efectivo</label>
+            <input id="monto-inicial" class="input mono" type="number" step="0.01" min="0" @bind="montoInicial" />
+        </div>
+        <button type="button" class="btn btn-primario btn-grande" @onclick="Abrir">Abrir caja</button>
+    </section>
+}
+else
+{
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Arqueo de caja</h1><span class="sub">Turno abierto por @sesion.Nombre · @turno.FechaApertura.ToString("dd/MM HH:mm")</span></div>
+        <div class="fila-btns">
+            <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
+            <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
+        </div>
+    </header>
+
+    <div class="kpis">
+        <div class="kpi"><span class="sub">Monto inicial</span><span class="mono kpi-num">@Pesos(turno.MontoInicial)</span></div>
+        <div class="kpi"><span class="sub">Facturas (fiscal)</span><span class="mono kpi-num">@Pesos(arqueo.VentasFiscales)</span><span class="sub">@arqueo.CantidadFiscales comprobantes</span></div>
+        <div class="kpi"><span class="sub">Notas de pedido</span><span class="mono kpi-num">@Pesos(arqueo.VentasNoFiscales)</span><span class="sub">@arqueo.CantidadNoFiscales comprobantes</span></div>
+        <div class="kpi"><span class="sub">Notas de crédito</span><span class="mono kpi-num">@Pesos(arqueo.NotasCredito)</span></div>
+        <div class="kpi"><span class="sub">Ingresos / retiros</span><span class="mono kpi-num">@Pesos(arqueo.IngresosEgresos)</span></div>
+        <div class="kpi kpi-oscuro"><span class="sub-claro">Efectivo esperado</span><span class="mono kpi-num">@Pesos(arqueo.EfectivoEsperado)</span></div>
+    </div>
+
+    <div class="arqueo-cols">
+        <section class="panel crece">
+            <h2>Detalle por tipo y forma de pago</h2>
+            <div class="tabla-scroll">
+                <table class="tabla">
+                    <thead><tr><th>Tipo / forma de pago</th><th class="der">Comprob.</th><th class="der">Total</th></tr></thead>
+                    <tbody>
+                        @if (arqueo.Grupos.Count == 0)
+                        {
+                            <tr><td colspan="3" class="sub">Todavía no hay movimientos en este turno.</td></tr>
+                        }
+                        @foreach (var g in arqueo.Grupos)
+                        {
+                            <tr class="fila-grupo"><td>@g.Titulo</td><td class="der">@g.Comprobantes</td><td class="der">@Pesos(g.Total)</td></tr>
+                            @foreach (var f in g.Formas)
+                            {
+                                <tr><td class="sangria">@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@Pesos(f.Total)</td></tr>
+                            }
+                        }
+                        @if (arqueo.Grupos.Count > 0)
+                        {
+                            <tr class="fila-total"><td>Total vendido (neto)</td><td class="der">@arqueo.CantidadComprobantes</td><td class="der">@Pesos(arqueo.Ventas)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <h2>Ingreso o retiro de efectivo</h2>
+            <div class="fila-campos">
+                <div class="campo">
+                    <label for="mov-monto">Monto</label>
+                    <input id="mov-monto" class="input mono" type="number" step="0.01" min="0" @bind="movMonto" />
+                </div>
+                <div class="campo crece">
+                    <label for="mov-concepto">Concepto</label>
+                    <input id="mov-concepto" class="input" @bind="movConcepto" maxlength="200" />
+                </div>
+                <button type="button" class="btn" disabled="@(movMonto <= 0)" @onclick="() => Movimiento(true)">+ Ingreso</button>
+                <button type="button" class="btn" disabled="@(movMonto <= 0)" @onclick="() => Movimiento(false)">− Retiro</button>
+            </div>
+        </section>
+
+        <aside class="panel cierre">
+            <h2>Cerrar caja</h2>
+            <div class="campo">
+                <label for="contado">Efectivo contado</label>
+                <input id="contado" class="input input-buscar mono" type="number" step="0.01" min="0" @bind="contado" @bind:event="oninput" />
+            </div>
+            <div class="t-fila"><span class="sub">Esperado</span><span class="mono">@Pesos(arqueo.EfectivoEsperado)</span></div>
+            <div class="dif @ClaseDif(contado - arqueo.EfectivoEsperado)">
+                <span>Diferencia</span><span class="mono">@Pesos(contado - arqueo.EfectivoEsperado)</span>
+            </div>
+            <div class="campo">
+                <label for="obs">Observaciones</label>
+                <input id="obs" class="input" @bind="observaciones" maxlength="500" placeholder="Motivo de la diferencia, si hay" />
+            </div>
+            @if (confirmarCierre)
+            {
+                <p class="alerta alerta-aviso">¿Cerrar el turno? Después de cerrar no se puede seguir facturando hasta abrir otro.</p>
+                <div class="fila-btns">
+                    <button type="button" class="btn" @onclick="() => confirmarCierre = false">Cancelar</button>
+                    <button type="button" class="btn btn-rojo" @onclick="Cerrar">Sí, cerrar</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarCierre = true">Cerrar turno</button>
+            }
+        </aside>
+    </div>
+}
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private bool cargando = true;
+    private SesionActual sesion;
+    private CajaTurno turno;
+    private ArqueoResumen arqueo;
+    private ArqueoResumen cerrado;
+    private decimal montoInicial;
+    private decimal contado;
+    private string observaciones;
+    private decimal movMonto;
+    private string movConcepto;
+    private bool confirmarCierre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        await Refrescar();
+        cargando = false;
+    }
+
+    private async Task Refrescar()
+    {
+        // Se calculan primero y se asignan juntos: Blazor redibuja entre cada await,
+        // y la pantalla no debe ver un turno abierto sin su arqueo.
+        var t = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId);
+        var a = t == null ? null : await Caja.ArqueoAsync(sesion.Cs, t);
+        turno = t;
+        arqueo = a;
+    }
+
+    private async Task Abrir()
+    {
+        await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial);
+        cerrado = null;
+        await Refrescar();
+    }
+
+    private async Task Movimiento(bool ingreso)
+    {
+        if (movMonto <= 0) return;
+        if (ingreso) await Caja.RegistrarIngresoAsync(sesion.Cs, sesion.UsuarioId, movMonto, movConcepto);
+        else await Caja.RegistrarEgresoAsync(sesion.Cs, sesion.UsuarioId, movMonto, movConcepto);
+        movMonto = 0;
+        movConcepto = null;
+        await Refrescar();
+    }
+
+    private async Task Cerrar()
+    {
+        cerrado = await Caja.CerrarAsync(sesion.Cs, turno, contado, observaciones);
+        confirmarCierre = false;
+        contado = 0;
+        observaciones = null;
+        montoInicial = 0;
+        await Refrescar();
+    }
+
+    private static string ClaseDif(decimal d) => d == 0 ? "ok" : (d < 0 ? "falta" : "sobra");
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+}

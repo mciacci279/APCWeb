@@ -1,0 +1,49 @@
+@page "/sin-permiso"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@inject NavigationManager Nav
+
+<PageTitle>Sin permiso · APC Web</PageTitle>
+
+<main class="login">
+    <div class="login-card">
+        <div class="login-brand">
+            <div class="rail-logo">APC</div>
+            <div>
+                <h1>Sin acceso a esta sección</h1>
+                <p>@(Usuario?.Identity?.Name)</p>
+            </div>
+        </div>
+
+        @if (EsCmTech)
+        {
+            <p>Ingresaste con el usuario de CM Tech, que administra empresas pero no factura.</p>
+            <a class="btn btn-primario btn-grande" href="/admin/empresas">Ir al panel de empresas</a>
+        }
+        else
+        {
+            <p>Tu usuario no tiene permiso para esta sección. Si recién se actualizó el sistema o te cambiaron el tipo de usuario, salí y volvé a ingresar.</p>
+        }
+
+        <form method="post" action="/cuenta/salir" data-enhance="false">
+            <AntiforgeryToken />
+            <button type="submit" class="btn btn-grande">Salir e ingresar de nuevo</button>
+        </form>
+    </div>
+</main>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; }
+    [SupplyParameterFromQuery(Name = "ReturnUrl")] public string ReturnUrl { get; set; }
+
+    private System.Security.Claims.ClaimsPrincipal Usuario;
+    private bool EsCmTech => Usuario?.IsInRole(SesionService.RolSuperAdmin) == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Usuario = AuthState == null ? null : (await AuthState).User;
+        // El usuario de CM Tech que entra a la raíz va directo a su panel
+        if (EsCmTech && (string.IsNullOrEmpty(ReturnUrl) || ReturnUrl == "/"))
+            Nav.NavigateTo("/admin/empresas");
+    }
+}

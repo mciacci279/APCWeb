@@ -1,0 +1,72 @@
+@* Descuento o incremento (%) propio de un renglón, como el campo Descuento de APC.WinForms. *@
+@if (abierto)
+{
+    <div class="ajuste" role="group" aria-label="Descuento o incremento de @Renglon.Producto.Nombre">
+        <label class="sr-only" for="aj-tipo-@Renglon.Clave">Tipo</label>
+        <select id="aj-tipo-@Renglon.Clave" class="input-ajuste" value="@tipo" @onchange="CambiarTipo">
+            <option value="desc">Desc.</option>
+            <option value="rec">Incr.</option>
+        </select>
+        <label class="sr-only" for="aj-val-@Renglon.Clave">Porcentaje</label>
+        <input id="aj-val-@Renglon.Clave" class="input-ajuste mono" type="number" step="0.01" min="0" placeholder="0"
+               value="@(Valor > 0 ? Valor.ToString(CultureInfo.InvariantCulture) : "")"
+               @onchange="CambiarValor" @onkeydown="Tecla" />
+        <span aria-hidden="true">%</span>
+        <button type="button" class="btn-quitar" aria-label="Listo" @onclick="() => abierto = false">✓</button>
+    </div>
+}
+else
+{
+    <button type="button" class="btn-ajuste @(Valor > 0 ? (tipo == "rec" ? "rec" : "desc") : "")" disabled="@Deshabilitado"
+            title="Descuento o incremento solo para este producto" @onclick="Abrir">
+        @(Valor <= 0 ? "%" : (tipo == "rec" ? "+" : "−") + Valor.ToString("0.##", Ar) + " %")
+    </button>
+}
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    [Parameter, EditorRequired] public RenglonCarrito Renglon { get; set; }
+    [Parameter] public bool Deshabilitado { get; set; }
+    [Parameter] public EventCallback OnCambio { get; set; }
+    [Inject] private IJSRuntime JS { get; set; }
+
+    private bool abierto;
+    private string tipoElegido;
+    private string tipo => tipoElegido ?? (Renglon.RecargoPorc > 0 ? "rec" : "desc");
+    private decimal Valor => Renglon.RecargoPorc > 0 ? Renglon.RecargoPorc : Renglon.DescuentoPorc;
+
+    private async Task Abrir()
+    {
+        abierto = true;
+        StateHasChanged();
+        await Task.Yield();
+        await JS.InvokeVoidAsync("apc.enfocar", "aj-val-" + Renglon.Clave);
+    }
+
+    private async Task CambiarTipo(ChangeEventArgs e)
+    {
+        var v = Valor;
+        tipoElegido = e.Value?.ToString();
+        Aplicar(v);
+        await OnCambio.InvokeAsync();
+    }
+
+    private async Task CambiarValor(ChangeEventArgs e)
+    {
+        decimal.TryParse(e.Value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var v);
+        Aplicar(Math.Max(0, Math.Round(v, 2)));
+        await OnCambio.InvokeAsync();
+    }
+
+    private void Aplicar(decimal v)
+    {
+        if (tipo == "rec") { Renglon.RecargoPorc = v; Renglon.DescuentoPorc = 0; }
+        else { Renglon.DescuentoPorc = v; Renglon.RecargoPorc = 0; }
+    }
+
+    private async Task Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { abierto = false; await JS.InvokeVoidAsync("apc.enfocar", "buscar"); }
+    }
+}

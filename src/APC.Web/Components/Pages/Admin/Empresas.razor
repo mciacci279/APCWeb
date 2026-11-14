@@ -1,0 +1,391 @@
+@page "/admin/empresas"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Core.Tenants
+@inject EmpresaCentralService EmpresaSrv
+@inject CertificadoService CertSrv
+@inject NavigationManager Nav
+
+<PageTitle>Empresas · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Empresas</h1><span class="sub">Panel de CM Tech · @lista.Count empresas</span></div>
+        <button type="button" class="btn btn-primario" @onclick="Nueva">+ Nueva empresa</button>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <div class="arqueo-cols">
+        <section class="panel crece tabla-scroll">
+            <table class="tabla">
+                <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Pto. Vta.</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @if (lista.Count == 0)
+                    {
+                        <tr><td colspan="7" class="sub">Todavía no hay empresas. Creá la primera con «Nueva empresa».</td></tr>
+                    }
+                    @foreach (var e in lista)
+                    {
+                        <tr class="@(edit?.Id == e.Id ? "fila-sel" : "") @(e.Activa ? "" : "fila-baja")">
+                            <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(e)">@e.Codigo</button></td>
+                            <td>@e.Nombre</td>
+                            <td>@e.NombreFantasia</td>
+                            <td><span class="etiqueta @(e.EsProduccion ? "etiqueta-admin" : "etiqueta-empleado")">@(e.EsProduccion ? "Producción" : "Homologación")</span></td>
+                            <td class="der">@e.PuntoVenta</td>
+                            <td class="der">@e.CantidadUsuarios</td>
+                            <td>
+                                @if (e.Activa) { <span>Activa</span> }
+                                else { <span class="etiqueta etiqueta-falta">Suspendida</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (edit != null)
+        {
+            <aside class="panel cierre panel-ancho">
+                <div class="fila-btns entre">
+                    <h2>@(esNueva ? "Nueva empresa" : edit.Nombre)</h2>
+                    <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
+                </div>
+
+                @if (!esNueva)
+                {
+                    <div class="pestanias" role="tablist">
+                        <button type="button" role="tab" aria-selected="@(pestania == 0 ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 1 ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Usuarios</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
+                    </div>
+                    <div class="t-fila"><span class="sub">Link de ingreso</span><span class="mono">@LinkIngreso</span></div>
+                }
+
+                @if (esNueva || pestania == 0)
+                {
+                    <div class="campo">
+                        <label for="e-codigo">Código de empresa</label>
+                        <input id="e-codigo" class="input mono" maxlength="30" @bind="edit.Codigo" disabled="@(!esNueva)" placeholder="ej. mena" />
+                        <span class="sub">Lo escribe el cliente al ingresar. Minúsculas, números o guiones. No se puede cambiar después.</span>
+                    </div>
+                    <div class="campo"><label for="e-nombre">Razón social</label><input id="e-nombre" class="input" maxlength="150" @bind="edit.Nombre" /></div>
+                    <div class="campo"><label for="e-fantasia">Nombre de fantasía</label><input id="e-fantasia" class="input" maxlength="150" @bind="edit.NombreFantasia" placeholder="ej. Súper Mena" /></div>
+                    <div class="campo">
+                        <label for="e-cs">Conexión a la base de la empresa</label>
+                        <textarea id="e-cs" class="input input-area mono" rows="3" @bind="edit.ConnectionString"
+                                  placeholder="Server=.\SQLEXPRESS;Database=SuperMarketDB_Cliente;User ID=apcweb;Password=…;Encrypt=False;TrustServerCertificate=True"></textarea>
+                        <div class="fila-btns">
+                            <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="Probar">Probar conexión</button>
+                            @if (prueba != null)
+                            {
+                                <span class="@(pruebaOk ? "texto-ok" : "texto-error")">@prueba</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="fila-campos">
+                        <div class="campo"><label for="e-pv">Punto de venta</label><input id="e-pv" class="input" type="number" min="1" @bind="edit.PuntoVenta" /></div>
+                        <div class="campo">
+                            <label for="e-amb">Ambiente ARCA</label>
+                            <select id="e-amb" class="input" @bind="edit.Ambiente">
+                                <option value="HOMO">Homologación (pruebas)</option>
+                                <option value="PROD">Producción</option>
+                            </select>
+                        </div>
+                        <div class="campo">
+                            <label for="e-con">Concepto</label>
+                            <select id="e-con" class="input" @bind="edit.Concepto">
+                                <option value="1">Productos</option>
+                                <option value="2">Servicios</option>
+                                <option value="3">Productos y servicios</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="campo">
+                        <label for="e-leyenda">Leyenda al pie del ticket</label>
+                        <input id="e-leyenda" class="input" maxlength="200" @bind="edit.LeyendaTicket" placeholder="Dejala vacía para no imprimir leyenda" />
+                        <span class="sub">Por ejemplo: «Muchas gracias por su compra!!!» o «Cambios dentro de los 30 días con este ticket».</span>
+                    </div>
+
+                    <h2>Logo para las facturas</h2>
+                    @if (esNueva)
+                    {
+                        <p class="sub">Creá la empresa primero; después vas a poder subir el logo.</p>
+                    }
+                    else
+                    {
+                        <div class="logo-fila">
+                            <div class="logo-preview">
+                                @if (logoUri != null)
+                                {
+                                    <img src="@logoUri" alt="Logo de @edit.Nombre" />
+                                }
+                                else
+                                {
+                                    <span class="sub">Sin logo</span>
+                                }
+                            </div>
+                            <div class="campo crece">
+                                <label for="e-logo">@(logoUri != null ? "Reemplazar logo" : "Subir logo") (PNG o JPG, hasta 500 KB)</label>
+                                <InputFile id="e-logo" class="input input-file" accept=".png,.jpg,.jpeg" disabled="@ocupado"
+                                           OnChange="@((InputFileChangeEventArgs a) => SubirLogo(a))" />
+                                @if (logoUri != null)
+                                {
+                                    <button type="button" class="btn btn-chico" @onclick="QuitarLogo">Quitar logo</button>
+                                }
+                                <span class="sub">Conviene fondo blanco o transparente y forma horizontal. En el ticket de 80 mm sale en blanco y negro.</span>
+                            </div>
+                        </div>
+                    }
+
+                    <h2>Certificado de ARCA · @(edit.EsProduccion ? "producción" : "homologación")</h2>
+                    @if (!CodigoListo)
+                    {
+                        <p class="sub">Escribí primero el código de la empresa para poder subir los archivos.</p>
+                    }
+                    else
+                    {
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="e-crt">Certificado (.crt)</label>
+                                <InputFile id="e-crt" class="input input-file" accept=".crt,.pem,.cer" disabled="@ocupado"
+                                           OnChange="@((InputFileChangeEventArgs a) => Subir(a, false))" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="e-key">Clave privada (.key)</label>
+                                <InputFile id="e-key" class="input input-file" accept=".key,.pem" disabled="@ocupado"
+                                           OnChange="@((InputFileChangeEventArgs a) => Subir(a, true))" />
+                            </div>
+                        </div>
+                    }
+
+                    @if (certInfo?.Existe == true)
+                    {
+                        <div class="cert-info @(CertOk ? "ok" : "falta")">
+                            <span><strong>@certInfo.Sujeto</strong>@(certInfo.Cuit != null ? " · CUIT " + certInfo.Cuit : "")</span>
+                            <span>Vence el @certInfo.Vence?.ToString("dd/MM/yyyy")@(certInfo.Vencido ? " · VENCIDO" : certInfo.VencePronto ? " · vence en menos de 30 días" : "")</span>
+                            <span>@(!certInfo.ClaveCargada ? "Falta subir la clave privada." : certInfo.ClaveCoincide ? "La clave corresponde al certificado." : "La clave NO corresponde a este certificado.")</span>
+                            <span>Emitido para @(certInfo.EsHomologacion ? "homologación" : "producción")@(AmbienteNoCoincide ? $" · NO SIRVE para {(edit.EsProduccion ? "producción" : "homologación")}: subí el certificado de ese ambiente o cambiá el ambiente" : "")</span>
+                        </div>
+                    }
+                    else if (certInfo?.Error != null)
+                    {
+                        <p class="alerta alerta-error">@certInfo.Error</p>
+                    }
+                    else if (!string.IsNullOrEmpty(edit.CertificadoPath))
+                    {
+                        <p class="alerta alerta-aviso">No se encuentra el certificado en el servidor. Volvé a subirlo.</p>
+                    }
+
+                    @if (!string.IsNullOrEmpty(edit.CertificadoPath) || !string.IsNullOrEmpty(edit.ClavePath))
+                    {
+                        <details class="sub">
+                            <summary>Ubicación en el servidor</summary>
+                            <div class="mono">@edit.CertificadoPath</div>
+                            <div class="mono">@edit.ClavePath</div>
+                        </details>
+                    }
+                    @if (edit.EsProduccion)
+                    {
+                        <p class="alerta alerta-aviso">En producción las facturas tienen validez fiscal. Usá el certificado de producción.</p>
+                    }
+                    <button type="button" class="btn btn-primario btn-grande" disabled="@ocupado" @onclick="Guardar">@(esNueva ? "Crear empresa" : "Guardar cambios")</button>
+                }
+                else if (pestania == 1)
+                {
+                    <GestionUsuarios Tenant="edit" Compacto="true" AdminPorDefecto="true" Cambio="Recargar" />
+                }
+                else
+                {
+                    @if (edit.Activa)
+                    {
+                        <p>La empresa está <strong>activa</strong>. Si la suspendés, nadie de esa empresa puede ingresar y quienes estén adentro salen en su próximo movimiento. Sus datos no se borran.</p>
+                        <div class="campo"><label for="e-motivo">Motivo de la suspensión</label><input id="e-motivo" class="input" maxlength="250" @bind="motivo" placeholder="ej. falta de pago" /></div>
+                        @if (confirmarSuspension)
+                        {
+                            <p class="alerta alerta-aviso">¿Suspender a @edit.Nombre?</p>
+                            <div class="fila-btns">
+                                <button type="button" class="btn" @onclick="() => confirmarSuspension = false">Cancelar</button>
+                                <button type="button" class="btn btn-rojo" @onclick="() => CambiarEstado(false)">Sí, suspender</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarSuspension = true">Suspender empresa</button>
+                        }
+                    }
+                    else
+                    {
+                        <p class="alerta alerta-error">Suspendida. Motivo: @edit.MotivoSuspension</p>
+                        <button type="button" class="btn btn-primario btn-grande" @onclick="() => CambiarEstado(true)">Reactivar empresa</button>
+                    }
+                }
+            </aside>
+        }
+    </div>
+</div>
+
+@code {
+    private List<TenantConfig> lista = new();
+    private TenantConfig edit;
+    private bool esNueva;
+    private int pestania;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+    private string prueba;
+    private bool pruebaOk;
+    private string motivo;
+    private bool confirmarSuspension;
+    private CertificadoInfo certInfo;
+    private string logoUri;
+
+    private bool CodigoListo => !string.IsNullOrWhiteSpace(edit?.Codigo) && edit.Codigo.Trim().Length >= 2;
+    private bool AmbienteNoCoincide => certInfo?.Existe == true && certInfo.EsHomologacion == edit.EsProduccion;
+    private bool CertOk => certInfo?.Existe == true && certInfo.ClaveCoincide && !certInfo.Vencido && !AmbienteNoCoincide;
+
+    private string LinkIngreso => Nav.BaseUri + "ingresar?e=" + edit?.Codigo;
+
+    protected override async Task OnInitializedAsync() => await Recargar();
+
+    private async Task Recargar()
+    {
+        lista = await EmpresaSrv.ListarAsync();
+        if (edit != null && !esNueva)
+        {
+            var actual = lista.FirstOrDefault(e => e.Id == edit.Id);
+            if (actual != null) edit = Copia(actual);
+        }
+    }
+
+    private void Nueva()
+    {
+        edit = new TenantConfig { Ambiente = "HOMO", Concepto = 1, Moneda = "PES", PuntoVenta = 1 };
+        esNueva = true;
+        pestania = 0;
+        prueba = null;
+        certInfo = null;
+        mensaje = null;
+    }
+
+    private void Seleccionar(TenantConfig e)
+    {
+        edit = Copia(e);
+        esNueva = false;
+        pestania = 0;
+        prueba = null;
+        motivo = null;
+        confirmarSuspension = false;
+        mensaje = null;
+        certInfo = CertSrv.Leer(edit.CertificadoPath, edit.ClavePath);
+        logoUri = null;
+        _ = CargarLogo(edit.Id);
+    }
+
+    private async Task CargarLogo(Guid id)
+    {
+        var uri = await EmpresaSrv.LogoDataUriAsync(id);
+        if (edit?.Id == id) { logoUri = uri; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task SubirLogo(InputFileChangeEventArgs a)
+    {
+        ocupado = true;
+        try
+        {
+            if (a.File.Size > EmpresaCentralService.LogoMaximoBytes) { Aviso(false, "El logo no puede superar los 500 KB. Achicá la imagen."); return; }
+            using var ms = new MemoryStream();
+            await using (var st = a.File.OpenReadStream(EmpresaCentralService.LogoMaximoBytes))
+                await st.CopyToAsync(ms);
+            var err = await EmpresaSrv.GuardarLogoAsync(edit.Id, ms.ToArray());
+            if (err != null) { Aviso(false, err); return; }
+            logoUri = await EmpresaSrv.LogoDataUriAsync(edit.Id);
+            Aviso(true, "Logo guardado. Ya sale en las facturas nuevas y en las reimpresiones.");
+            await Recargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task QuitarLogo()
+    {
+        await EmpresaSrv.QuitarLogoAsync(edit.Id);
+        logoUri = null;
+        Aviso(true, "Logo quitado.");
+        await Recargar();
+    }
+
+    private void Cerrar() => edit = null;
+
+    private async Task Subir(InputFileChangeEventArgs a, bool esClave)
+    {
+        ocupado = true;
+        try
+        {
+            edit.Codigo = edit.Codigo?.Trim().ToLowerInvariant();
+            await using var st = a.File.OpenReadStream(CertificadoService.MaximoBytes);
+            var (ruta, err) = await CertSrv.GuardarAsync(edit.Codigo, edit.Ambiente, esClave, st);
+            if (err != null) { Aviso(false, err); return; }
+            if (esClave) edit.ClavePath = ruta; else edit.CertificadoPath = ruta;
+            certInfo = CertSrv.Leer(edit.CertificadoPath, edit.ClavePath);
+            Aviso(true, (esClave ? "Clave privada" : "Certificado") + " subido. Tocá «" + (esNueva ? "Crear empresa" : "Guardar cambios") + "» para aplicarlo.");
+        }
+        catch (IOException)
+        {
+            Aviso(false, "El archivo es demasiado grande para ser un certificado.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Probar()
+    {
+        ocupado = true;
+        try
+        {
+            (pruebaOk, prueba) = await EmpresaSrv.ProbarConexionAsync(edit.ConnectionString);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            bool eraNueva = esNueva;
+            var err = await EmpresaSrv.GuardarAsync(edit);
+            if (err != null) { Aviso(false, err); return; }
+            await Recargar();
+            esNueva = false;
+            if (eraNueva)
+            {
+                pestania = 1;
+                Aviso(true, $"Empresa «{edit.Nombre}» creada. Ahora creá el usuario administrador del dueño.");
+            }
+            else
+            {
+                Aviso(true, "Cambios guardados.");
+            }
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CambiarEstado(bool activa)
+    {
+        var err = await EmpresaSrv.CambiarEstadoAsync(edit.Id, activa, motivo);
+        Aviso(err == null, err ?? (activa ? $"{edit.Nombre} reactivada." : $"{edit.Nombre} suspendida."));
+        confirmarSuspension = false;
+        if (err == null) await Recargar();
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+
+    private static TenantConfig Copia(TenantConfig e) => new()
+    {
+        Id = e.Id, Codigo = e.Codigo, Nombre = e.Nombre, NombreFantasia = e.NombreFantasia, ConnectionString = e.ConnectionString, PuntoVenta = e.PuntoVenta,
+        Ambiente = e.Ambiente?.Trim(), CertificadoPath = e.CertificadoPath, ClavePath = e.ClavePath, Concepto = e.Concepto,
+        Moneda = e.Moneda, Activa = e.Activa, MotivoSuspension = e.MotivoSuspension, FechaAlta = e.FechaAlta,
+        CantidadUsuarios = e.CantidadUsuarios, TieneLogo = e.TieneLogo, LeyendaTicket = e.LeyendaTicket
+    };
+}

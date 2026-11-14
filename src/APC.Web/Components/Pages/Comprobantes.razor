@@ -1,0 +1,222 @@
+@page "/comprobantes"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@inject SesionService SesionSrv
+@inject FacturacionService Facturacion
+@inject IJSRuntime JS
+
+<PageTitle>Comprobantes · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Comprobantes</h1><span class="sub">@(soloMios ? "Emitidos por vos" : "Todos los usuarios")</span></div>
+        <div class="fila-campos">
+            <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
+            <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
+            <label class="check"><input type="checkbox" @bind="soloMios" /> Solo los míos</label>
+            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    @if (anulando != null)
+    {
+        <section class="panel anular @(anulando.EsNotaPedido ? "" : "anular-nc")" aria-label="Anular comprobante">
+            @if (anulando.EsNotaPedido)
+            {
+                <h2>Anular nota de pedido Nº @((anulando.NumeroInterno ?? 0).ToString("00000000"))</h2>
+                <p>La nota de pedido queda marcada como anulada (@Pesos(anulando.MontoTotal)). No se informa a ARCA. @(devuelveStock ? "El stock vuelve a sumar las cantidades." : "")</p>
+            }
+            else
+            {
+                <h2><span class="chip-tipo chip-nc">Nota de crédito</span> Anular factura @anulando.Tipo @Numero(anulando.Terminal, anulando.Numero)</h2>
+                <p>Se emite una <strong>nota de crédito por el total</strong> (@Pesos(anulando.MontoTotal)), con los mismos renglones y datos del cliente, asociada a esta factura. @(devuelveStock ? "El stock vuelve a sumar las cantidades." : "")</p>
+            }
+            <div class="campo">
+                <label for="motivo">Motivo</label>
+                <input id="motivo" class="input" maxlength="300" @bind="motivo" @bind:event="oninput" placeholder="ej. error en el precio, devolución del cliente" />
+            </div>
+            <div class="fila-btns">
+                <button type="button" class="btn" disabled="@ocupado" @onclick="() => anulando = null">Cancelar</button>
+                <button type="button" class="btn @(anulando.EsNotaPedido ? "btn-rojo" : "btn-nc")" disabled="@(ocupado || string.IsNullOrWhiteSpace(motivo))" @onclick="ConfirmarAnulacion">
+                    @(anulando.EsNotaPedido ? "Anular nota de pedido" : ocupado ? "Pidiendo CAE a ARCA…" : "Emitir nota de crédito por el total")
+                </button>
+            </div>
+        </section>
+    }
+
+    <div class="panel tabla-scroll">
+        <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Forma de pago</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+                @if (lista.Count == 0)
+                {
+                    <tr><td colspan="7" class="sub">No hay comprobantes en el período.</td></tr>
+                }
+                @foreach (var c in lista)
+                {
+                    <tr class="@(c.Anulada ? "fila-baja" : "")">
+                        <td>@c.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="mono">@(c.EsNotaPedido ? $"Pedido X {(c.NumeroInterno ?? 0):00000000}" : $"{c.Tipo} {Numero(c.Terminal, c.Numero)}")</td>
+                        <td>@c.ClienteNombre</td>
+                        <td>@c.FormaPago</td>
+                        <td class="der fuerte">@Pesos(c.MontoTotal)</td>
+                        <td>
+                            @if (c.EsNotaPedido)
+                            {
+                                <span class="etiqueta etiqueta-empleado">@(c.Anulada ? "Nota de pedido anulada" : "Nota de pedido")</span>
+                            }
+                            else if (string.IsNullOrEmpty(c.CAE))
+                            {
+                                <span class="etiqueta etiqueta-falta">Sin CAE</span>
+                            }
+                            else if (c.Anulada)
+                            {
+                                <span class="etiqueta etiqueta-nc">Anulada con Nota de Crédito @c.NcTipo @Numero(c.NcTerminal ?? 0, c.NcNumero)</span>
+                            }
+                            else if (c.NcId != null)
+                            {
+                                <span class="etiqueta etiqueta-nc">Nota de crédito sin CAE</span>
+                            }
+                            else
+                            {
+                                <span class="mono sub">CAE @c.CAE</span>
+                            }
+                        </td>
+                        <td class="acciones">
+                            @if (c.EsNotaPedido)
+                            {
+                                <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "ticket", false))">Ticket</button>
+                                <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "a4", false))">A4</button>
+                                @if (!c.Anulada)
+                                {
+                                    <button type="button" class="btn btn-chico" @onclick="() => AbrirAnulacion(c)">Anular</button>
+                                }
+                            }
+                            else if (string.IsNullOrEmpty(c.CAE))
+                            {
+                                <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => PedirCae(c)">Pedir CAE</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "ticket", false))">Ticket</button>
+                                <button type="button" class="btn btn-chico" @onclick="@(() => Imprimir(c.Id, "a4", false))">A4</button>
+                                @if (c.Anulada)
+                                {
+                                    <button type="button" class="btn btn-chico btn-nc" @onclick="@(() => Imprimir(c.NcId.Value, "a4", true))">Ver nota de crédito</button>
+                                }
+                                else if (c.NcId != null)
+                                {
+                                    <button type="button" class="btn btn-chico btn-nc" disabled="@ocupado" @onclick="() => ReintentarNc(c)">Pedir CAE de la nota de crédito</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-chico" @onclick="() => AbrirAnulacion(c)">Anular</button>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private SesionActual sesion;
+    private DateTime desde = DateTime.Today, hasta = DateTime.Today;
+    private bool soloMios = false;
+    private List<ComprobanteListado> lista = new();
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+    private ComprobanteListado anulando;
+    private string motivo;
+    private bool devuelveStock;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        devuelveStock = (await Facturacion.ParametrosAsync(sesion.Cs)).DecrementaStock;
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        var usuario = soloMios ? sesion.UsuarioId : (Guid?)null;
+        lista = await Facturacion.ListarAsync(sesion.Cs, desde, hasta, usuario);
+    }
+
+    private async Task PedirCae(ComprobanteListado c)
+    {
+        ocupado = true;
+        try
+        {
+            var r = await Facturacion.SolicitarCaeAsync(sesion.Tenant, c.Id);
+            Aviso(r.Ok, r.Ok ? $"CAE obtenido: {r.Cae}" : r.Mensaje);
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private void AbrirAnulacion(ComprobanteListado c)
+    {
+        anulando = c;
+        motivo = null;
+        mensaje = null;
+    }
+
+    private async Task ConfirmarAnulacion()
+    {
+        ocupado = true;
+        try
+        {
+            if (anulando.EsNotaPedido)
+            {
+                var rp = await Facturacion.AnularNotaPedidoAsync(sesion.Tenant, anulando.Id, motivo);
+                Aviso(rp.Ok, rp.Ok ? "Nota de pedido anulada." : rp.Mensaje);
+                anulando = null;
+                await Buscar();
+                return;
+            }
+
+            var r = await Facturacion.AnularConNotaCreditoAsync(sesion.Tenant, sesion.UsuarioId, anulando.Id, motivo);
+            if (r.Ok)
+            {
+                Aviso(true, $"Factura anulada con la nota de crédito {r.Letra} {Numero(r.PuntoVenta, (int)r.Numero)} · CAE {r.Cae}.");
+                anulando = null;
+                await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/{r.FacturaId}?formato=a4&nc=1");
+            }
+            else
+            {
+                Aviso(false, r.Mensaje + (r.FacturaId != null ? " La nota de crédito quedó guardada: podés reintentar el CAE desde la lista." : ""));
+                anulando = null;
+            }
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task ReintentarNc(ComprobanteListado c)
+    {
+        ocupado = true;
+        try
+        {
+            var r = await Facturacion.SolicitarCaeNotaCreditoAsync(sesion.Tenant, c.NcId.Value);
+            Aviso(r.Ok, r.Ok ? $"Nota de crédito autorizada · CAE {r.Cae}." : r.Mensaje);
+            await Buscar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Imprimir(Guid id, string formato, bool nc) =>
+        await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/{id}?formato={formato}" + (nc ? "&nc=1" : ""));
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+    private static string Numero(int terminal, int? numero) => $"{terminal:00000}-{(numero ?? 0):00000000}";
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+}

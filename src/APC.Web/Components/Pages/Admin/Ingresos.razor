@@ -1,0 +1,59 @@
+@page "/admin/ingresos"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Core.Tenants
+@inject UsuarioService UsuarioSrv
+@inject EmpresaCentralService EmpresaSrv
+
+<PageTitle>Registro de ingresos · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo"><h1>Registro de ingresos</h1><span class="sub">@filas.Count registros@(filas.Count >= 500 ? " (los últimos 500: acotá el período)" : "")</span></div>
+    </header>
+
+    <div class="fila-campos">
+        <div class="campo">
+            <label for="ing-empresa">Empresa</label>
+            <select id="ing-empresa" class="input" @bind="empresa" @bind:after="Buscar">
+                <option value="">Todas</option>
+                <option value="cmtech">cmtech (CM Tech)</option>
+                @foreach (var e in empresas) { <option value="@e.Codigo">@e.Codigo · @e.Nombre</option> }
+            </select>
+        </div>
+        <div class="campo"><label for="ing-desde">Desde</label><input id="ing-desde" class="input" type="date" @bind="desde" @bind:after="Buscar" /></div>
+        <div class="campo"><label for="ing-hasta">Hasta</label><input id="ing-hasta" class="input" type="date" @bind="hasta" @bind:after="Buscar" /></div>
+        <label class="check"><input type="checkbox" @bind="soloFallidos" @bind:after="Buscar" /> Solo rechazados</label>
+        <button type="button" class="btn" @onclick="Buscar">Actualizar</button>
+    </div>
+
+    @if (Sospechosos.Count > 0)
+    {
+        <p class="alerta alerta-aviso">Muchos intentos fallidos desde: @string.Join(" · ", Sospechosos)</p>
+    }
+
+    <section class="panel">
+        <TablaIngresos Filas="filas" MostrarEmpresa="true" />
+    </section>
+</div>
+
+@code {
+    private List<TenantConfig> empresas = new();
+    private List<IngresoRegistro> filas = new();
+    private string empresa = "";
+    private DateTime desde = DateTime.Today.AddDays(-7), hasta = DateTime.Today;
+    private bool soloFallidos;
+
+    /// <summary>IPs con 10 o más rechazos en el período (posible ataque de fuerza bruta).</summary>
+    private List<string> Sospechosos => filas.Where(f => !f.Exito && !string.IsNullOrEmpty(f.Ip))
+        .GroupBy(f => f.Ip).Where(g => g.Count() >= 10)
+        .Select(g => $"{g.Key} ({g.Count()} rechazos)").ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        empresas = await EmpresaSrv.ListarAsync();
+        await Buscar();
+    }
+
+    private async Task Buscar() =>
+        filas = await UsuarioSrv.IngresosAsync(string.IsNullOrEmpty(empresa) ? null : empresa, desde, hasta, soloFallidos);
+}

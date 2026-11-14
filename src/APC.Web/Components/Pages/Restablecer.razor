@@ -1,0 +1,47 @@
+@page "/restablecer"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@inject RecuperoClaveService Recupero
+
+<PageTitle>Clave nueva · APC Web</PageTitle>
+
+<main class="login">
+    <form class="login-card" method="post" action="/cuenta/restablecer" data-enhance="false">
+        <AntiforgeryToken />
+        <input type="hidden" name="t" value="@T" />
+        <div class="login-brand">
+            <div class="rail-logo">APC</div>
+            <div>
+                <h1>Elegí tu clave nueva</h1>
+                @if (usuario != null) { <p>Usuario: <strong>@usuario</strong></p> }
+            </div>
+        </div>
+
+        @if (usuario == null)
+        {
+            <p class="alerta alerta-error" role="alert">El link venció o ya se usó. Los links sirven una sola vez y durante 30 minutos.</p>
+            <a class="btn btn-primario btn-grande" href="/recuperar">Pedir un link nuevo</a>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <p class="alerta alerta-error" role="alert">@Error</p>
+            }
+            <label for="clave">Clave nueva</label>
+            <input id="clave" name="clave" type="password" autocomplete="new-password" minlength="6" required />
+            <label for="clave2">Repetir la clave</label>
+            <input id="clave2" name="clave2" type="password" autocomplete="new-password" minlength="6" required />
+            <p class="sub">Al menos 6 caracteres. Distingue mayúsculas de minúsculas.</p>
+            <button type="submit" class="btn btn-primario btn-grande">Guardar clave</button>
+        }
+    </form>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "t")] public string T { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string Error { get; set; }
+    private string usuario;
+
+    protected override async Task OnInitializedAsync() => usuario = await Recupero.ValidarTokenAsync(T);
+}

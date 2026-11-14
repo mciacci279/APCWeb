@@ -1,0 +1,38 @@
+<div class="tabla-scroll">
+    <table class="tabla tabla-chica">
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                @if (MostrarProducto) { <th>Producto</th> }
+                <th class="der">Stock ±</th><th class="der">Costo</th><th class="der">Precio 1</th><th>Detalle</th><th>Usuario</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Filas == null || Filas.Count == 0)
+            {
+                <tr><td colspan="@(MostrarProducto ? 7 : 6)" class="sub">Sin cambios registrados.</td></tr>
+            }
+            else
+            {
+                @foreach (var h in Filas)
+                {
+                    <tr>
+                        <td>@h.Fecha.ToString("dd/MM/yy HH:mm")</td>
+                        @if (MostrarProducto) { <td>@h.Producto</td> }
+                        <td class="der">@(h.Cantidad == 0 ? "—" : h.Cantidad.ToString("+0.###;-0.###", Ar))</td>
+                        <td class="der">@(h.PU?.ToString("N2", Ar))</td>
+                        <td class="der fuerte">@(h.PrecioVenta1?.ToString("N2", Ar))</td>
+                        <td>@h.Observaciones</td>
+                        <td>@h.Usuario</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
+    [Parameter] public List<CambioProductoHistorial> Filas { get; set; }
+    [Parameter] public bool MostrarProducto { get; set; }
+}

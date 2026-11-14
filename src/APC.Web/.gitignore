@@ -1,0 +1,6 @@
+bin/
+obj/
+appsettings.Secretos.json
+appsettings.Tenants.json
+*.key
+*.crt

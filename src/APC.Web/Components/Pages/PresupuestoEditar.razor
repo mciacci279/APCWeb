@@ -1,0 +1,443 @@
+@page "/presupuestos/nuevo"
+@page "/presupuestos/{Id:guid}"
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@implements IAsyncDisposable
+@inject SesionService SesionSrv
+@inject CatalogoService Catalogo
+@inject PresupuestoService PresupuestoSrv
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@(Id == null ? "Nuevo presupuesto" : "Presupuesto") · APC Web</PageTitle>
+
+@if (cargando)
+{
+    <div class="page-pad"><p>Cargando…</p></div>
+}
+else if (errorCarga != null)
+{
+    <div class="page-pad"><p class="alerta alerta-error">@errorCarga</p></div>
+}
+else
+{
+<div class="fact">
+    <main class="fact-main pagina-presu">
+        <header class="fact-head">
+            <div class="fact-titulo cab-presu">
+                <h1>@(Id == null && guardado == null ? "Nuevo presupuesto" : "Presupuesto Nº " + NumeroTexto)</h1>
+                <span class="sub">@(string.IsNullOrWhiteSpace(datos.ClienteNombre) ? "Consumidor final" : datos.ClienteNombre)</span>
+            </div>
+            <div class="fila-btns">
+                <a class="btn" href="/presupuestos">Volver al listado</a>
+                <button type="button" class="btn" @onclick="ToggleCliente">Cliente…  F3</button>
+            </div>
+        </header>
+
+        @if (soloLectura)
+        {
+            <p class="alerta alerta-presu">Este presupuesto está @(original.Cancelado ? "cancelado" : "facturado"): solo se puede ver o reimprimir.</p>
+        }
+
+        @if (verCliente)
+        {
+            <section class="panel cliente" aria-label="Datos del cliente">
+                <div class="campo crece">
+                    <label for="cli-nombre">Nombre / razón social</label>
+                    <input id="cli-nombre" class="input" @bind="datos.ClienteNombre" maxlength="50" disabled="@soloLectura" />
+                </div>
+                <div class="campo">
+                    <label for="cli-doc">CUIT / DNI</label>
+                    <input id="cli-doc" class="input" @bind="datos.ClienteDocumento" maxlength="13" inputmode="numeric" disabled="@soloLectura" />
+                </div>
+                <div class="campo crece">
+                    <label for="cli-dom">Domicilio</label>
+                    <input id="cli-dom" class="input" @bind="datos.ClienteDomicilio" maxlength="100" disabled="@soloLectura" />
+                </div>
+                <div class="campo">
+                    <label for="cli-loc">Localidad</label>
+                    <input id="cli-loc" class="input" @bind="datos.ClienteLocalidad" maxlength="100" disabled="@soloLectura" />
+                </div>
+            </section>
+        }
+
+        @if (!soloLectura)
+        {
+            <div class="buscador">
+                <label class="sr-only" for="buscar">Buscar producto</label>
+                <input id="buscar" class="input input-buscar" placeholder="Código de barras o descripción  (F2) · 3*código para cantidad"
+                       autocomplete="off" @bind="textoBusqueda" @bind:event="oninput" @onkeydown="BuscarKey" />
+                @if (resultados.Count > 0)
+                {
+                    <ul class="resultados" role="listbox" aria-label="Resultados">
+                        @foreach (var p in resultados)
+                        {
+                            <li>
+                                <button type="button" class="resultado" @onclick="() => Agregar(p, cantidadBusqueda)">
+                                    <span class="r-nombre">@p.Nombre</span>
+                                    <span class="r-cod">@p.Codigo</span>
+                                    <span class="r-precio">@Pesos(p.PrecioVenta1)</span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+                else if (sinResultados)
+                {
+                    <p class="sub">No se encontró «@ultimaBusqueda».</p>
+                }
+            </div>
+        }
+
+        <div class="renglones">
+            @if (datos.Renglones.Count == 0)
+            {
+                <p class="vacio">Escaneá o buscá un producto para armar el presupuesto.</p>
+            }
+            @foreach (var r in datos.Renglones)
+            {
+                <div class="renglon @(r == ultimoAgregado ? "activo" : "")">
+                    <div class="r-info">
+                        <span class="r-nombre">@r.Producto.Nombre</span>
+                        <span class="sub">@r.Producto.Codigo</span>
+                    </div>
+                    <div class="cantidad">
+                        <button type="button" class="btn-cant" aria-label="Restar uno" disabled="@soloLectura" @onclick="() => CambiarCantidad(r, -1)">−</button>
+                        <label class="sr-only" for="cant-@r.Clave">Cantidad</label>
+                        <input id="cant-@r.Clave" class="input-cant" type="number" step="0.001" min="0" disabled="@soloLectura"
+                               value="@r.Cantidad.ToString(CultureInfo.InvariantCulture)"
+                               @onchange="e => SetCantidad(r, e.Value?.ToString())" />
+                        <button type="button" class="btn-cant" aria-label="Sumar uno" disabled="@soloLectura" @onclick="() => CambiarCantidad(r, 1)">+</button>
+                    </div>
+                    @if (!soloLectura && (r.PrecioLibre || editandoPrecio.Contains(r.Clave)))
+                    {
+                        <div class="precio-libre">
+                            <label class="sr-only" for="pu-@r.Clave">Precio unitario de @r.Producto.Nombre</label>
+                            <span aria-hidden="true">$</span>
+                            <input id="pu-@r.Clave" class="input-precio mono @(r.PrecioUnitario <= 0 ? "falta" : "")" type="number"
+                                   step="0.01" min="0" placeholder="Precio"
+                                   value="@(r.PrecioUnitario > 0 ? r.PrecioUnitario.ToString(CultureInfo.InvariantCulture) : "")"
+                                   @onchange="e => SetPrecio(r, e.Value?.ToString())" @onkeydown="PrecioKey" />
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="r-pu btn-pu" title="Cambiar el precio en este presupuesto" disabled="@soloLectura"
+                                @onclick="() => EditarPrecio(r)">@Pesos(r.PrecioUnitario) c/u</button>
+                    }
+                    <AjusteRenglon Renglon="r" Deshabilitado="@soloLectura" OnCambio="Cambio" />
+                    <span class="r-total">@Pesos(FacturacionService.CalcularRenglon(r, datos).Monto)</span>
+                    @if (!soloLectura)
+                    {
+                        <button type="button" class="btn-quitar" aria-label="Quitar renglón" @onclick="() => Quitar(r)">×</button>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="campo">
+            <label for="obs">Observaciones</label>
+            <textarea id="obs" class="input input-area" rows="2" maxlength="500" disabled="@soloLectura" @bind="datos.Observaciones"
+                      placeholder="ej. validez, plazo de entrega, condiciones"></textarea>
+        </div>
+    </main>
+
+    <aside class="ticket" aria-label="Presupuesto">
+        <div class="t-fila sub-claro"><span>@sesion.Nombre</span><span>Presupuesto</span></div>
+
+        <div class="t-filas">
+            @if (MontoDescuento > 0)
+            {
+                <div class="t-fila t-fila-desc"><span>Descuentos</span><span>− @Pesos(MontoDescuento)</span></div>
+            }
+            @if (MontoRecargo > 0)
+            {
+                <div class="t-fila t-fila-rec"><span>Recargos</span><span>+ @Pesos(MontoRecargo)</span></div>
+            }
+        </div>
+        <div class="t-total">
+            <span class="sub-claro">Total presupuestado</span>
+            <span class="mono t-total-num">@Pesos(Total)</span>
+        </div>
+
+        <div class="campo">
+            <span class="sub-claro">Forma de pago</span>
+            <div class="t-pagos">
+                @foreach (var fp in formasPago)
+                {
+                    <button type="button" class="btn-pago @(formaPago?.Id == fp.Id ? "activo" : "")" disabled="@soloLectura" @onclick="() => AplicarFormaPago(fp)">@fp.Nombre@(fp.PorcentajeRecargo > 0 ? $" (+{fp.PorcentajeRecargo.ToString("0.##", Ar)} %)" : fp.PorcentajeDescuento > 0 ? $" (−{fp.PorcentajeDescuento.ToString("0.##", Ar)} %)" : "")</button>
+                }
+            </div>
+        </div>
+
+        <AjusteTotal Datos="datos" Deshabilitado="@soloLectura" OnCambio="Cambio" />
+
+        @if (guardado != null)
+        {
+            <div class="t-exito t-exito-presu" role="status">
+                <span class="t-exito-tit">Presupuesto guardado</span>
+                <span class="mono">Nº @NumeroTexto</span>
+                <span class="sub-claro">No entra en caja ni descuenta stock</span>
+            </div>
+        }
+        @if (error != null)
+        {
+            <p class="alerta alerta-error" role="alert">@error</p>
+        }
+        @if (!soloLectura && FaltanPrecios)
+        {
+            <p class="alerta alerta-aviso">Hay renglones sin precio. Escribilo en el renglón marcado.</p>
+        }
+
+        <div class="t-spacer"></div>
+        @if (!soloLectura)
+        {
+            <button type="button" class="btn-presupuesto" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: true))">@(guardando ? "Guardando…" : "Guardar e imprimir A4  ·  F9")</button>
+            <button type="button" class="btn-emitir-sec" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: false))">Guardar sin imprimir  ·  Ctrl+F12</button>
+        }
+        @if (idActual != null)
+        {
+            <button type="button" class="btn-emitir-sec" @onclick="Imprimir">Imprimir A4</button>
+            @if (!soloLectura)
+            {
+                <button type="button" class="btn-emitir-sec" @onclick="PasarAFactura">Pasar a factura</button>
+            }
+        }
+        <button type="button" class="btn-emitir-sec" @onclick="NuevoPresupuesto">Nuevo presupuesto  ·  Enter</button>
+    </aside>
+</div>
+}
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    [Parameter] public Guid? Id { get; set; }
+
+    private bool cargando = true;
+    private string errorCarga;
+    private SesionActual sesion;
+    private List<FormaPagoItem> formasPago = new();
+
+    private NuevaFactura datos = new();
+    private PresupuestoImpresion original;
+    private FormaPagoItem formaPago;
+    private RenglonCarrito ultimoAgregado;
+    private Guid? idActual;
+    private int? guardado;
+    private int numeroOriginal;
+    private string error;
+    private bool guardando;
+
+    private string textoBusqueda;
+    private string ultimaBusqueda;
+    private decimal cantidadBusqueda = 1;
+    private List<ProductoItem> resultados = new();
+    private bool sinResultados;
+    private bool verCliente;
+    private readonly HashSet<string> editandoPrecio = new();
+    private DotNetObjectReference<PresupuestoEditar> refJs;
+
+    private bool soloLectura => original != null && (original.Cancelado || original.Facturado);
+    private bool FaltanPrecios => datos.Renglones.Any(r => r.PrecioUnitario <= 0);
+    private bool PuedeGuardar => !guardando && !soloLectura && datos.Renglones.Count > 0 && !FaltanPrecios;
+    private decimal Total => datos.Renglones.Sum(r => FacturacionService.CalcularRenglon(r, datos).Monto);
+    private decimal MontoDescuento => datos.Renglones.Sum(r => FacturacionService.CalcularRenglon(r, datos).MontoDescuento);
+    private decimal MontoRecargo => datos.Renglones.Sum(r => FacturacionService.CalcularRenglon(r, datos).MontoRecargo);
+
+    private void Cambio() => guardado = null;
+
+    /// <summary>La forma de pago propone el descuento o recargo sobre el total (se puede cambiar a mano).</summary>
+    private void AplicarFormaPago(FormaPagoItem fp)
+    {
+        formaPago = fp;
+        datos.DescuentoTotalPorc = fp?.PorcentajeDescuento ?? 0;
+        datos.RecargoTotalPorc = fp?.PorcentajeRecargo ?? 0;
+    }
+    private string NumeroTexto => $"{sesion.Tenant.PuntoVenta:00000}-{(guardado ?? numeroOriginal):00000000}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            sesion = await SesionSrv.ObtenerAsync();
+            formasPago = (await Catalogo.FormasPagoAsync(sesion.Cs)).Where(f => !f.EsCtaCte).ToList();
+            AplicarFormaPago(formasPago.FirstOrDefault(f => f.EsEfectivo) ?? formasPago.FirstOrDefault());
+            if (Id != null)
+            {
+                var (f, p) = await PresupuestoSrv.CargarAsync(sesion.Cs, Id.Value);
+                if (f == null) { errorCarga = "No se encontró el presupuesto."; return; }
+                datos = f;
+                original = p;
+                idActual = p.Id;
+                numeroOriginal = p.Numero;
+                formaPago = formasPago.FirstOrDefault(x => x.Id == f.FormaPagoId) ?? formaPago;
+                verCliente = !string.IsNullOrWhiteSpace(f.ClienteDocumento) || !string.IsNullOrWhiteSpace(f.ClienteDomicilio);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorCarga = "No se pudo conectar con la base de datos: " + ex.Message;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!cargando && refJs == null && errorCarga == null)
+        {
+            refJs = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("apc.registrarAtajos", refJs);
+            await JS.InvokeVoidAsync("apc.enfocar", "buscar");
+        }
+    }
+
+    // Atajos (app.js): F9 guarda e imprime, Ctrl+F12 guarda sin imprimir; las teclas de factura no hacen nada acá.
+    [JSInvokable] public Task AtajoFacturaA4() => AtajoGuardar(true);
+    [JSInvokable] public Task AtajoPresupuesto() => AtajoGuardar(false);
+    [JSInvokable] public void AtajoFacturaTicket() { }
+    [JSInvokable] public void AtajoPedidoA4() { }
+    [JSInvokable] public void AtajoPedidoTicket() { }
+    [JSInvokable] public void AtajoPedidoSinImprimir() { }
+    [JSInvokable] public void AtajoCliente() { ToggleCliente(); StateHasChanged(); }
+    [JSInvokable] public void AtajoNueva() { if (guardado != null) NuevoPresupuesto(); }
+
+    private async Task AtajoGuardar(bool imprimir)
+    {
+        if (PuedeGuardar) await Guardar(imprimir);
+        StateHasChanged();
+    }
+
+    private async Task BuscarKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { resultados.Clear(); sinResultados = false; return; }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(textoBusqueda)) return;
+
+        var texto = textoBusqueda.Trim();
+        cantidadBusqueda = 1;
+        var asterisco = texto.IndexOf('*');
+        if (asterisco > 0 && decimal.TryParse(texto[..asterisco].Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var cant) && cant > 0)
+        {
+            cantidadBusqueda = cant;
+            texto = texto[(asterisco + 1)..].Trim();
+        }
+        ultimaBusqueda = texto;
+        resultados = await Catalogo.BuscarProductosAsync(sesion.Cs, texto);
+        sinResultados = resultados.Count == 0;
+        if (resultados.Count == 1) await Agregar(resultados[0], cantidadBusqueda);
+    }
+
+    private async Task Agregar(ProductoItem p, decimal cantidad)
+    {
+        guardado = null;
+        var existente = p.PrecioVenta1 <= 0 ? null : datos.Renglones.FirstOrDefault(r => r.Producto.Id == p.Id);
+        if (existente != null) existente.Cantidad += cantidad;
+        else
+        {
+            existente = new RenglonCarrito { Producto = p, Cantidad = cantidad, PrecioUnitario = p.PrecioVenta1 };
+            datos.Renglones.Add(existente);
+        }
+        ultimoAgregado = existente;
+        textoBusqueda = "";
+        resultados.Clear();
+        sinResultados = false;
+        cantidadBusqueda = 1;
+        if (existente.PrecioLibre)
+        {
+            StateHasChanged();
+            await Task.Yield();
+            await JS.InvokeVoidAsync("apc.enfocar", "pu-" + existente.Clave);
+        }
+        else await JS.InvokeVoidAsync("apc.enfocar", "buscar");
+    }
+
+    private void SetPrecio(RenglonCarrito r, string valor)
+    {
+        if (decimal.TryParse(valor, NumberStyles.Number, CultureInfo.InvariantCulture, out var pu) && pu >= 0)
+            r.PrecioUnitario = Math.Round(pu, 2);
+    }
+
+    private async Task PrecioKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await JS.InvokeVoidAsync("apc.enfocar", "buscar");
+    }
+
+    private async Task EditarPrecio(RenglonCarrito r)
+    {
+        editandoPrecio.Add(r.Clave);
+        StateHasChanged();
+        await Task.Yield();
+        await JS.InvokeVoidAsync("apc.enfocar", "pu-" + r.Clave);
+    }
+
+    private void CambiarCantidad(RenglonCarrito r, decimal delta)
+    {
+        r.Cantidad = Math.Max(0, r.Cantidad + delta);
+        if (r.Cantidad == 0) datos.Renglones.Remove(r);
+    }
+
+    private void SetCantidad(RenglonCarrito r, string valor)
+    {
+        if (decimal.TryParse(valor, NumberStyles.Number, CultureInfo.InvariantCulture, out var c) && c >= 0)
+        {
+            r.Cantidad = c;
+            if (c == 0) datos.Renglones.Remove(r);
+        }
+    }
+
+    private void Quitar(RenglonCarrito r) => datos.Renglones.Remove(r);
+    private void ToggleCliente() => verCliente = !verCliente;
+
+    private async Task Guardar(bool imprimir)
+    {
+        if (!PuedeGuardar) return;
+        guardando = true;
+        error = null;
+        StateHasChanged();
+        try
+        {
+            datos.FormaPagoId = formaPago?.Id ?? Guid.Empty;
+            var (id, numero, err) = await PresupuestoSrv.GuardarAsync(sesion.Tenant, sesion.UsuarioId, datos, idActual);
+            if (err != null) { error = err; return; }
+            idActual = id;
+            guardado = numero;
+            if (imprimir) await Imprimir();
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar el presupuesto: " + ex.Message;
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private async Task Imprimir() => await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{idActual}");
+
+    private void PasarAFactura() => Nav.NavigateTo($"/?presupuesto={idActual}");
+
+    private void NuevoPresupuesto()
+    {
+        if (Id != null) { Nav.NavigateTo("/presupuestos/nuevo", forceLoad: true); return; }
+        datos = new NuevaFactura();
+        original = null;
+        idActual = null;
+        guardado = null;
+        error = null;
+        verCliente = false;
+        ultimoAgregado = null;
+        editandoPrecio.Clear();
+        AplicarFormaPago(formasPago.FirstOrDefault(f => f.EsEfectivo) ?? formasPago.FirstOrDefault());
+        _ = JS.InvokeVoidAsync("apc.enfocar", "buscar");
+    }
+
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("apc.quitarAtajos"); } catch { }
+        refJs?.Dispose();
+    }
+}

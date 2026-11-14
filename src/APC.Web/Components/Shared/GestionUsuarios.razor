@@ -1,0 +1,173 @@
+@using APC.Core.Tenants
+@inject UsuarioService UsuarioSrv
+
+@if (mensaje != null)
+{
+    <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+}
+
+<section class="@(Compacto ? "" : "panel")">
+    <h2>Nuevo usuario</h2>
+    <div class="fila-campos">
+        <div class="campo"><label for="nu-usuario-@Id">Usuario</label><input id="nu-usuario-@Id" class="input" @bind="nuUsuario" @bind:event="oninput" maxlength="50" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" /></div>
+        <div class="campo"><label for="nu-nombre-@Id">Nombre</label><input id="nu-nombre-@Id" class="input" @bind="nuNombre" maxlength="150" /></div>
+        <div class="campo"><label for="nu-apellido-@Id">Apellido</label><input id="nu-apellido-@Id" class="input" @bind="nuApellido" maxlength="150" /></div>
+        <div class="campo"><label for="nu-email-@Id">Email (para recuperar la clave)</label><input id="nu-email-@Id" class="input" type="email" @bind="nuEmail" maxlength="150" /></div>
+        <div class="campo"><label for="nu-clave-@Id">Clave inicial</label><input id="nu-clave-@Id" class="input mono" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" @bind="nuClave" @bind:event="oninput" /></div>
+    </div>
+    <div class="fila-campos tipo-usuario" role="radiogroup" aria-label="Tipo de usuario">
+        <button type="button" role="radio" aria-checked="@(nuAdmin ? "false" : "true")" class="opcion-tipo @(nuAdmin ? "" : "activa")" @onclick="() => nuAdmin = false">
+            <strong>Empleado</strong><span class="sub">Solo factura y maneja su caja</span>
+        </button>
+        <button type="button" role="radio" aria-checked="@(nuAdmin ? "true" : "false")" class="opcion-tipo @(nuAdmin ? "activa" : "")" @onclick="() => nuAdmin = true">
+            <strong>Administrador</strong><span class="sub">Dueño: acceso a todo</span>
+        </button>
+        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Crear">Crear usuario</button>
+    </div>
+    <p class="sub">La clave se ve mientras la escribís, para que no haya errores. Debe tener al menos 6 caracteres y distingue mayúsculas de minúsculas.</p>
+</section>
+
+<section class="@(Compacto ? "" : "panel") tabla-scroll">
+    <table class="tabla">
+        <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Tipo</th><th>Estado</th><th>Último ingreso</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+        <tbody>
+            @if (lista.Count == 0)
+            {
+                <tr><td colspan="7" class="sub">Todavía no hay usuarios.</td></tr>
+            }
+            @foreach (var u in lista)
+            {
+                <tr class="@(u.Activo ? "" : "fila-baja")">
+                    <td class="fuerte">@u.NombreUsuario @(u.Id == UsuarioActualId ? "(vos)" : "")</td>
+                    <td>@u.Nombre @u.Apellido</td>
+                    <td>
+                        @if (editandoEmail == u.Id)
+                        {
+                            <label class="sr-only" for="email-@u.Id">Email de @u.NombreUsuario</label>
+                            <input id="email-@u.Id" class="input input-chico" type="email" autocomplete="off" @bind="emailNuevo" @bind:event="oninput" placeholder="nombre@dominio.com" />
+                            <button type="button" class="btn btn-chico btn-primario" @onclick="() => GuardarEmail(u)">Guardar</button>
+                            <button type="button" class="btn btn-chico" @onclick="() => editandoEmail = null">Cancelar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="link-fila" title="Cambiar email" @onclick="() => { editandoEmail = u.Id; emailNuevo = u.Email; }">@(string.IsNullOrWhiteSpace(u.Email) ? "Agregar email" : u.Email)</button>
+                        }
+                    </td>
+                    <td><span class="etiqueta @(u.EsAdmin ? "etiqueta-admin" : "etiqueta-empleado")">@(u.EsAdmin ? "Administrador" : "Empleado")</span></td>
+                    <td>
+                        @if (!u.Activo) { <span>De baja</span> }
+                        else if (u.Bloqueado) { <span class="etiqueta etiqueta-falta">Bloqueado</span> }
+                        else { <span>Activo</span> }
+                    </td>
+                    <td>@(u.UltimoIngreso?.ToString("dd/MM/yy HH:mm") ?? "Nunca")</td>
+                    <td class="acciones">
+                        @if (reseteando == u.Id)
+                        {
+                            <label class="sr-only" for="reset-@u.Id">Clave nueva para @u.NombreUsuario</label>
+                            <input id="reset-@u.Id" class="input input-chico mono" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" placeholder="Clave nueva" @bind="claveReset" @bind:event="oninput" />
+                            <button type="button" class="btn btn-chico btn-primario" @onclick="() => Resetear(u)">Guardar</button>
+                            <button type="button" class="btn btn-chico" @onclick="() => reseteando = null">Cancelar</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-chico" @onclick="() => { reseteando = u.Id; claveReset = null; }">@(u.Bloqueado ? "Desbloquear / clave" : "Cambiar clave")</button>
+                            @if (u.Id != UsuarioActualId)
+                            {
+                                @if (u.Activo)
+                                {
+                                    <button type="button" class="btn btn-chico" @onclick="() => CambiarTipo(u)">@(u.EsAdmin ? "Pasar a empleado" : "Hacer administrador")</button>
+                                }
+                                <button type="button" class="btn btn-chico" @onclick="() => CambiarActivo(u)">@(u.Activo ? "Dar de baja" : "Reactivar")</button>
+                            }
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public TenantConfig Tenant { get; set; }
+    /// <summary>Usuario que está operando (para no darse de baja a sí mismo). Guid.Empty desde el panel de CM Tech.</summary>
+    [Parameter] public Guid UsuarioActualId { get; set; }
+    /// <summary>Sin recuadros, para usarlo dentro de otro panel.</summary>
+    [Parameter] public bool Compacto { get; set; }
+    /// <summary>Tipo preseleccionado al crear (el panel de CM Tech crea primero al dueño).</summary>
+    [Parameter] public bool AdminPorDefecto { get; set; }
+    [Parameter] public EventCallback Cambio { get; set; }
+
+    private readonly string Id = Guid.NewGuid().ToString("N")[..6];
+    private List<UsuarioListado> lista = new();
+    private Guid? tenantCargado;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+    private string nuUsuario, nuNombre, nuApellido, nuEmail, nuClave;
+    private bool nuAdmin;
+    private Guid? reseteando;
+    private Guid? editandoEmail;
+    private string emailNuevo;
+    private string claveReset;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Tenant == null || tenantCargado == Tenant.Id) return;
+        tenantCargado = Tenant.Id;
+        nuAdmin = AdminPorDefecto;
+        mensaje = null;
+        await Cargar();
+    }
+
+    private async Task Cargar() => lista = await UsuarioSrv.ListarAsync(Tenant.Id);
+
+    private async Task Crear()
+    {
+        ocupado = true;
+        try
+        {
+            var rol = nuAdmin ? RolUsuario.Admin : RolUsuario.Empleado;
+            var err = await UsuarioSrv.CrearAsync(Tenant, nuUsuario, nuNombre, nuApellido, nuEmail, nuClave, rol);
+            Aviso(err == null, err ?? $"Usuario {nuUsuario} creado como {(nuAdmin ? "administrador" : "empleado")}.");
+            if (err == null)
+            {
+                nuUsuario = nuNombre = nuApellido = nuEmail = nuClave = null;
+                nuAdmin = false;
+                await Cargar();
+                await Cambio.InvokeAsync();
+            }
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Resetear(UsuarioListado u)
+    {
+        var err = await UsuarioSrv.CambiarClaveAsync(u.Id, Tenant.Id, claveReset);
+        Aviso(err == null, err ?? $"Clave de {u.NombreUsuario} actualizada. Si estaba bloqueado, ya puede ingresar.");
+        if (err == null) { reseteando = null; await Cargar(); }
+    }
+
+    private async Task GuardarEmail(UsuarioListado u)
+    {
+        var err = await UsuarioSrv.CambiarEmailAsync(u.Id, Tenant.Id, emailNuevo);
+        Aviso(err == null, err ?? (string.IsNullOrWhiteSpace(emailNuevo) ? $"Se quitó el email de {u.NombreUsuario}." : $"Email de {u.NombreUsuario} guardado: ya puede recuperar su clave."));
+        if (err == null) { editandoEmail = null; await Cargar(); }
+    }
+
+    private async Task CambiarTipo(UsuarioListado u)
+    {
+        var nuevo = u.EsAdmin ? RolUsuario.Empleado : RolUsuario.Admin;
+        var err = await UsuarioSrv.CambiarRolAsync(u.Id, Tenant.Id, nuevo, UsuarioActualId);
+        Aviso(err == null, err ?? $"{u.NombreUsuario} ahora es {(nuevo == RolUsuario.Admin ? "administrador" : "empleado")}. Aplica la próxima vez que ingrese.");
+        if (err == null) await Cargar();
+    }
+
+    private async Task CambiarActivo(UsuarioListado u)
+    {
+        var err = await UsuarioSrv.CambiarActivoAsync(u.Id, Tenant.Id, !u.Activo, UsuarioActualId);
+        Aviso(err == null, err ?? (u.Activo ? $"{u.NombreUsuario} dado de baja: ya no puede ingresar." : $"{u.NombreUsuario} reactivado."));
+        if (err == null) { await Cargar(); await Cambio.InvokeAsync(); }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

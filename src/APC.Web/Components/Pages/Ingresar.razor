@@ -1,0 +1,64 @@
+@page "/ingresar"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+
+<PageTitle>Ingresar · APC Web</PageTitle>
+
+<main class="login">
+    <form class="login-card" method="post" action="/cuenta/ingresar" data-enhance="false">
+        <AntiforgeryToken />
+        <div class="login-brand">
+            <div class="rail-logo">APC</div>
+            <div>
+                <h1>APC Web</h1>
+                <p>Facturación y caja · CM Tech</p>
+            </div>
+        </div>
+
+        @if (Ok == "clave")
+        {
+            <p class="alerta alerta-ok" role="status">Listo, tu clave se cambió. Ingresá con la clave nueva.</p>
+        }
+
+        @if (Error == "empresa")
+        {
+            <p class="alerta alerta-error" role="alert">No encontramos esa empresa. Revisá el código.</p>
+        }
+        else if (Error == "conexion")
+        {
+            <p class="alerta alerta-error" role="alert">No se pudo conectar con la base de datos. @D</p>
+        }
+        else if (Error == "suspendida")
+        {
+            <p class="alerta alerta-error" role="alert">El acceso de esta empresa está suspendido. Comunicate con CM Tech.</p>
+        }
+        else if (Error == "bloqueado")
+        {
+            <p class="alerta alerta-error" role="alert">Por demasiados intentos fallidos, el usuario quedó bloqueado 15 minutos. Si no recordás la clave, pedile al administrador que te la cambie.</p>
+        }
+        else if (Error == "clave")
+        {
+            <p class="alerta alerta-error" role="alert">Usuario o clave incorrectos.</p>
+        }
+
+        <label for="empresa">Empresa</label>
+        <input id="empresa" name="empresa" value="@E" autocomplete="organization" required />
+
+        <label for="usuario">Usuario</label>
+        <input id="usuario" name="usuario" autocomplete="username" required autofocus="@(!string.IsNullOrEmpty(E))" />
+
+        <label for="clave">Clave</label>
+        <input id="clave" name="clave" type="password" autocomplete="current-password" required />
+
+        <button type="submit" class="btn btn-primario btn-grande">Ingresar</button>
+        <a class="login-link" href="@LinkRecuperar">¿Olvidaste tu clave?</a>
+    </form>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")] public string Error { get; set; }
+    [SupplyParameterFromQuery(Name = "e")] public string E { get; set; }
+    [SupplyParameterFromQuery(Name = "d")] public string D { get; set; }
+    [SupplyParameterFromQuery(Name = "ok")] public string Ok { get; set; }
+    private string LinkRecuperar => string.IsNullOrEmpty(E) ? "/recuperar" : "/recuperar?e=" + Uri.EscapeDataString(E);
+}

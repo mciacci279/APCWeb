@@ -1,0 +1,87 @@
+@page "/instalar"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@inject UsuarioService UsuarioSrv
+
+<PageTitle>Instalación · APC Web</PageTitle>
+
+<main class="login">
+    <div class="login-card">
+        <div class="login-brand">
+            <div class="rail-logo">APC</div>
+            <div>
+                <h1>Instalación inicial</h1>
+                <p>Usuario de CM Tech para administrar empresas</p>
+            </div>
+        </div>
+
+        @if (cargando)
+        {
+            <p>Verificando…</p>
+        }
+        else if (error != null && !listo)
+        {
+            <p class="alerta alerta-error" role="alert">@error</p>
+        }
+
+        @if (!cargando && yaInstalado && !listo)
+        {
+            <p class="alerta alerta-aviso">La instalación ya se hizo. Esta página queda deshabilitada.</p>
+            <a class="btn btn-primario btn-grande" href="/ingresar?e=cmtech">Ir al ingreso</a>
+        }
+        else if (listo)
+        {
+            <p class="alerta alerta-ok" role="status">Listo. Ingresá con empresa <strong>cmtech</strong>, tu usuario y tu clave.</p>
+            <a class="btn btn-primario btn-grande" href="/ingresar?e=cmtech">Ir al ingreso</a>
+        }
+        else if (!cargando && !sinConexion)
+        {
+            <label for="ins-usuario">Usuario</label>
+            <input id="ins-usuario" @bind="usuario" maxlength="50" autocomplete="username" />
+            <label for="ins-nombre">Nombre</label>
+            <input id="ins-nombre" @bind="nombre" maxlength="150" />
+            <label for="ins-clave">Clave</label>
+            <input id="ins-clave" type="password" @bind="clave" autocomplete="new-password" />
+            <label for="ins-clave2">Repetir clave</label>
+            <input id="ins-clave2" type="password" @bind="clave2" autocomplete="new-password" />
+            <p class="sub">Usá una clave larga: este usuario puede dar de alta y suspender empresas.</p>
+            <button type="button" class="btn btn-primario btn-grande" disabled="@ocupado" @onclick="Crear">Crear usuario de CM Tech</button>
+        }
+    </div>
+</main>
+
+@code {
+    private bool cargando = true, yaInstalado, listo, ocupado, sinConexion;
+    private string usuario, nombre, clave, clave2, error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            yaInstalado = await UsuarioSrv.ExisteSuperAdminAsync();
+        }
+        catch (Exception ex)
+        {
+            sinConexion = true;
+            error = "No se pudo conectar con la base central. Revisá que exista APCWeb_Central (script 02) y la conexión en appsettings.Secretos.json. Detalle: " + ex.GetBaseException().Message;
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task Crear()
+    {
+        if (clave != clave2) { error = "Las claves no coinciden."; return; }
+        if (clave == null || clave.Length < 10) { error = "Para este usuario usá al menos 10 caracteres."; return; }
+        ocupado = true;
+        try
+        {
+            error = await UsuarioSrv.CrearSuperAdminAsync(usuario, nombre, clave);
+            listo = error == null;
+            if (!listo && error.StartsWith("La instalación ya se hizo")) yaInstalado = true;
+        }
+        finally { ocupado = false; }
+    }
+}
