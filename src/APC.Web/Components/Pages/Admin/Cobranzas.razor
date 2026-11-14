@@ -18,7 +18,7 @@
         <div class="fila-campos">
             <div class="campo">
                 <label for="periodo">Mes</label>
-                <input id="periodo" class="input" type="month" @bind="periodo" @bind:after="Cargar" />
+                <input id="periodo" class="input" type="month" value="@periodo" @onchange="CambiarPeriodo" />
             </div>
             <div class="campo">
                 <label for="filtro">Estado</label>
@@ -398,6 +398,15 @@
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        await Cargar();
+    }
+
+    /// <summary>El campo de mes trabaja con texto "aaaa-mm", no con fecha.</summary>
+    private async Task CambiarPeriodo(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(valor)) return;
+        periodo = valor;
         await Cargar();
     }
 
