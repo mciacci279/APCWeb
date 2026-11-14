@@ -2,7 +2,7 @@
 @attribute [Authorize(Roles = SesionService.RolAdmin)]
 @using APC.Core.Datos
 @inject SesionService SesionSrv
-@inject ReporteService Reportes
+@inject ReporteService ReporteSrv
 @inject SucursalService SucursalSrv
 @inject IJSRuntime JS
 
@@ -264,12 +264,12 @@
         try
         {
             if (hasta < desde) (desde, hasta) = (hasta, desde);
-            resumen = await Reportes.ResumenAsync(sesion.Cs, desde, hasta, puntoVenta);
-            porDia = await Reportes.PorDiaAsync(sesion.Cs, desde, hasta, puntoVenta);
-            porFormaPago = await Reportes.PorFormaPagoAsync(sesion.Cs, desde, hasta, puntoVenta);
-            porUsuario = await Reportes.PorUsuarioAsync(sesion.Cs, desde, hasta, puntoVenta);
-            porProducto = await Reportes.PorProductoAsync(sesion.Cs, desde, hasta, puntoVenta);
-            libro = await Reportes.LibroIvaVentasAsync(sesion.Cs, desde, hasta, puntoVenta);
+            resumen = await ReporteSrv.ResumenAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porDia = await ReporteSrv.PorDiaAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porFormaPago = await ReporteSrv.PorFormaPagoAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porUsuario = await ReporteSrv.PorUsuarioAsync(sesion.Cs, desde, hasta, puntoVenta);
+            porProducto = await ReporteSrv.PorProductoAsync(sesion.Cs, desde, hasta, puntoVenta);
+            libro = await ReporteSrv.LibroIvaVentasAsync(sesion.Cs, desde, hasta, puntoVenta);
         }
         catch (Exception ex)
         {
