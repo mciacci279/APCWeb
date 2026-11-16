@@ -1,0 +1,42 @@
+@page "/admin/configuracion"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Web.Components.Pages.Admin
+
+<PageTitle>Configuración · APC Web</PageTitle>
+
+<div class="page-pad config-cab">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Configuración</h1>
+            <span class="sub">Seguridad, ingresos y registro del sistema</span>
+        </div>
+    </header>
+
+    <nav class="pestanias" aria-label="Secciones">
+        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Verificación en dos pasos</button>
+        <button type="button" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Registro de ingresos</button>
+        <button type="button" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Registro del sistema</button>
+    </nav>
+</div>
+
+@switch (pestania)
+{
+    case 0: <Seguridad /> break;
+    case 1: <Ingresos /> break;
+    default: <Registro /> break;
+}
+
+@code {
+    /// <summary>Permite abrir una sección directo: /admin/configuracion?s=ingresos</summary>
+    [SupplyParameterFromQuery(Name = "s")] public string Seccion { get; set; }
+
+    private int pestania;
+
+    protected override void OnParametersSet() => pestania = Seccion switch
+    {
+        "ingresos" => 1,
+        "registro" => 2,
+        "seguridad" => 0,
+        _ => pestania
+    };
+}
