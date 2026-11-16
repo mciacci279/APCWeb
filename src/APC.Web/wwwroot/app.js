@@ -36,6 +36,17 @@ window.apc = (function () {
       ref = null;
     },
     enfocar: enfocar,
+    // Copia un texto al portapapeles (links para mandarle al cliente).
+    copiar: function (texto) {
+      if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(texto); return; }
+      const a = document.createElement('textarea');
+      a.value = texto;
+      a.style.cssText = 'position:fixed;left:-10000px;top:0';
+      document.body.appendChild(a);
+      a.select();
+      try { document.execCommand('copy'); } catch (e) { }
+      document.body.removeChild(a);
+    },
     // Descarga un archivo generado por el servidor (reportes en Excel/CSV).
     descargar: function (nombre, base64, tipo) {
       const binario = atob(base64);

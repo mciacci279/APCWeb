@@ -54,6 +54,17 @@ public static class EnlaceComprobante
         (esNotaCredito ? "&nc=1" : "");
 
     /// <summary>
+    /// Ruta del link público a la factura del abono de CM Tech: /factura-abono/{id}?f={firma}
+    /// </summary>
+    public static string RutaAbono(string carpetaDatos, Guid cobroId) =>
+        $"factura-abono/{cobroId}?f={Firmar(carpetaDatos, ContextoAbono, cobroId, false)}";
+
+    public static bool VerificarAbono(string carpetaDatos, Guid cobroId, string firma) =>
+        Verificar(carpetaDatos, ContextoAbono, cobroId, false, firma);
+
+    private const string ContextoAbono = "cmtech-abono";
+
+    /// <summary>
     /// Link de WhatsApp con el mensaje ya escrito. Con teléfono abre el chat de ese número;
     /// sin teléfono, WhatsApp deja elegir el contacto.
     /// </summary>

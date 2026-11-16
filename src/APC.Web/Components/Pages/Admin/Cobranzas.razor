@@ -6,6 +6,8 @@
 @inject FacturaAbonoService FacturaSrv
 @inject CertificadoService CertSrv
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject APC.Core.Tenants.TenantRegistry Tenants
 
 <PageTitle>Cobranzas · APC Web</PageTitle>
 
@@ -205,6 +207,8 @@
                                 @if (c.Facturado)
                                 {
                                     <button type="button" class="btn btn-chico" @onclick="() => Imprimir(c)">Ver factura</button>
+                                    <button type="button" class="btn btn-chico" title="Copiar el link para el cliente"
+                                            @onclick="() => CopiarLink(c)">Copiar link</button>
                                 }
                                 @if (!c.Anulado && !c.Abonado)
                                 {
@@ -371,6 +375,12 @@
 
     private async Task Imprimir(Cobro c) => await JS.InvokeVoidAsync("apc.imprimir", $"/admin/cobranzas/factura/{c.Id}");
 
+    private async Task CopiarLink(Cobro c)
+    {
+        await JS.InvokeVoidAsync("apc.copiar", LinkFactura(c));
+        Aviso(true, "Link copiado: ya lo podés pegar donde quieras.");
+    }
+
     private async Task SubirCert(InputFileChangeEventArgs a, bool esClave)
     {
         ocupado = true;
@@ -472,17 +482,33 @@
         finally { ocupado = false; }
     }
 
-    /// <summary>Mensaje de WhatsApp con el período, el importe y los datos para transferir.</summary>
+    /// <summary>Mensaje de WhatsApp con el período, el importe, los datos para transferir y el link a la factura.</summary>
     private string LinkWhatsApp(Cobro c)
     {
         var facturador = facturadores.FirstOrDefault(f => f.Id == c.FacturadorId);
         var texto = $"Hola{(string.IsNullOrWhiteSpace(c.ContactoNombre) ? "" : " " + c.ContactoNombre.Split(' ')[0])}! " +
                     $"Te paso el abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
-        if (!string.IsNullOrWhiteSpace(c.ComprobanteNro)) texto += $" Factura {c.ComprobanteNro}.";
+
+        if (c.Facturado)
+        {
+            texto += $" Factura C {c.NumeroFactura}, la podés ver y descargar acá: {LinkFactura(c)}";
+        }
+        else if (!string.IsNullOrWhiteSpace(c.ComprobanteNro))
+        {
+            texto += $" Factura {c.ComprobanteNro}.";
+        }
+
         var datos = facturador?.DatosParaTransferir;
-        if (!string.IsNullOrWhiteSpace(datos)) texto += " " + datos + ".";
+        if (!string.IsNullOrWhiteSpace(datos)) texto += " Para abonar: " + datos + ".";
         texto += " ¡Gracias!";
         return EnlaceComprobante.WhatsApp(c.ContactoTelefono, texto);
+    }
+
+    /// <summary>Link público a la factura emitida, para que el cliente la abra desde el teléfono.</summary>
+    private string LinkFactura(Cobro c)
+    {
+        var sitio = string.IsNullOrWhiteSpace(Tenants.UrlPublica) ? Nav.BaseUri : Tenants.UrlPublica.TrimEnd('/') + "/";
+        return sitio + EnlaceComprobante.RutaAbono(Tenants.CarpetaDatos, c.Id);
     }
 
     private async Task Avisar(Cobro c, string medio, string destino)

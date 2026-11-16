@@ -1,0 +1,49 @@
+@page "/factura-abono/{Id:guid}"
+@layout VacioLayout
+@attribute [AllowAnonymous]
+@using APC.Core.Seguridad
+@using APC.Core.Tenants
+@inject TenantRegistry Tenants
+@inject FacturaAbonoService FacturaSrv
+
+<PageTitle>@ComprobanteVista.TituloDe(c, emisor)</PageTitle>
+
+@if (c == null)
+{
+    <main class="login">
+        <div class="login-card">
+            <h1>Factura no disponible</h1>
+            <p>El link no es válido o la factura ya no está disponible. Pedile a CM Tech que te la envíe de nuevo.</p>
+        </div>
+    </main>
+}
+else
+{
+    <ComprobanteVista C="c" Empresa="emisor" Formato="a4" AutoImprimir="false"
+                      UrlBase="@($"/factura-abono/{Id}?f={Uri.EscapeDataString(Firma ?? "")}")" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "f")] public string Firma { get; set; }
+
+    private ComprobanteImpresion c;
+    private EmpresaDatos emisor;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Sin la firma del servidor no se muestra nada.
+        if (!EnlaceComprobante.VerificarAbono(Tenants.CarpetaDatos, Id, Firma)) return;
+
+        try
+        {
+            var (comprobante, e) = await FacturaSrv.ParaImprimirAsync(Id);
+            c = comprobante;
+            emisor = e;
+        }
+        catch (Exception)
+        {
+            c = null;
+        }
+    }
+}
