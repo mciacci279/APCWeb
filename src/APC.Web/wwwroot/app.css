@@ -492,3 +492,15 @@ input.input-ajuste { width: 72px; text-align: right; }
 
 /* Configuración: el encabezado y las pestañas van juntos, sin aire extra abajo */
 .config-cab { padding-bottom: 0; gap: 12px; }
+
+/* ---- Pestañas: que se vean como pestañas aunque no estén elegidas ---- */
+.pestanias { background: transparent; padding: 0; gap: 8px; flex-wrap: wrap; }
+.pestania { flex: 1 1 auto; min-width: 140px; padding: 0 16px; background: #fff; border: 1px solid var(--borde); color: var(--texto-2); font-weight: 500; }
+.pestania:hover:not(.activa) { border-color: var(--azul-borde); color: var(--azul); }
+.pestania.activa { background: var(--azul); border-color: var(--azul); color: #fff; font-weight: 600; box-shadow: none; }
+
+/* Las de Cobranzas conservan su color propio */
+.pes-cobros { border-color: #9FCFD5; }
+.pes-factu { border-color: #B6B9E0; }
+.pes-cobros.activa { background: var(--cobro); border-color: var(--cobro); }
+.pes-factu.activa { background: var(--factu); border-color: var(--factu); }
