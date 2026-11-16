@@ -431,11 +431,14 @@ input.input-ajuste { width: 72px; text-align: right; }
 .pes-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 .pes-cobros .pes-punto { background: var(--cobro); }
 .pes-factu .pes-punto { background: var(--factu); }
+/* Sin seleccionar: el color apenas insinuado. Seleccionada: el color pleno. */
+.pes-cobros { background: var(--cobro-claro); color: #2E6A70; }
+.pes-factu { background: var(--factu-claro); color: #474B86; }
 .pes-cobros.activa { background: var(--cobro); color: #fff; }
 .pes-factu.activa { background: var(--factu); color: #fff; }
 .pestania.activa .pes-punto { background: #fff; }
-.pes-cobros:hover:not(.activa) { background: var(--cobro-claro); color: var(--cobro); }
-.pes-factu:hover:not(.activa) { background: var(--factu-claro); color: var(--factu); }
+.pes-cobros:hover:not(.activa) { background: #CFE9EC; color: var(--cobro); }
+.pes-factu:hover:not(.activa) { background: #DCDEF2; color: var(--factu); }
 
 .panel-cobros { border-top: 3px solid var(--cobro); }
 .panel-factu { border-top: 3px solid var(--factu); }

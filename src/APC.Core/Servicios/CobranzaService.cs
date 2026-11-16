@@ -41,9 +41,21 @@ public class CobranzaService
     public async Task<List<Facturador>> FacturadoresAsync(bool soloActivos = false)
     {
         using var cn = await Db.AbrirAsync(Central);
-        return (await cn.QueryAsync<Facturador>(
-            $@"SELECT Id, Nombre, Cuit, Alias, Cbu, Banco, Activo FROM dbo.Facturador
-               {(soloActivos ? "WHERE Activo = 1" : "")} ORDER BY Nombre")).ToList();
+        var filtro = soloActivos ? "WHERE Activo = 1" : "";
+        try
+        {
+            return (await cn.QueryAsync<Facturador>(
+                $@"SELECT Id, Nombre, Cuit, Alias, Cbu, Banco, Activo,
+                          PuntoVenta, Ambiente, CertificadoPath, ClavePath,
+                          Domicilio, Localidad, IngresosBrutos, FechaInicioActividades
+                   FROM dbo.Facturador {filtro} ORDER BY Nombre")).ToList();
+        }
+        catch (Microsoft.Data.SqlClient.SqlException)
+        {
+            // Todavía no se corrió el script 11 (facturación propia)
+            return (await cn.QueryAsync<Facturador>(
+                $"SELECT Id, Nombre, Cuit, Alias, Cbu, Banco, Activo FROM dbo.Facturador {filtro} ORDER BY Nombre")).ToList();
+        }
     }
 
     public async Task<string> GuardarFacturadorAsync(Facturador f)
@@ -55,19 +67,45 @@ public class CobranzaService
         f.Cbu = Limpio(f.Cbu, 30);
         f.Banco = Limpio(f.Banco, 60);
 
+        f.Domicilio = Limpio(f.Domicilio, 150);
+        f.Localidad = Limpio(f.Localidad, 100);
+        f.IngresosBrutos = Limpio(f.IngresosBrutos, 50);
+        f.Ambiente = string.IsNullOrWhiteSpace(f.Ambiente) ? "HOMO" : f.Ambiente.Trim().ToUpperInvariant();
+        if (f.Ambiente != "HOMO" && f.Ambiente != "PROD") return "Ambiente inválido.";
+        if (f.PuntoVenta is <= 0) f.PuntoVenta = null;
+        if (f.PuntoVenta > 99999) return "El punto de venta debe estar entre 1 y 99999.";
+
         using var cn = await Db.AbrirAsync(Central);
-        if (f.EsNuevo)
+        try
         {
-            f.Id = Guid.NewGuid();
-            await cn.ExecuteAsync(
-                @"INSERT INTO dbo.Facturador (Id, Nombre, Cuit, Alias, Cbu, Banco, Activo)
-                  VALUES (@Id, @Nombre, @Cuit, @Alias, @Cbu, @Banco, 1)", f);
+            if (f.EsNuevo)
+            {
+                f.Id = Guid.NewGuid();
+                await cn.ExecuteAsync(
+                    @"INSERT INTO dbo.Facturador
+                        (Id, Nombre, Cuit, Alias, Cbu, Banco, Activo,
+                         PuntoVenta, Ambiente, CertificadoPath, ClavePath,
+                         Domicilio, Localidad, IngresosBrutos, FechaInicioActividades)
+                      VALUES
+                        (@Id, @Nombre, @Cuit, @Alias, @Cbu, @Banco, 1,
+                         @PuntoVenta, @Ambiente, @CertificadoPath, @ClavePath,
+                         @Domicilio, @Localidad, @IngresosBrutos, @FechaInicioActividades)", f);
+            }
+            else
+            {
+                await cn.ExecuteAsync(
+                    @"UPDATE dbo.Facturador SET
+                        Nombre = @Nombre, Cuit = @Cuit, Alias = @Alias, Cbu = @Cbu, Banco = @Banco, Activo = @Activo,
+                        PuntoVenta = @PuntoVenta, Ambiente = @Ambiente,
+                        CertificadoPath = @CertificadoPath, ClavePath = @ClavePath,
+                        Domicilio = @Domicilio, Localidad = @Localidad,
+                        IngresosBrutos = @IngresosBrutos, FechaInicioActividades = @FechaInicioActividades
+                      WHERE Id = @Id", f);
+            }
         }
-        else
+        catch (Microsoft.Data.SqlClient.SqlException ex)
         {
-            await cn.ExecuteAsync(
-                @"UPDATE dbo.Facturador SET Nombre = @Nombre, Cuit = @Cuit, Alias = @Alias,
-                         Cbu = @Cbu, Banco = @Banco, Activo = @Activo WHERE Id = @Id", f);
+            return "No se pudieron guardar los datos de facturación. ¿Se ejecutó el script 11 en APCWeb_Central? Detalle: " + ex.Message;
         }
         return null;
     }
