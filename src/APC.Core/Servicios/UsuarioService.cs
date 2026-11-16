@@ -235,7 +235,7 @@ public class UsuarioService
     {
         var err = ValidarNombreUsuario(usuario) ?? ValidarClave(clave);
         if (err != null) return err;
-        if (rol != RolUsuario.Admin && rol != RolUsuario.Empleado) return "Rol inválido.";
+        if (rol != RolUsuario.Admin && rol != RolUsuario.Supervisor && rol != RolUsuario.Empleado) return "Rol inválido.";
         usuario = usuario.Trim();
 
         using var cn = await Db.AbrirAsync(Central);
@@ -289,10 +289,10 @@ public class UsuarioService
 
     public async Task<string> CambiarRolAsync(Guid usuarioId, Guid empresaId, string rol, Guid usuarioActual)
     {
-        if (rol != RolUsuario.Admin && rol != RolUsuario.Empleado) return "Rol inválido.";
+        if (rol != RolUsuario.Admin && rol != RolUsuario.Supervisor && rol != RolUsuario.Empleado) return "Rol inválido.";
         if (usuarioId == usuarioActual && rol != RolUsuario.Admin) return "No podés quitarte a vos mismo el rol de administrador.";
         using var cn = await Db.AbrirAsync(Central);
-        if (rol == RolUsuario.Empleado && await OtrosAdminsActivosAsync(cn, empresaId, usuarioId) == 0)
+        if (rol != RolUsuario.Admin && await OtrosAdminsActivosAsync(cn, empresaId, usuarioId) == 0)
             return "La empresa tiene que tener al menos un administrador activo.";
         var filas = await cn.ExecuteAsync(
             "UPDATE dbo.Usuario SET Rol = @rol WHERE Id = @id AND EmpresaId = @emp",

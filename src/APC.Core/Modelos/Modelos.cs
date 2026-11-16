@@ -4,7 +4,17 @@ public static class RolUsuario
 {
     public const string SuperAdmin = "SuperAdmin";
     public const string Admin = "Admin";
+    /// <summary>Supervisor de sucursal: ve y cierra las cajas de su sucursal.</summary>
+    public const string Supervisor = "Supervisor";
     public const string Empleado = "Empleado";
+
+    public static string Titulo(string rol) => rol switch
+    {
+        SuperAdmin => "CM Tech",
+        Admin => "Administrador",
+        Supervisor => "Supervisor",
+        _ => "Cajero"
+    };
     /// <summary>Código de empresa reservado para ingresar al panel de CM Tech.</summary>
     public const string CodigoCmTech = "cmtech";
 }
@@ -43,6 +53,8 @@ public class UsuarioListado
     /// <summary>Sucursal en la que trabaja. Vacío = la casa central.</summary>
     public Guid? SucursalId { get; set; }
     public bool EsAdmin => Rol == RolUsuario.Admin;
+    public bool EsSupervisor => Rol == RolUsuario.Supervisor;
+    public string RolTitulo => RolUsuario.Titulo(Rol);
     public bool Bloqueado => BloqueadoHasta > DateTime.Now;
 }
 
@@ -264,6 +276,8 @@ public class CajaTurno
 {
     public Guid Id { get; set; }
     public Guid UsuarioId { get; set; }
+    /// <summary>Sucursal donde se abrió la caja.</summary>
+    public Guid? SucursalId { get; set; }
     public DateTime FechaApertura { get; set; }
     public decimal MontoInicial { get; set; }
     public DateTime? FechaCierre { get; set; }
@@ -271,6 +285,12 @@ public class CajaTurno
     public decimal? EfectivoContado { get; set; }
     public decimal? Diferencia { get; set; }
     public string Observaciones { get; set; }
+
+    /// <summary>Se completan al listar las cajas de la sucursal.</summary>
+    public string Usuario { get; set; }
+    public string Sucursal { get; set; }
+    public decimal Ventas { get; set; }
+    public bool Abierta => FechaCierre == null;
 }
 
 public class ArqueoFormaPago

@@ -136,6 +136,11 @@ app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, Usuario
             break;
         case RolUsuario.Admin:
             claims.Add(new Claim(ClaimTypes.Role, SesionService.RolAdmin));
+            claims.Add(new Claim(ClaimTypes.Role, SesionService.RolSupervisor));
+            claims.Add(new Claim(ClaimTypes.Role, SesionService.RolEmpleado));
+            break;
+        case RolUsuario.Supervisor:
+            claims.Add(new Claim(ClaimTypes.Role, SesionService.RolSupervisor));
             claims.Add(new Claim(ClaimTypes.Role, SesionService.RolEmpleado));
             break;
         default:

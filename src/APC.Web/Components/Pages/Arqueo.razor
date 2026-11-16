@@ -128,6 +128,70 @@ else
         </aside>
     </div>
 }
+
+@if (!cargando && PuedeSupervisar)
+{
+    <section class="panel panel-ancho" aria-label="Cajas del día">
+        <header class="fact-head">
+            <div class="fact-titulo">
+                <h2>Cajas del día</h2>
+                <span class="sub">@(sesion.EsAdmin ? "Todas las sucursales" : "Sucursal " + (sesion.Sucursal?.Nombre ?? ""))</span>
+            </div>
+            <div class="fila-campos">
+                <div class="campo"><label for="dia">Día</label><input id="dia" class="input" type="date" @bind="dia" @bind:after="CargarCajas" /></div>
+            </div>
+        </header>
+
+        <table class="tabla">
+            <thead><tr><th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+                @if (cajas.Count == 0)
+                {
+                    <tr><td colspan="7" class="sub">No se abrió ninguna caja ese día.</td></tr>
+                }
+                @foreach (var c in cajas)
+                {
+                    <tr class="@(cajaVista?.Id == c.Id ? "fila-sel" : "")">
+                        <td class="mono">@c.Usuario</td>
+                        <td>@c.Sucursal</td>
+                        <td>@c.FechaApertura.ToString("HH:mm")</td>
+                        <td>
+                            @if (c.Abierta) { <span class="cert-chip cert-aviso">Abierta</span> }
+                            else { <span>@c.FechaCierre?.ToString("HH:mm")</span> }
+                        </td>
+                        <td class="der fuerte">@Pesos(c.Ventas)</td>
+                        <td class="der @(c.Diferencia < 0 ? "negativo" : "")">@(c.Diferencia == null ? "—" : Pesos(c.Diferencia.Value))</td>
+                        <td class="acciones">
+                            <button type="button" class="btn btn-chico" @onclick="() => VerCaja(c)">Ver arqueo</button>
+                            <a class="btn btn-chico" href="/imprimir/arqueo/@c.Id" target="_blank">Imprimir</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (cajaVista != null && arqueoVista != null)
+        {
+            <h3 class="sub-titulo">Caja de @cajaVista.Usuario · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")</h3>
+            <div class="kpis kpis-chicos">
+                <div class="kpi"><span class="sub">Ventas</span><span class="mono kpi-num">@Pesos(arqueoVista.Ventas)</span></div>
+                <div class="kpi"><span class="sub">Comprobantes</span><span class="mono kpi-num">@arqueoVista.CantidadComprobantes</span></div>
+                <div class="kpi"><span class="sub">Efectivo esperado</span><span class="mono kpi-num">@Pesos(arqueoVista.EfectivoEsperado + cajaVista.MontoInicial)</span></div>
+                @if (cajaVista.EfectivoContado != null)
+                {
+                    <div class="kpi @(cajaVista.Diferencia < 0 ? "falta" : "")">
+                        <span class="sub">Contado</span>
+                        <span class="mono kpi-num">@Pesos(cajaVista.EfectivoContado.Value)</span>
+                        <span class="sub">Diferencia @Pesos(cajaVista.Diferencia ?? 0)</span>
+                    </div>
+                }
+            </div>
+            <div class="fila-btns">
+                <button type="button" class="btn" @onclick="() => cajaVista = null">Cerrar detalle</button>
+            </div>
+        }
+    </section>
+}
 </div>
 
 @code {
@@ -144,10 +208,33 @@ else
     private string movConcepto;
     private bool confirmarCierre;
 
+    // ---- Supervisión: el supervisor ve las cajas de su sucursal; el administrador, todas ----
+    private List<CajaTurno> cajas = new();
+    private DateTime dia = DateTime.Today;
+    private CajaTurno cajaVista;
+    private ArqueoResumen arqueoVista;
+
+    private bool PuedeSupervisar => sesion.EsSupervisor || sesion.EsAdmin;
+
+    private async Task CargarCajas()
+    {
+        if (!PuedeSupervisar) return;
+        // El administrador ve todas las sucursales; el supervisor, solo la suya.
+        var sucursal = sesion.EsAdmin || sesion.SucursalId == Guid.Empty ? (Guid?)null : sesion.SucursalId;
+        cajas = await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sucursal);
+    }
+
+    private async Task VerCaja(CajaTurno t)
+    {
+        cajaVista = t;
+        arqueoVista = await Caja.ArqueoAsync(sesion.Cs, t);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
         await Refrescar();
+        await CargarCajas();
         cargando = false;
     }
 
@@ -163,7 +250,7 @@ else
 
     private async Task Abrir()
     {
-        await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial);
+        await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
         cerrado = null;
         await Refrescar();
     }

@@ -14,6 +14,8 @@ public class SesionActual
     /// <summary>Id de la empresa en la base central (Guid.Empty para CM Tech).</summary>
     public Guid EmpresaId { get; init; }
     public bool EsAdmin { get; init; }
+    /// <summary>Supervisor de sucursal: ve las cajas de su sucursal.</summary>
+    public bool EsSupervisor { get; init; }
     public bool EsSuperAdmin { get; init; }
     /// <summary>Empresa del usuario; null para los usuarios de CM Tech.</summary>
     public TenantConfig Tenant { get; init; }
@@ -32,6 +34,7 @@ public class SesionService
 {
     public const string RolSuperAdmin = "CMTECH";
     public const string RolAdmin = "APC_ADMIN";
+    public const string RolSupervisor = "APC_SUPERVISOR";
     public const string RolEmpleado = "APC_EMPLEADO";
 
     private readonly AuthenticationStateProvider _auth;
@@ -79,6 +82,7 @@ public class SesionService
             Nombre = user.FindFirst("nombre")?.Value,
             EmpresaId = tenant.Id,
             EsAdmin = user.IsInRole(RolAdmin),
+            EsSupervisor = user.IsInRole(RolSupervisor),
             Tenant = tenant
         };
         _cache.Sucursal = await ResolverSucursalAsync(tenant, id);

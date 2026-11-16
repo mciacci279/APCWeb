@@ -51,6 +51,8 @@ Se ejecutan una sola vez, en orden. Los `*_central_*` van en `APCWeb_Central`; l
 | `11_apcweb_central_factura_abono.sql` | central | Factura C del abono: certificado por facturador y CAE |
 | `12_apcweb_central_cobro_regenerar.sql` | central | Permite rehacer el cobro de un mes anulado |
 | `13_apcweb_central_tablero.sql` | central | Tablero de trabajo de CM Tech (tickets y novedades) |
+| `14_apcweb_caja_sucursal.sql` | empresa | La caja guarda en qué sucursal se abrió |
+| `15_apcweb_central_supervisor.sql` | central | Rol Supervisor |
 
 ## Primera vez después de clonar desde GitHub
 

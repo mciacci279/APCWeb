@@ -18,16 +18,65 @@ public class CajaService
             new { u = usuarioId });
     }
 
-    public async Task<CajaTurno> AbrirAsync(string cs, Guid usuarioId, decimal montoInicial)
+    public async Task<CajaTurno> AbrirAsync(string cs, Guid usuarioId, decimal montoInicial, Guid? sucursalId = null)
     {
         var abierto = await TurnoAbiertoAsync(cs, usuarioId);
         if (abierto != null) return abierto;
         using var cn = await Db.AbrirAsync(cs);
-        var t = new CajaTurno { Id = Guid.NewGuid(), UsuarioId = usuarioId, FechaApertura = DateTime.Now, MontoInicial = montoInicial };
-        await cn.ExecuteAsync(
-            "INSERT INTO dbo.CajaTurno (Id, UsuarioId, FechaApertura, MontoInicial) VALUES (@Id, @UsuarioId, @FechaApertura, @MontoInicial)", t);
+        var t = new CajaTurno
+        {
+            Id = Guid.NewGuid(), UsuarioId = usuarioId, FechaApertura = DateTime.Now,
+            MontoInicial = montoInicial, SucursalId = sucursalId
+        };
+        try
+        {
+            await cn.ExecuteAsync(
+                @"INSERT INTO dbo.CajaTurno (Id, UsuarioId, FechaApertura, MontoInicial, SucursalId)
+                  VALUES (@Id, @UsuarioId, @FechaApertura, @MontoInicial, @SucursalId)", t);
+        }
+        catch (Microsoft.Data.SqlClient.SqlException)
+        {
+            // Todavía no se corrió el script 14 (caja por sucursal)
+            await cn.ExecuteAsync(
+                @"INSERT INTO dbo.CajaTurno (Id, UsuarioId, FechaApertura, MontoInicial)
+                  VALUES (@Id, @UsuarioId, @FechaApertura, @MontoInicial)", t);
+        }
         return t;
     }
+
+    /// <summary>
+    /// Cajas de un día para la supervisión. Con sucursalId se limita a esa sucursal
+    /// (lo que ve un supervisor); sin sucursalId se ven todas (el administrador).
+    /// </summary>
+    public async Task<List<CajaTurno>> TurnosDelDiaAsync(string cs, DateTime dia, Guid? sucursalId)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var columnaSucursal = "NULL AS SucursalId, '' AS Sucursal";
+        var filtroSucursal = "";
+        if (await ExisteColumnaSucursalAsync(cn))
+        {
+            columnaSucursal = "t.SucursalId, s.Nombre AS Sucursal";
+            if (sucursalId != null) filtroSucursal = "AND t.SucursalId = @sucursalId";
+        }
+
+        return (await cn.QueryAsync<CajaTurno>(
+            $@"SELECT t.Id, t.UsuarioId, t.FechaApertura, t.MontoInicial, t.FechaCierre,
+                      t.EfectivoEsperado, t.EfectivoContado, t.Diferencia, t.Observaciones,
+                      {columnaSucursal}, u.NombreUsuario AS Usuario,
+                      (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                       WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura
+                         AND f.Fecha < ISNULL(t.FechaCierre, GETDATE())) AS Ventas
+               FROM dbo.CajaTurno t
+               LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
+               {(columnaSucursal.StartsWith("NULL") ? "" : "LEFT JOIN dbo.Sucursal s ON s.Id = t.SucursalId")}
+               WHERE t.FechaApertura >= @desde AND t.FechaApertura < @hasta {filtroSucursal}
+               ORDER BY t.FechaApertura DESC",
+            new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId })).ToList();
+    }
+
+    private static async Task<bool> ExisteColumnaSucursalAsync(System.Data.IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'SucursalId') IS NULL THEN 0 ELSE 1 END") == 1;
 
     private class MovimientoCaja
     {
