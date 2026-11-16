@@ -105,8 +105,13 @@
 
     @if (edit != null)
     {
-        <section class="panel panel-ancho" aria-label="Detalle de la tarjeta">
-            <h2>@(edit.EsNuevo ? "Nueva tarjeta" : $"#{edit.Numero} · {edit.Titulo}")</h2>
+        <div class="modal-fondo" @onclick="Cerrar">
+        <section class="panel modal-caja" role="dialog" aria-modal="true" aria-label="Detalle de la tarjeta"
+                 @onclick:stopPropagation="true" @onkeydown="TeclaModal">
+            <header class="modal-cab">
+                <h2>@(edit.EsNuevo ? "Nueva tarjeta" : $"#{edit.Numero} · {edit.Titulo}")</h2>
+                <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="Cerrar">×</button>
+            </header>
 
             <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" class="input" maxlength="150" @bind="edit.Titulo" /></div>
             <div class="campo">
@@ -198,6 +203,7 @@
                 }
             }
         </section>
+        </div>
     }
 </div>
 
@@ -275,7 +281,12 @@
         mensaje = null;
     }
 
-    private void Cerrar() { edit = null; notas = new(); }
+    private void Cerrar() { edit = null; notas = new(); confirmarBaja = false; }
+
+    private void TeclaModal(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Cerrar();
+    }
 
     private async Task Guardar()
     {

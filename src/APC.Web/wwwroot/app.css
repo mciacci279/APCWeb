@@ -504,3 +504,12 @@ input.input-ajuste { width: 72px; text-align: right; }
 .pes-factu { border-color: #B6B9E0; }
 .pes-cobros.activa { background: var(--cobro); border-color: var(--cobro); }
 .pes-factu.activa { background: var(--factu); border-color: var(--factu); }
+
+/* ---- Ventana emergente (detalle de una tarjeta) ---- */
+.modal-fondo { position: fixed; inset: 0; z-index: 50; background: rgba(15, 42, 74, .55); display: flex; align-items: flex-start; justify-content: center; padding: 32px 16px; overflow-y: auto; }
+.modal-caja { width: 100%; max-width: 760px; max-height: calc(100vh - 64px); overflow-y: auto; box-shadow: 0 20px 60px rgba(10, 25, 45, .35); }
+.modal-cab { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.modal-cab h2 { margin: 0; }
+.modal-cerrar { width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--borde-input); border-radius: 8px; background: #fff; font: inherit; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; }
+.modal-cerrar:hover { border-color: var(--rojo); color: var(--rojo); }
+@media (max-width: 640px) { .modal-fondo { padding: 12px 8px; } }
