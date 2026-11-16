@@ -49,6 +49,7 @@ Se ejecutan una sola vez, en orden. Los `*_central_*` van en `APCWeb_Central`; l
 | `09_apcweb_central_abono_2fa.sql` | central | Control de abono y verificación en dos pasos |
 | `10_apcweb_central_cobranzas.sql` | central | Cobranzas de CM Tech: facturadores, cobros y avisos |
 | `11_apcweb_central_factura_abono.sql` | central | Factura C del abono: certificado por facturador y CAE |
+| `12_apcweb_central_cobro_regenerar.sql` | central | Permite rehacer el cobro de un mes anulado |
 
 ## Primera vez después de clonar desde GitHub
 

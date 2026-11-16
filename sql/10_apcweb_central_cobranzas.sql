@@ -54,10 +54,12 @@ BEGIN
         FechaPago      DATE             NULL,
         MedioPago      NVARCHAR(40)     NULL,
         CobradoPor     UNIQUEIDENTIFIER NULL,
-        Observaciones  NVARCHAR(300)    NULL,
-        CONSTRAINT UQ_Cobro_Empresa_Periodo UNIQUE (EmpresaId, Periodo)
+        Observaciones  NVARCHAR(300)    NULL
     );
 
+    /* Una sola fila por empresa y mes, salvo las anuladas: así se puede volver a generar. */
+    CREATE UNIQUE INDEX UX_Cobro_Empresa_Periodo_Activo
+        ON dbo.Cobro (EmpresaId, Periodo) WHERE Estado <> 'ANULADO';
     CREATE INDEX IX_Cobro_Periodo ON dbo.Cobro (Periodo, Estado);
 END
 GO

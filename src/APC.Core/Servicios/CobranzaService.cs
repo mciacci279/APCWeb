@@ -135,17 +135,26 @@ public class CobranzaService
     /// </summary>
     public async Task<(int Creados, string Error)> GenerarMesAsync(string periodo, Guid usuarioId)
     {
-        if (!DateTime.TryParse(periodo + "-01", out var mes)) return (0, "El período no es válido.");
+        if (!DateTime.TryParse(periodo + "-01", out _)) return (0, "El período no es válido.");
 
         using var cn = await Db.AbrirAsync(Central);
-        var creados = await cn.ExecuteAsync(
-            @"INSERT INTO dbo.Cobro (Id, EmpresaId, Periodo, Concepto, Monto, FacturadorId, Estado, FechaAlta, CreadoPor)
-              SELECT NEWID(), e.Id, @periodo, @concepto, e.AbonoMonto, e.FacturadorId, 'PENDIENTE', GETDATE(), @usuarioId
-              FROM dbo.Empresa e
-              WHERE e.Activa = 1 AND ISNULL(e.AbonoMonto, 0) > 0
-                AND NOT EXISTS (SELECT 1 FROM dbo.Cobro c WHERE c.EmpresaId = e.Id AND c.Periodo = @periodo)",
-            new { periodo, usuarioId, concepto = "Abono APC Web · " + Cobro.TextoDePeriodo(periodo) });
-        return (creados, null);
+        try
+        {
+            // Los cobros anulados no cuentan: si se anuló el del mes, se puede generar de nuevo.
+            var creados = await cn.ExecuteAsync(
+                @"INSERT INTO dbo.Cobro (Id, EmpresaId, Periodo, Concepto, Monto, FacturadorId, Estado, FechaAlta, CreadoPor)
+                  SELECT NEWID(), e.Id, @periodo, @concepto, e.AbonoMonto, e.FacturadorId, 'PENDIENTE', GETDATE(), @usuarioId
+                  FROM dbo.Empresa e
+                  WHERE e.Activa = 1 AND ISNULL(e.AbonoMonto, 0) > 0
+                    AND NOT EXISTS (SELECT 1 FROM dbo.Cobro c
+                                    WHERE c.EmpresaId = e.Id AND c.Periodo = @periodo AND c.Estado <> 'ANULADO')",
+                new { periodo, usuarioId, concepto = "Abono APC Web · " + Cobro.TextoDePeriodo(periodo) });
+            return (creados, null);
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            return (0, "Para poder rehacer un cobro anulado hay que ejecutar el script 12 en APCWeb_Central.");
+        }
     }
 
     public async Task<List<Cobro>> ListarAsync(string periodo, string estado = null, Guid? facturadorId = null)
