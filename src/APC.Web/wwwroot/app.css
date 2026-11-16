@@ -482,3 +482,10 @@ input.input-ajuste { width: 72px; text-align: right; }
 .venc-tarde { color: var(--rojo-osc); font-weight: 600; }
 .venc-hoy { color: var(--aviso-texto); font-weight: 600; }
 .nota { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px solid #EEF1F5; }
+
+/* Columna de ideas y prioridad visible en la tarjeta */
+.col-idea { background: #F3F0FA; }
+.col-idea .columna-cab { border-color: var(--nc); }
+.etiqueta-prio { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; }
+.etiqueta-prio.prio-alta { background: var(--error-fondo); color: var(--rojo-osc); }
+.etiqueta-prio.prio-baja { background: var(--fondo); color: var(--muted); }

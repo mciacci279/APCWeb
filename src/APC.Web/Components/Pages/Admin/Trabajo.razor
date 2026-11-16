@@ -35,6 +35,7 @@
                 </select>
             </div>
             <button type="button" class="btn btn-primario" @onclick="() => Nuevo(EstadoTicket.Pendiente)">+ Nueva tarjeta</button>
+            <button type="button" class="btn" @onclick="() => Nuevo(EstadoTicket.Idea)">+ Idea</button>
         </div>
     </header>
 
@@ -68,6 +69,10 @@
 
                             <div class="tarjeta-datos">
                                 <span class="etiqueta-tipo tipo-@t.Tipo.ToLowerInvariant()">@TipoTicket.Titulo(t.Tipo)</span>
+                                @if (t.TextoPrioridad != null)
+                                {
+                                    <span class="etiqueta-prio @t.ClasePrioridad">@t.TextoPrioridad</span>
+                                }
                                 @if (t.Empresa != null) { <span class="sub">@t.Empresa</span> }
                                 @if (t.Asignado != null) { <span class="sub mono">@t.Asignado</span> }
                                 @if (t.Vencimiento != null)
@@ -249,7 +254,14 @@
 
     private void Nuevo(string estado)
     {
-        edit = new Ticket { Estado = estado, AsignadoA = sesion.UsuarioId };
+        // Una idea a futuro nace sin responsable ni prioridad alta: todavía no es trabajo tomado.
+        edit = new Ticket
+        {
+            Estado = estado,
+            AsignadoA = estado == EstadoTicket.Idea ? null : sesion.UsuarioId,
+            Tipo = estado == EstadoTicket.Idea ? TipoTicket.Mejora : TipoTicket.Pedido,
+            Prioridad = estado == EstadoTicket.Idea ? PrioridadTicket.Baja : PrioridadTicket.Normal
+        };
         notas = new();
         confirmarBaja = false;
         mensaje = null;

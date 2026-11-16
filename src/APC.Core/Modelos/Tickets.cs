@@ -2,6 +2,8 @@ namespace APC.Core.Modelos;
 
 public static class EstadoTicket
 {
+    /// <summary>Ideas a futuro: no son trabajo tomado, esperan ahí hasta que se decidan.</summary>
+    public const string Idea = "IDEA";
     public const string Pendiente = "PENDIENTE";
     public const string EnCurso = "EN_CURSO";
     public const string Esperando = "ESPERANDO";
@@ -10,6 +12,7 @@ public static class EstadoTicket
     /// <summary>Las columnas del tablero, en orden.</summary>
     public static readonly (string Clave, string Titulo)[] Columnas =
     {
+        (Idea, "Ideas"),
         (Pendiente, "Pendiente"),
         (EnCurso, "En curso"),
         (Esperando, "Esperando al cliente"),
@@ -72,6 +75,14 @@ public class Ticket
     public bool Cerrado => Estado == EstadoTicket.Listo;
     public bool Vencido => Vencimiento != null && !Cerrado && Vencimiento.Value.Date < DateTime.Today;
     public bool VenceHoy => Vencimiento?.Date == DateTime.Today && !Cerrado;
+
+    /// <summary>Texto que se muestra en la tarjeta. La prioridad normal no se escribe, para no ensuciar.</summary>
+    public string TextoPrioridad => Prioridad switch
+    {
+        PrioridadTicket.Alta => "Prioridad alta",
+        PrioridadTicket.Baja => "Baja",
+        _ => null
+    };
 
     public string ClasePrioridad => Prioridad switch
     {
