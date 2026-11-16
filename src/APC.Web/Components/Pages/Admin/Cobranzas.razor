@@ -39,14 +39,18 @@
     }
 
     <nav class="pestanias" aria-label="Secciones">
-        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Cobros del mes</button>
-        <button type="button" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="VerFacturadores">Quién factura</button>
+        <button type="button" class="pestania pes-cobros @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">
+            <span class="pes-punto" aria-hidden="true"></span>Cobros del mes
+        </button>
+        <button type="button" class="pestania pes-factu @(pestania == 1 ? "activa" : "")" @onclick="VerFacturadores">
+            <span class="pes-punto" aria-hidden="true"></span>Quién factura
+        </button>
     </nav>
 
     @if (pestania == 1)
     {
         <div class="arqueo-cols">
-            <section class="panel crece tabla-scroll">
+            <section class="panel panel-factu crece tabla-scroll">
                 <table class="tabla">
                     <thead><tr><th>Nombre</th><th>CUIT</th><th>Alias</th><th>Banco</th><th>Estado</th></tr></thead>
                     <tbody>
@@ -73,8 +77,8 @@
 
             @if (editF != null)
             {
-                <aside class="panel cierre panel-ancho">
-                    <h2>@(editF.EsNuevo ? "Nuevo" : editF.Nombre)</h2>
+                <aside class="panel panel-factu cierre panel-ancho">
+                    <h2 class="titulo-factu">@(editF.EsNuevo ? "Nuevo facturador" : editF.Nombre)</h2>
                     <div class="campo"><label for="f-nombre">Nombre</label><input id="f-nombre" class="input" maxlength="100" @bind="editF.Nombre" /></div>
                     <div class="campo"><label for="f-cuit">CUIT</label><input id="f-cuit" class="input mono" maxlength="13" @bind="editF.Cuit" /></div>
                     <div class="campo"><label for="f-alias">Alias para transferencias</label><input id="f-alias" class="input mono" maxlength="60" @bind="editF.Alias" /></div>
@@ -155,7 +159,7 @@
             <div class="kpi"><span class="sub">Sin avisar</span><span class="mono kpi-num">@resumen.SinAvisar</span><span class="sub">todavía no se les mandó</span></div>
         </div>
 
-        <div class="panel tabla-scroll">
+        <div class="panel panel-cobros tabla-scroll">
             <table class="tabla">
                 <thead>
                     <tr>
@@ -246,8 +250,8 @@
 
         @if (edit != null)
         {
-            <section class="panel panel-ancho" aria-label="Detalle del cobro">
-                <h2>@edit.Comercio · @edit.PeriodoTexto</h2>
+            <section class="panel panel-cobros panel-ancho" aria-label="Detalle del cobro">
+                <h2 class="titulo-cobros">@edit.Comercio · @edit.PeriodoTexto</h2>
 
                 <div class="fila-campos">
                     <div class="campo"><label for="d-monto">Importe</label><input id="d-monto" class="input mono" type="number" step="0.01" min="0" @bind="edit.Monto" /></div>

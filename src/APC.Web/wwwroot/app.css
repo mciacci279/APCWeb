@@ -420,3 +420,24 @@ input.input-ajuste { width: 72px; text-align: right; }
 .wa-fila { display: flex; gap: 8px; }
 .wa-fila .btn-whatsapp { min-height: 44px; }
 .input-oscuro.wa-tel { height: 44px; font-size: 15px; }
+
+/* ---- Cobranzas: cada solapa con su color ---- */
+:root {
+  --cobro: #0E7C86;        /* Cobros del mes */
+  --cobro-claro: #E3F3F5;
+  --factu: #4A4FA6;        /* Quién factura */
+  --factu-claro: #ECEDF8;
+}
+.pes-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.pes-cobros .pes-punto { background: var(--cobro); }
+.pes-factu .pes-punto { background: var(--factu); }
+.pes-cobros.activa { background: var(--cobro); color: #fff; }
+.pes-factu.activa { background: var(--factu); color: #fff; }
+.pestania.activa .pes-punto { background: #fff; }
+.pes-cobros:hover:not(.activa) { background: var(--cobro-claro); color: var(--cobro); }
+.pes-factu:hover:not(.activa) { background: var(--factu-claro); color: var(--factu); }
+
+.panel-cobros { border-top: 3px solid var(--cobro); }
+.panel-factu { border-top: 3px solid var(--factu); }
+.titulo-cobros { color: var(--cobro); }
+.titulo-factu { color: var(--factu); }
