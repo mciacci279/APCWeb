@@ -1,0 +1,323 @@
+@page "/admin/trabajo"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject TicketService TicketSrv
+@inject EmpresaCentralService EmpresaSrv
+
+<PageTitle>Trabajo · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Trabajo</h1>
+            <span class="sub">Pendientes, errores y pedidos de los clientes</span>
+        </div>
+        <div class="fila-campos">
+            <div class="campo">
+                <label for="f-empresa">Empresa</label>
+                <select id="f-empresa" class="input" @bind="filtroEmpresa" @bind:after="Cargar">
+                    <option value="">Todas</option>
+                    @foreach (var e in empresas)
+                    {
+                        <option value="@e.Id">@e.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="campo">
+                <label for="f-quien">Responsable</label>
+                <select id="f-quien" class="input" @bind="filtroUsuario" @bind:after="Cargar">
+                    <option value="">Todos</option>
+                    @foreach (var u in usuarios)
+                    {
+                        <option value="@u.Id">@u.Nombre</option>
+                    }
+                </select>
+            </div>
+            <button type="button" class="btn btn-primario" @onclick="() => Nuevo(EstadoTicket.Pendiente)">+ Nueva tarjeta</button>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <div class="tablero">
+        @foreach (var (clave, titulo) in EstadoTicket.Columnas)
+        {
+            var tarjetas = lista.Where(t => t.Estado == clave).ToList();
+            <section class="columna col-@clave.ToLowerInvariant()" aria-label="@titulo">
+                <header class="columna-cab">
+                    <h2>@titulo</h2>
+                    <span class="columna-cuenta">@tarjetas.Count</span>
+                </header>
+
+                <div class="columna-cuerpo">
+                    @if (tarjetas.Count == 0)
+                    {
+                        <p class="sub columna-vacia">Sin tarjetas.</p>
+                    }
+                    @foreach (var t in tarjetas)
+                    {
+                        <article class="tarjeta @t.ClasePrioridad @(edit?.Id == t.Id ? "tarjeta-sel" : "")">
+                            <button type="button" class="tarjeta-titulo" @onclick="() => Seleccionar(t)">
+                                <span class="tarjeta-nro mono">#@t.Numero</span>
+                                @t.Titulo
+                            </button>
+
+                            <div class="tarjeta-datos">
+                                <span class="etiqueta-tipo tipo-@t.Tipo.ToLowerInvariant()">@TipoTicket.Titulo(t.Tipo)</span>
+                                @if (t.Empresa != null) { <span class="sub">@t.Empresa</span> }
+                                @if (t.Asignado != null) { <span class="sub mono">@t.Asignado</span> }
+                                @if (t.Vencimiento != null)
+                                {
+                                    <span class="@(t.Vencido ? "venc-tarde" : t.VenceHoy ? "venc-hoy" : "sub")">
+                                        @(t.Vencido ? "venció " : "")@t.Vencimiento.Value.ToString("dd/MM")
+                                    </span>
+                                }
+                                @if (t.Notas > 0) { <span class="sub">@t.Notas nota@(t.Notas == 1 ? "" : "s")</span> }
+                            </div>
+
+                            <div class="tarjeta-botones">
+                                <button type="button" class="btn-mover" title="Subir" aria-label="Subir" @onclick="() => Reordenar(t, true)">↑</button>
+                                <button type="button" class="btn-mover" title="Bajar" aria-label="Bajar" @onclick="() => Reordenar(t, false)">↓</button>
+                                <div class="crece"></div>
+                                @foreach (var destino in EstadoTicket.Columnas.Where(c => c.Clave != t.Estado))
+                                {
+                                    <button type="button" class="btn-mover btn-mover-col" title="Mover a @destino.Titulo"
+                                            @onclick="() => Mover(t, destino.Clave)">@destino.Titulo</button>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+
+                <button type="button" class="columna-agregar" @onclick="() => Nuevo(clave)">+ Agregar acá</button>
+            </section>
+        }
+    </div>
+
+    @if (edit != null)
+    {
+        <section class="panel panel-ancho" aria-label="Detalle de la tarjeta">
+            <h2>@(edit.EsNuevo ? "Nueva tarjeta" : $"#{edit.Numero} · {edit.Titulo}")</h2>
+
+            <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" class="input" maxlength="150" @bind="edit.Titulo" /></div>
+            <div class="campo">
+                <label for="t-detalle">Detalle</label>
+                <textarea id="t-detalle" class="input input-area" rows="4" @bind="edit.Detalle"
+                          placeholder="Qué hay que hacer, cómo se reprodujo el error, qué pidió el cliente…"></textarea>
+            </div>
+
+            <div class="fila-campos">
+                <div class="campo">
+                    <label for="t-tipo">Tipo</label>
+                    <select id="t-tipo" class="input" @bind="edit.Tipo">
+                        @foreach (var x in TipoTicket.Todos)
+                        {
+                            <option value="@x">@TipoTicket.Titulo(x)</option>
+                        }
+                    </select>
+                </div>
+                <div class="campo">
+                    <label for="t-prio">Prioridad</label>
+                    <select id="t-prio" class="input" @bind="edit.Prioridad">
+                        <option value="@PrioridadTicket.Baja">Baja</option>
+                        <option value="@PrioridadTicket.Normal">Normal</option>
+                        <option value="@PrioridadTicket.Alta">Alta</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label for="t-empresa">Empresa</label>
+                    <select id="t-empresa" class="input" @bind="EmpresaElegida">
+                        <option value="">(ninguna)</option>
+                        @foreach (var e in empresas)
+                        {
+                            <option value="@e.Id">@e.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="campo">
+                    <label for="t-quien">Responsable</label>
+                    <select id="t-quien" class="input" @bind="UsuarioElegido">
+                        <option value="">(sin asignar)</option>
+                        @foreach (var u in usuarios)
+                        {
+                            <option value="@u.Id">@u.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="campo">
+                    <label for="t-venc">Para cuándo</label>
+                    <input id="t-venc" class="input" type="date" @bind="edit.Vencimiento" />
+                </div>
+            </div>
+
+            <div class="fila-btns">
+                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNuevo ? "Crear" : "Guardar")</button>
+                <button type="button" class="btn" @onclick="Cerrar">Cerrar</button>
+                @if (!edit.EsNuevo)
+                {
+                    <div class="crece"></div>
+                    @if (confirmarBaja)
+                    {
+                        <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Eliminar">Confirmar borrado</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn" @onclick="() => confirmarBaja = true">Borrar</button>
+                    }
+                }
+            </div>
+
+            @if (!edit.EsNuevo)
+            {
+                <h3 class="sub-titulo">Novedades</h3>
+                <div class="fila-btns">
+                    <input class="input crece" aria-label="Nueva novedad" maxlength="1000" @bind="notaNueva"
+                           placeholder="Qué se hizo, qué respondió el cliente…" />
+                    <button type="button" class="btn" disabled="@ocupado" @onclick="AgregarNota">Agregar</button>
+                </div>
+
+                @if (notas.Count == 0)
+                {
+                    <p class="sub">Todavía no hay novedades.</p>
+                }
+                @foreach (var n in notas)
+                {
+                    <div class="nota">
+                        <span class="sub">@n.Fecha.ToString("dd/MM/yyyy HH:mm") · @n.Usuario</span>
+                        <span>@n.Texto</span>
+                    </div>
+                }
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private SesionActual sesion;
+    private List<Ticket> lista = new();
+    private List<TenantConfig> empresas = new();
+    private List<OpcionItem> usuarios = new();
+
+    private Ticket edit;
+    private List<TicketNota> notas = new();
+    private string notaNueva;
+    private bool confirmarBaja;
+
+    private string filtroEmpresa = "";
+    private string filtroUsuario = "";
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+
+    private string EmpresaElegida
+    {
+        get => edit.EmpresaId?.ToString() ?? "";
+        set => edit.EmpresaId = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    private string UsuarioElegido
+    {
+        get => edit.AsignadoA?.ToString() ?? "";
+        set => edit.AsignadoA = Guid.TryParse(value, out var g) ? g : null;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        empresas = await EmpresaSrv.ListarAsync();
+        usuarios = await TicketSrv.UsuariosCmTechAsync();
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            lista = await TicketSrv.ListarAsync(
+                Guid.TryParse(filtroEmpresa, out var e) ? e : null,
+                Guid.TryParse(filtroUsuario, out var u) ? u : null);
+        }
+        catch (Exception ex)
+        {
+            Aviso(false, "No se pudo leer el tablero. ¿Se ejecutó el script 13 en APCWeb_Central? Detalle: " + ex.Message);
+        }
+    }
+
+    private void Nuevo(string estado)
+    {
+        edit = new Ticket { Estado = estado, AsignadoA = sesion.UsuarioId };
+        notas = new();
+        confirmarBaja = false;
+        mensaje = null;
+    }
+
+    private async Task Seleccionar(Ticket t)
+    {
+        edit = await TicketSrv.ObtenerAsync(t.Id) ?? t;
+        notas = await TicketSrv.NotasAsync(t.Id);
+        confirmarBaja = false;
+        mensaje = null;
+    }
+
+    private void Cerrar() { edit = null; notas = new(); }
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await TicketSrv.GuardarAsync(edit, sesion.UsuarioId);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, "Guardado.");
+            await Cargar();
+            edit = await TicketSrv.ObtenerAsync(edit.Id);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Mover(Ticket t, string estado)
+    {
+        await TicketSrv.MoverAsync(t.Id, estado, sesion.UsuarioId);
+        await Cargar();
+        if (edit?.Id == t.Id) edit = await TicketSrv.ObtenerAsync(t.Id);
+    }
+
+    private async Task Reordenar(Ticket t, bool subir)
+    {
+        await TicketSrv.ReordenarAsync(t.Id, subir);
+        await Cargar();
+    }
+
+    private async Task Eliminar()
+    {
+        ocupado = true;
+        try
+        {
+            await TicketSrv.EliminarAsync(edit.Id);
+            Aviso(true, "Tarjeta borrada.");
+            Cerrar();
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task AgregarNota()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await TicketSrv.AgregarNotaAsync(edit.Id, sesion.UsuarioId, notaNueva);
+            if (error != null) { Aviso(false, error); return; }
+            notaNueva = null;
+            notas = await TicketSrv.NotasAsync(edit.Id);
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

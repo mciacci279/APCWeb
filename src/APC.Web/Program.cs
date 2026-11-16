@@ -70,6 +70,7 @@ builder.Services.AddSingleton<SucursalService>();
 builder.Services.AddSingleton<TableroService>();
 builder.Services.AddSingleton<CobranzaService>();
 builder.Services.AddSingleton<FacturaAbonoService>();
+builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<ProductoService>();
 builder.Services.AddSingleton<ImportadorProductosService>();
 builder.Services.AddScoped<SesionService>();
