@@ -10,9 +10,8 @@
     <header class="fact-head">
         <div class="fact-titulo">
             <h1>Sucursales</h1>
-            <span class="sub">Cada sucursal tiene su punto de venta de ARCA y su propio stock</span>
+            <span class="sub">Stock por sucursal: ajustes y transferencias</span>
         </div>
-        <button type="button" class="btn btn-primario" @onclick="Nueva">+ Nueva sucursal</button>
     </header>
 
     @if (mensaje != null)
@@ -21,79 +20,38 @@
     }
 
     <nav class="pestanias" aria-label="Secciones">
-        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Sucursales</button>
+        <button type="button" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Mis sucursales</button>
         <button type="button" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Mover stock</button>
         <button type="button" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="VerMovimientos">Movimientos</button>
     </nav>
 
     @if (pestania == 0)
     {
-        <div class="arqueo-cols">
-            <section class="panel crece tabla-scroll">
-                <table class="tabla">
-                    <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Estado</th></tr></thead>
-                    <tbody>
-                        @if (lista.Count == 0)
-                        {
-                            <tr><td colspan="5" class="sub">Todavía no hay sucursales cargadas.</td></tr>
-                        }
-                        @foreach (var s in lista)
-                        {
-                            <tr class="@(edit?.Id == s.Id ? "fila-sel" : "") @(s.Activa ? "" : "fila-baja")">
-                                <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
-                                <td><button type="button" class="link-fila" @onclick="() => Seleccionar(s)">@s.Nombre</button></td>
-                                <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
-                                <td>@s.Telefono</td>
-                                <td>
-                                    @if (s.Activa) { <span>Activa</span> }
-                                    else { <span class="etiqueta etiqueta-falta">Inactiva</span> }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </section>
-
-            @if (edit != null)
-            {
-                <aside class="panel cierre panel-ancho">
-                    <h2>@(edit.EsNueva ? "Nueva sucursal" : edit.Nombre)</h2>
-
-                    <div class="campo"><label for="s-nombre">Nombre</label><input id="s-nombre" class="input" maxlength="100" @bind="edit.Nombre" placeholder="ej. Sucursal Centro" /></div>
-                    <div class="campo">
-                        <label for="s-pv">Punto de venta</label>
-                        <input id="s-pv" class="input mono" type="number" min="1" max="99999" @bind="edit.PuntoVenta" />
-                        <span class="sub">Tiene que estar dado de alta en ARCA para factura electrónica por webservice.</span>
-                    </div>
-                    <div class="fila-campos">
-                        <div class="campo crece"><label for="s-dom">Domicilio</label><input id="s-dom" class="input" maxlength="150" @bind="edit.Domicilio" /></div>
-                        <div class="campo crece"><label for="s-loc">Localidad</label><input id="s-loc" class="input" maxlength="100" @bind="edit.Localidad" /></div>
-                    </div>
-                    <div class="campo"><label for="s-tel">Teléfono</label><input id="s-tel" class="input" maxlength="50" @bind="edit.Telefono" /></div>
-                    <div class="campo">
-                        <label for="s-ley">Leyenda del ticket</label>
-                        <input id="s-ley" class="input" maxlength="200" @bind="edit.LeyendaTicket" placeholder="Vacío: se usa la de la empresa" />
-                    </div>
-
-                    <div class="fila-btns">
-                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNueva ? "Crear sucursal" : "Guardar cambios")</button>
-                        <button type="button" class="btn" disabled="@ocupado" @onclick="() => edit = null">Cancelar</button>
-                        @if (!edit.EsNueva)
-                        {
-                            <div class="crece"></div>
-                            <button type="button" class="btn" disabled="@ocupado" @onclick="() => CambiarEstado(!edit.Activa)">
-                                @(edit.Activa ? "Desactivar" : "Reactivar")
-                            </button>
-                        }
-                    </div>
-
-                    @if (edit.EsNueva)
+        <div class="panel tabla-scroll">
+            <table class="tabla">
+                <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @if (lista.Count == 0)
                     {
-                        <p class="alerta alerta-aviso">La sucursal nueva arranca con todos los productos en cero. Después se le carga stock con «Mover stock».</p>
+                        <tr><td colspan="5" class="sub">Todavía no hay sucursales cargadas.</td></tr>
                     }
-                </aside>
-            }
+                    @foreach (var s in lista)
+                    {
+                        <tr class="@(s.Activa ? "" : "fila-baja")">
+                            <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
+                            <td>@s.Nombre</td>
+                            <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
+                            <td>@s.Telefono</td>
+                            <td>
+                                @if (s.Activa) { <span>Activa</span> }
+                                else { <span class="etiqueta etiqueta-falta">Inactiva</span> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
+        <p class="sub">Para abrir una sucursal nueva o cambiar su punto de venta, comunicate con CM Tech: cada punto de venta se da de alta en ARCA.</p>
     }
     else if (pestania == 1)
     {
@@ -225,7 +183,6 @@
     private SesionActual sesion;
     private List<Sucursal> lista = new();
     private List<Sucursal> activas => lista.Where(s => s.Activa).ToList();
-    private Sucursal edit;
     private int pestania;
     private string mensaje;
     private bool mensajeOk;
@@ -265,50 +222,9 @@
         }
     }
 
-    private void Nueva()
-    {
-        edit = new Sucursal { PuntoVenta = lista.Count == 0 ? 1 : lista.Max(s => s.PuntoVenta) + 1 };
-        pestania = 0;
-        mensaje = null;
-    }
 
-    private void Seleccionar(Sucursal s)
-    {
-        edit = new Sucursal
-        {
-            Id = s.Id, Nombre = s.Nombre, PuntoVenta = s.PuntoVenta, Domicilio = s.Domicilio,
-            Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa
-        };
-        mensaje = null;
-    }
 
-    private async Task Guardar()
-    {
-        ocupado = true;
-        try
-        {
-            var error = await SucursalSrv.GuardarAsync(sesion.Cs, edit);
-            if (error != null) { Aviso(false, error); return; }
-            Aviso(true, edit.EsNueva ? "Sucursal creada." : "Sucursal actualizada.");
-            await Recargar();
-            edit = null;
-        }
-        finally { ocupado = false; }
-    }
 
-    private async Task CambiarEstado(bool activa)
-    {
-        ocupado = true;
-        try
-        {
-            var error = await SucursalSrv.CambiarEstadoAsync(sesion.Cs, edit.Id, activa);
-            if (error != null) { Aviso(false, error); return; }
-            Aviso(true, activa ? "Sucursal reactivada." : "Sucursal desactivada.");
-            await Recargar();
-            edit = null;
-        }
-        finally { ocupado = false; }
-    }
 
     private async Task BuscarProducto(KeyboardEventArgs e)
     {

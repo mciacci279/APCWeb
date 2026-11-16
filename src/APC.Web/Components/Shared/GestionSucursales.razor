@@ -1,0 +1,148 @@
+@* Alta y baja de sucursales de una empresa. Solo lo maneja CM Tech: cada sucursal
+   lleva un punto de venta de ARCA, así que no lo decide el cliente. *@
+@using APC.Core.Tenants
+@inject SucursalService SucursalSrv
+
+<div class="gestion-sucursales">
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <table class="tabla tabla-chica">
+        <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Estado</th></tr></thead>
+        <tbody>
+            @if (lista.Count == 0)
+            {
+                <tr><td colspan="4" class="sub">Todavía no hay sucursales. Se crea una sola, «Casa central», la primera vez que el cliente entra.</td></tr>
+            }
+            @foreach (var s in lista)
+            {
+                <tr class="@(edit?.Id == s.Id ? "fila-sel" : "") @(s.Activa ? "" : "fila-baja")">
+                    <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
+                    <td><button type="button" class="link-fila" @onclick="() => Seleccionar(s)">@s.Nombre</button></td>
+                    <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
+                    <td>@(s.Activa ? "Activa" : "Inactiva")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="fila-btns">
+        <button type="button" class="btn" disabled="@ocupado" @onclick="Nueva">+ Nueva sucursal</button>
+    </div>
+
+    @if (edit != null)
+    {
+        <section class="panel cierre" aria-label="Sucursal">
+            <h3 class="sub-titulo">@(edit.EsNueva ? "Nueva sucursal" : edit.Nombre)</h3>
+
+            <div class="fila-campos">
+                <div class="campo crece"><label for="gs-nombre">Nombre</label><input id="gs-nombre" class="input" maxlength="100" @bind="edit.Nombre" placeholder="ej. Sucursal Centro" /></div>
+                <div class="campo">
+                    <label for="gs-pv">Punto de venta</label>
+                    <input id="gs-pv" class="input mono input-chico" type="number" min="1" max="99999" @bind="edit.PuntoVenta" />
+                </div>
+            </div>
+            <div class="fila-campos">
+                <div class="campo crece"><label for="gs-dom">Domicilio</label><input id="gs-dom" class="input" maxlength="150" @bind="edit.Domicilio" /></div>
+                <div class="campo crece"><label for="gs-loc">Localidad</label><input id="gs-loc" class="input" maxlength="100" @bind="edit.Localidad" /></div>
+                <div class="campo"><label for="gs-tel">Teléfono</label><input id="gs-tel" class="input" maxlength="50" @bind="edit.Telefono" /></div>
+            </div>
+            <div class="campo">
+                <label for="gs-ley">Leyenda del ticket</label>
+                <input id="gs-ley" class="input" maxlength="200" @bind="edit.LeyendaTicket" placeholder="Vacío: se usa la de la empresa" />
+            </div>
+
+            <div class="fila-btns">
+                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNueva ? "Crear sucursal" : "Guardar cambios")</button>
+                <button type="button" class="btn" @onclick="() => edit = null">Cancelar</button>
+                @if (!edit.EsNueva)
+                {
+                    <div class="crece"></div>
+                    <button type="button" class="btn" disabled="@ocupado" @onclick="() => CambiarEstado(!edit.Activa)">
+                        @(edit.Activa ? "Desactivar" : "Reactivar")
+                    </button>
+                }
+            </div>
+
+            <p class="sub">El punto de venta tiene que estar dado de alta en ARCA para factura electrónica por webservice, con el CUIT de esta empresa. La sucursal nueva arranca con todos los productos en cero.</p>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TenantConfig Tenant { get; set; }
+
+    private List<Sucursal> lista = new();
+    private Sucursal edit;
+    private string mensaje;
+    private bool mensajeOk;
+    private bool ocupado;
+    private Guid tenantCargado;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Tenant == null || tenantCargado == Tenant.Id) return;
+        tenantCargado = Tenant.Id;
+        edit = null;
+        mensaje = null;
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        try { lista = await SucursalSrv.ListarAsync(Tenant.ConnectionString); }
+        catch (Exception ex)
+        {
+            lista = new();
+            Aviso(false, "No se pudieron leer las sucursales. ¿Se ejecutó el script 07 en la base de esta empresa? Detalle: " + ex.Message);
+        }
+    }
+
+    private void Nueva()
+    {
+        edit = new Sucursal { PuntoVenta = lista.Count == 0 ? Tenant.PuntoVenta : lista.Max(s => s.PuntoVenta) + 1 };
+        mensaje = null;
+    }
+
+    private void Seleccionar(Sucursal s)
+    {
+        edit = new Sucursal
+        {
+            Id = s.Id, Nombre = s.Nombre, PuntoVenta = s.PuntoVenta, Domicilio = s.Domicilio,
+            Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa
+        };
+        mensaje = null;
+    }
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.GuardarAsync(Tenant.ConnectionString, edit);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, edit.EsNueva ? "Sucursal creada." : "Sucursal actualizada.");
+            edit = null;
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CambiarEstado(bool activa)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.CambiarEstadoAsync(Tenant.ConnectionString, edit.Id, activa);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, activa ? "Sucursal reactivada." : "Sucursal desactivada.");
+            edit = null;
+            await Cargar();
+        }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

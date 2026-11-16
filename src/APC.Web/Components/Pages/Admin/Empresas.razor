@@ -84,6 +84,7 @@
                     <div class="pestanias" role="tablist">
                         <button type="button" role="tab" aria-selected="@(pestania == 0 ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 1 ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Usuarios</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 3 ? "true" : "false")" class="pestania @(pestania == 3 ? "activa" : "")" @onclick="() => pestania = 3">Sucursales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
                     <div class="t-fila"><span class="sub">Link de ingreso</span><span class="mono">@LinkIngreso</span></div>
@@ -226,6 +227,10 @@
                         <p class="alerta alerta-aviso">En producción las facturas tienen validez fiscal. Usá el certificado de producción.</p>
                     }
                     <button type="button" class="btn btn-primario btn-grande" disabled="@ocupado" @onclick="Guardar">@(esNueva ? "Crear empresa" : "Guardar cambios")</button>
+                }
+                else if (pestania == 3)
+                {
+                    <GestionSucursales Tenant="edit" />
                 }
                 else if (pestania == 1)
                 {
