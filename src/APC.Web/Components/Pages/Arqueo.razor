@@ -63,7 +63,7 @@ else
             <h2>Detalle por tipo y forma de pago</h2>
             <div class="tabla-scroll">
                 <table class="tabla">
-                    <thead><tr><th>Tipo / forma de pago</th><th class="der">Comprob.</th><th class="der">Total</th></tr></thead>
+                    <thead><tr><th>Tipo / forma de pago</th><th class="der">Cantidad de comprobantes</th><th class="der">Total</th></tr></thead>
                     <tbody>
                         @if (arqueo.Grupos.Count == 0)
                         {
@@ -189,7 +189,7 @@ else
             <h3 class="sub-titulo">Caja de @cajaVista.Usuario · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")</h3>
             <div class="kpis kpis-chicos">
                 <div class="kpi"><span class="sub">Ventas</span><span class="mono kpi-num">@Pesos(arqueoVista.Ventas)</span></div>
-                <div class="kpi"><span class="sub">Comprobantes</span><span class="mono kpi-num">@arqueoVista.CantidadComprobantes</span></div>
+                <div class="kpi"><span class="sub">Cantidad de comprobantes</span><span class="mono kpi-num">@arqueoVista.CantidadComprobantes</span></div>
                 <div class="kpi"><span class="sub">Efectivo esperado</span><span class="mono kpi-num">@Pesos(arqueoVista.EfectivoEsperado + cajaVista.MontoInicial)</span></div>
                 @if (cajaVista.EfectivoContado != null)
                 {
