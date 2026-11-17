@@ -30,7 +30,7 @@
             @if (anulando.EsNotaPedido)
             {
                 <h2>Anular nota de pedido X @Numero(anulando.Terminal, anulando.NumeroInterno)</h2>
-                <p>La nota de pedido queda marcada como anulada (@Pesos(anulando.MontoTotal)). No se informa a ARCA. @(devuelveStock ? "El stock vuelve a sumar las cantidades." : "")</p>
+                <p>La nota de pedido queda marcada como anulada (@Pesos(anulando.MontoTotal)). @(devuelveStock ? "El stock vuelve a sumar las cantidades." : "")</p>
             }
             else
             {
