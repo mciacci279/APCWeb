@@ -44,7 +44,7 @@ else
             </div>
         </header>
 
-        @if (turno == null)
+        @if (turno == null && ExigeCaja)
         {
             <p class="alerta alerta-aviso">La caja está cerrada. <a href="/arqueo">Abrí la caja</a> para poder facturar.</p>
         }
@@ -62,7 +62,7 @@ else
         <div class="buscador">
             <label class="sr-only" for="buscar">Buscar producto</label>
             <input id="buscar" class="input input-buscar" placeholder="Código de barras o descripción  (F2) · 3*código para cantidad"
-                   autocomplete="off" disabled="@(turno == null || resultado != null)"
+                   autocomplete="off" disabled="@((turno == null && ExigeCaja) || resultado != null)"
                    @bind="textoBusqueda" @bind:event="oninput" @onkeydown="BuscarKey" />
             @if (resultados.Count > 0)
             {
@@ -131,7 +131,7 @@ else
     </main>
 
     <aside class="ticket" aria-label="Cobro">
-        <div class="t-fila sub-claro"><span>@sesion.Nombre</span><span>@(turno != null ? "Caja abierta " + turno.FechaApertura.ToString("HH:mm") : "Caja cerrada")</span></div>
+        <div class="t-fila sub-claro"><span>@sesion.Nombre</span><span>@EstadoCaja</span></div>
 
         @if (resultado != null && resultado.Ok)
         {
@@ -321,7 +321,14 @@ else
     private const bool MostrarPagaCon = false;
     /// <summary>Botones de nota de pedido ocultos: funcionan solo con las teclas.</summary>
     private const bool MostrarBotonesPedido = false;
-    private bool PuedeEmitir => !emitiendo && turno != null && factura.Renglones.Count > 0 && formaPago != null && !FaltanPrecios
+    /// <summary>Sucursales donde el dueño factura solo: no se les pide abrir la caja (script 16).</summary>
+    private bool ExigeCaja => sesion?.Sucursal?.ExigeCaja ?? true;
+
+    private string EstadoCaja =>
+        turno != null ? "Caja abierta " + turno.FechaApertura.ToString("HH:mm")
+        : ExigeCaja ? "Caja cerrada" : "Sin caja";
+
+    private bool PuedeEmitir => !emitiendo && (turno != null || !ExigeCaja) && factura.Renglones.Count > 0 && formaPago != null && !FaltanPrecios
                                 && (formaPago.EsEfectivo == false || pagaCon == 0 || pagaCon >= totales.Total);
 
     protected override async Task OnInitializedAsync()
@@ -447,7 +454,7 @@ else
     /// <summary>Por qué el botón de emitir está deshabilitado (null si se puede emitir o no hay nada cargado).</summary>
     private string MotivoNoEmitir =>
         emitiendo || factura.Renglones.Count == 0 ? null :
-        turno == null ? "La caja está cerrada: abrila en Arqueo para poder facturar." :
+        turno == null && ExigeCaja ? "La caja está cerrada: abrila en Arqueo para poder facturar." :
         formasPago.Count == 0 ? "No hay formas de pago cargadas en esta empresa. Pedile a CM Tech que las configure." :
         formaPago == null ? "Elegí la forma de pago." :
         FaltanPrecios ? "Hay renglones sin precio. Escribilo en el renglón marcado." :

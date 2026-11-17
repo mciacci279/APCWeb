@@ -12,11 +12,19 @@ namespace APC.Core.Servicios;
 /// </summary>
 public class SucursalService
 {
+    /// <summary>Columna agregada por el script 16: puede no existir todavía.</summary>
+    private static async Task<string> ColumnaExigeCajaAsync(IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.Sucursal', 'ExigeCaja') IS NULL THEN 0 ELSE 1 END") == 1
+            ? "ExigeCaja"
+            : "CAST(1 AS BIT) AS ExigeCaja";
+
     public async Task<List<Sucursal>> ListarAsync(string cs, bool incluirInactivas = true)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<Sucursal>(
-            $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta
+            $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta,
+                      {await ColumnaExigeCajaAsync(cn)}
                FROM dbo.Sucursal
                {(incluirInactivas ? "" : "WHERE Activa = 1")}
                ORDER BY PuntoVenta")).ToList();
@@ -26,8 +34,9 @@ public class SucursalService
     {
         using var cn = await Db.AbrirAsync(cs);
         return await cn.QueryFirstOrDefaultAsync<Sucursal>(
-            @"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta
-              FROM dbo.Sucursal WHERE Id = @id", new { id });
+            $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta,
+                      {await ColumnaExigeCajaAsync(cn)}
+               FROM dbo.Sucursal WHERE Id = @id", new { id });
     }
 
     /// <summary>
@@ -38,7 +47,8 @@ public class SucursalService
     {
         using var cn = await Db.AbrirAsync(tenant.ConnectionString);
         var existente = await cn.QueryFirstOrDefaultAsync<Sucursal>(
-            "SELECT TOP 1 Id, Nombre, PuntoVenta, LeyendaTicket, Activa FROM dbo.Sucursal ORDER BY PuntoVenta");
+            $@"SELECT TOP 1 Id, Nombre, PuntoVenta, LeyendaTicket, Activa, {await ColumnaExigeCajaAsync(cn)}
+               FROM dbo.Sucursal ORDER BY PuntoVenta");
         if (existente != null) return existente;
 
         var id = Guid.NewGuid();
@@ -76,9 +86,12 @@ public class SucursalService
         {
             s.Id = Guid.NewGuid();
             using var tx = cn.BeginTransaction();
+            var conExigeCaja = await ColumnaExigeCajaAsync(cn) == "ExigeCaja";
             await cn.ExecuteAsync(
-                @"INSERT INTO dbo.Sucursal (Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta)
-                  VALUES (@Id, @Nombre, @PuntoVenta, @Domicilio, @Localidad, @Telefono, @LeyendaTicket, 1, GETDATE())", s, tx);
+                $@"INSERT INTO dbo.Sucursal (Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta
+                           {(conExigeCaja ? ", ExigeCaja" : "")})
+                   VALUES (@Id, @Nombre, @PuntoVenta, @Domicilio, @Localidad, @Telefono, @LeyendaTicket, 1, GETDATE()
+                           {(conExigeCaja ? ", @ExigeCaja" : "")})", s, tx);
 
             // La sucursal nueva arranca con todos los productos en cero.
             await cn.ExecuteAsync(
@@ -88,10 +101,12 @@ public class SucursalService
         }
         else
         {
+            var conExigeCaja = await ColumnaExigeCajaAsync(cn) == "ExigeCaja";
             await cn.ExecuteAsync(
-                @"UPDATE dbo.Sucursal SET Nombre = @Nombre, PuntoVenta = @PuntoVenta, Domicilio = @Domicilio,
-                         Localidad = @Localidad, Telefono = @Telefono, LeyendaTicket = @LeyendaTicket, Activa = @Activa
-                  WHERE Id = @Id", s);
+                $@"UPDATE dbo.Sucursal SET Nombre = @Nombre, PuntoVenta = @PuntoVenta, Domicilio = @Domicilio,
+                          Localidad = @Localidad, Telefono = @Telefono, LeyendaTicket = @LeyendaTicket, Activa = @Activa
+                          {(conExigeCaja ? ", ExigeCaja = @ExigeCaja" : "")}
+                   WHERE Id = @Id", s);
         }
         return null;
     }

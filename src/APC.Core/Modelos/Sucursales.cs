@@ -12,6 +12,9 @@ public class Sucursal
     /// <summary>Leyenda propia al pie del ticket. Vacía = se usa la de la empresa.</summary>
     public string LeyendaTicket { get; set; }
     public bool Activa { get; set; } = true;
+    /// <summary>Si hay que abrir la caja para poder facturar en esta sucursal.
+    /// Un dueño que factura solo no la necesita; con empleados conviene dejarla en true.</summary>
+    public bool ExigeCaja { get; set; } = true;
     public DateTime FechaAlta { get; set; }
 
     /// <summary>Cantidad de usuarios asignados (solo se completa en el listado).</summary>

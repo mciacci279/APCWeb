@@ -53,6 +53,10 @@
                 <label for="gs-ley">Leyenda del ticket</label>
                 <input id="gs-ley" class="input" maxlength="200" @bind="edit.LeyendaTicket" placeholder="Vacío: se usa la de la empresa" />
             </div>
+            <div class="campo">
+                <label class="check"><input type="checkbox" @bind="edit.ExigeCaja" /> Exigir apertura de caja para facturar</label>
+                <p class="sub">Destildalo cuando el dueño factura solo y no lleva caja. Con empleados conviene dejarlo tildado: sin caja abierta no se puede facturar y queda el arqueo del turno.</p>
+            </div>
 
             <div class="fila-btns">
                 <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNueva ? "Crear sucursal" : "Guardar cambios")</button>
@@ -111,7 +115,8 @@
         edit = new Sucursal
         {
             Id = s.Id, Nombre = s.Nombre, PuntoVenta = s.PuntoVenta, Domicilio = s.Domicilio,
-            Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa
+            Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa,
+            ExigeCaja = s.ExigeCaja
         };
         mensaje = null;
     }
