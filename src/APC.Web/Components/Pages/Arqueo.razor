@@ -190,7 +190,9 @@ else
             <div class="kpis kpis-chicos">
                 <div class="kpi"><span class="sub">Ventas</span><span class="mono kpi-num">@Pesos(arqueoVista.Ventas)</span></div>
                 <div class="kpi"><span class="sub">Cantidad de comprobantes</span><span class="mono kpi-num">@arqueoVista.CantidadComprobantes</span></div>
-                <div class="kpi"><span class="sub">Efectivo esperado</span><span class="mono kpi-num">@Pesos(arqueoVista.EfectivoEsperado + cajaVista.MontoInicial)</span></div>
+                <div class="kpi"><span class="sub">Monto inicial</span><span class="mono kpi-num">@Pesos(cajaVista.MontoInicial)</span></div>
+                @* EfectivoEsperado ya trae sumado el monto inicial del turno: no se vuelve a sumar. *@
+                <div class="kpi"><span class="sub">Efectivo esperado</span><span class="mono kpi-num">@Pesos(arqueoVista.EfectivoEsperado)</span></div>
                 @if (cajaVista.EfectivoContado != null)
                 {
                     <div class="kpi @(cajaVista.Diferencia < 0 ? "falta" : "")">
