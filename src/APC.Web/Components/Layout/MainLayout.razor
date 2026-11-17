@@ -2,34 +2,21 @@
 @inject SesionService SesionSrv
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider Auth
+@inject IJSRuntime JS
 
-<div class="app">
+<div class="app @(plegada ? "rail-plegada" : "")">
     <nav class="rail" aria-label="Menú principal">
         <div class="rail-marca">
-            <div class="rail-logo">APC</div>
-            <span class="rail-marca-txt">APC Web</span>
+            <button type="button" class="rail-plegar" @onclick="Plegar"
+                    title="@(plegada ? "Desplegar el menú" : "Plegar el menú")"
+                    aria-label="@(plegada ? "Desplegar el menú" : "Plegar el menú")" aria-expanded="@(!plegada)">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+            </button>
+            <span class="rail-marca-txt">APC<span class="rail-marca-dos">Web</span></span>
         </div>
 
-        @if (sesion != null)
-        {
-            <div class="rail-quien" title="@Quien">
-                <span class="rail-quien-nombre">@(string.IsNullOrWhiteSpace(sesion.Nombre) ? sesion.Usuario : sesion.Nombre)</span>
-                @if (sesion.EsSuperAdmin)
-                {
-                    <span class="rail-quien-dato">CM Tech</span>
-                }
-                else
-                {
-                    <span class="rail-quien-dato">@Comercio</span>
-                    @if (sesion.Sucursal != null)
-                    {
-                        <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre · Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
-                    }
-                }
-            </div>
-        }
-
         <AuthorizeView Roles="@SesionService.RolEmpleado">
+            <p class="rail-grupo">Trabajo diario</p>
             <NavLink class="rail-btn" href="/" Match="NavLinkMatch.All" title="Facturar" aria-label="Facturar">
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path><path d="M9 8h6M9 12h6"></path></svg>
                 <span>Facturar</span>
@@ -45,6 +32,7 @@
         </AuthorizeView>
 
         <AuthorizeView Roles="@SesionService.RolAdmin">
+            <p class="rail-grupo">Administración</p>
             <NavLink class="rail-btn" href="/productos" title="Productos" aria-label="Productos">
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg>
                 <span>Productos</span>
@@ -72,6 +60,7 @@
         </AuthorizeView>
 
         <AuthorizeView Roles="@SesionService.RolSuperAdmin">
+            <p class="rail-grupo">CM Tech</p>
             <NavLink class="rail-btn" href="/admin/empresas" title="Empresas" aria-label="Empresas">
                 <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l7-4 7 4v14"></path><path d="M9 21v-6h6v6"></path></svg>
                 <span>Empresas</span>
@@ -95,6 +84,21 @@
         </AuthorizeView>
 
         <div class="rail-spacer"></div>
+
+        @if (sesion != null)
+        {
+            <div class="rail-quien" title="@Quien">
+                <span class="rail-avatar" aria-hidden="true">@Iniciales</span>
+                <span class="rail-quien-txt">
+                    <span class="rail-quien-nombre">@NombreMostrado</span>
+                    <span class="rail-quien-dato">@(sesion.EsSuperAdmin ? "CM Tech" : Comercio)</span>
+                    @if (!sesion.EsSuperAdmin && sesion.Sucursal != null)
+                    {
+                        <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre · Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
+                    }
+                </span>
+            </div>
+        }
         <form method="post" action="/cuenta/salir" data-enhance="false">
             <AntiforgeryToken />
             <button type="submit" class="rail-btn" title="Salir" aria-label="Salir">
@@ -125,6 +129,29 @@
     private string Comercio => sesion?.Tenant == null ? "" :
         string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
 
+    private bool plegada;
+    private bool leido;
+
+    private string NombreMostrado => string.IsNullOrWhiteSpace(sesion?.Nombre) ? sesion?.Usuario : sesion.Nombre;
+
+    /// <summary>Iniciales para el círculo del pie: "Miguel Ciacci" → "MC".</summary>
+    private string Iniciales
+    {
+        get
+        {
+            var partes = (NombreMostrado ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (partes.Length == 0) return "?";
+            var letras = partes.Length == 1 ? partes[0][..1] : partes[0][..1] + partes[1][..1];
+            return letras.ToUpperInvariant();
+        }
+    }
+
+    private async Task Plegar()
+    {
+        plegada = !plegada;
+        try { await JS.InvokeVoidAsync("apc.guardar", "menu-plegado", plegada ? "1" : "0"); } catch { }
+    }
+
     private string Quien => sesion == null ? "" :
         $"{sesion.Nombre} · {(sesion.EsSuperAdmin ? "CM Tech" : Comercio)}" +
         (sesion.Sucursal == null ? "" : " · " + sesion.Sucursal.Nombre);
@@ -143,5 +170,17 @@
             avisoAbono = $"El abono del sistema venció el {t.AbonoPagoHasta:dd/MM/yyyy}. " +
                          (t.AbonoDiasParaSuspension <= 1 ? "El servicio se suspende mañana." : $"El servicio se suspende en {t.AbonoDiasParaSuspension} días.") +
                          " Comunicate con CM Tech para regularizarlo.";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool primera)
+    {
+        if (!primera || leido) return;
+        leido = true;
+        try
+        {
+            var guardado = await JS.InvokeAsync<string>("apc.leer", "menu-plegado");
+            if (guardado == "1") { plegada = true; StateHasChanged(); }
+        }
+        catch { }
     }
 }
