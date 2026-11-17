@@ -96,6 +96,9 @@ public class FormaPagoItem
     public bool EsCtaCte { get; set; }
     /// <summary>Lista de precios de la forma de pago (columna FormaPago.Precio de APC): 1, 2 o 3.</summary>
     public int ListaPrecio { get; set; } = 1;
+    /// <summary>Tipo de precio asociado (script 18). Null = precio de lista, sin ajuste.</summary>
+    public Guid? TipoPrecioId { get; set; }
+    public string TipoPrecio { get; set; }
     public bool EsEfectivo => EsNombreEfectivo(Nombre);
 
     /// <summary>Formas de pago que cuentan como efectivo en caja (vuelto y arqueo).</summary>

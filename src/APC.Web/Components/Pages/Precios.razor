@@ -1,0 +1,200 @@
+@page "/precios"
+@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject TipoPrecioService TiposSrv
+@inject CatalogoService Catalogo
+
+<PageTitle>Tipos de precio · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Tipos de precio</h1>
+            <span class="sub">Cuánto se ajusta el precio de lista según cómo paga el cliente</span>
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    @if (!disponible)
+    {
+        <p class="alerta alerta-aviso">Falta correr el script 18 en la base de esta empresa. Pedíselo a CM Tech.</p>
+    }
+    else
+    {
+        <div class="arqueo-cols">
+            <section class="panel crece">
+                <h2>Tipos de precio</h2>
+                <p class="sub">El ajuste es sobre el precio de góndola: en más recarga, en menos descuenta. «Precio de lista» va en 0.</p>
+
+                <table class="tabla tabla-chica">
+                    <thead><tr><th>Nombre</th><th class="der">Ajuste</th><th class="der">Formas de pago</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @if (tipos.Count == 0)
+                        {
+                            <tr><td colspan="4" class="sub">Todavía no hay tipos de precio.</td></tr>
+                        }
+                        @foreach (var t in tipos)
+                        {
+                            <tr class="@(edit?.Id == t.Id ? "fila-sel" : "") @(t.Activo ? "" : "fila-baja")">
+                                <td><button type="button" class="link-fila" @onclick="() => Seleccionar(t)">@t.Nombre</button></td>
+                                <td class="der mono @(t.Ajuste < 0 ? "negativo" : "")">@AjusteCorto(t.Ajuste)</td>
+                                <td class="der">@(t.FormasPago == 0 ? "—" : t.FormasPago.ToString())</td>
+                                <td>@(t.Activo ? "Activo" : "Inactivo")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn" disabled="@ocupado" @onclick="Nuevo">+ Nuevo tipo de precio</button>
+                </div>
+
+                @if (edit != null)
+                {
+                    <section class="panel cierre" aria-label="Tipo de precio">
+                        <h3 class="sub-titulo">@(edit.EsNuevo ? "Nuevo tipo de precio" : edit.Nombre)</h3>
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="tp-nombre">Nombre</label>
+                                <input id="tp-nombre" class="input" maxlength="60" @bind="edit.Nombre" placeholder="ej. Tarjeta de crédito" />
+                            </div>
+                            <div class="campo">
+                                <label for="tp-ajuste">Ajuste %</label>
+                                <input id="tp-ajuste" class="input mono input-chico" type="number" step="0.01" min="-90" max="300" @bind="edit.Ajuste" />
+                            </div>
+                        </div>
+                        <p class="sub">@AjusteEjemplo(edit.Ajuste)</p>
+
+                        @if (!edit.EsNuevo)
+                        {
+                            <label class="check"><input type="checkbox" @bind="edit.Activo" /> Activo</label>
+                        }
+
+                        <div class="fila-btns">
+                            <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">@(edit.EsNuevo ? "Crear" : "Guardar cambios")</button>
+                            <button type="button" class="btn" @onclick="() => edit = null">Cancelar</button>
+                            @if (!edit.EsNuevo && edit.FormasPago == 0)
+                            {
+                                <div class="crece"></div>
+                                <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Borrar">Borrar</button>
+                            }
+                        </div>
+                    </section>
+                }
+            </section>
+
+            <aside class="panel cierre panel-ancho">
+                <h2>Formas de pago</h2>
+                <p class="sub">A cada forma de pago le asignás un tipo de precio. Al elegirla en la factura, el ajuste se aplica solo.</p>
+
+                @if (formas.Count == 0)
+                {
+                    <p class="sub">No hay formas de pago cargadas en esta empresa. Pedile a CM Tech que las configure.</p>
+                }
+                @foreach (var f in formas)
+                {
+                    <div class="campo">
+                        <label for="fp-@f.Id">@f.Nombre</label>
+                        <select id="fp-@f.Id" class="input" value="@(f.TipoPrecioId?.ToString() ?? "")"
+                                @onchange="e => Asignar(f, e.Value?.ToString())">
+                            <option value="">Sin tipo (precio de lista)</option>
+                            @foreach (var t in tipos.Where(x => x.Activo))
+                            {
+                                <option value="@t.Id">@t.Nombre (@AjusteCorto(t.Ajuste))</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </aside>
+        </div>
+    }
+</div>
+
+@code {
+    private SesionActual sesion;
+    private bool disponible = true;
+    private bool ocupado;
+    private string mensaje;
+    private bool mensajeOk;
+    private List<TipoPrecio> tipos = new();
+    private List<FormaPagoItem> formas = new();
+    private TipoPrecio edit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        disponible = await TiposSrv.DisponibleAsync(sesion.Cs);
+        if (disponible) await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        tipos = await TiposSrv.ListarAsync(sesion.Cs);
+        formas = await Catalogo.FormasPagoAsync(sesion.Cs);
+    }
+
+    private void Nuevo() { edit = new TipoPrecio(); mensaje = null; }
+    private void Seleccionar(TipoPrecio t) => edit = new TipoPrecio
+    {
+        Id = t.Id, Nombre = t.Nombre, Ajuste = t.Ajuste, Activo = t.Activo, Orden = t.Orden, FormasPago = t.FormasPago
+    };
+
+    private async Task Guardar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await TiposSrv.GuardarAsync(sesion.Cs, edit);
+            if (error != null) { Aviso(false, error); return; }
+            await Cargar();
+            Aviso(true, "Tipo de precio guardado.");
+            edit = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Borrar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await TiposSrv.BorrarAsync(sesion.Cs, edit.Id);
+            if (error != null) { Aviso(false, error); return; }
+            await Cargar();
+            Aviso(true, "Tipo de precio borrado.");
+            edit = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Asignar(FormaPagoItem f, string valor)
+    {
+        Guid? tipo = Guid.TryParse(valor, out var g) ? g : null;
+        var error = await TiposSrv.AsignarAsync(sesion.Cs, f.Id, tipo);
+        if (error != null) { Aviso(false, error); return; }
+        await Cargar();
+        var t = tipos.FirstOrDefault(x => x.Id == tipo);
+        Aviso(true, t == null
+            ? $"«{f.Nombre}» queda con el precio de lista."
+            : $"«{f.Nombre}» usa «{t.Nombre}»: {t.AjusteTexto.ToLowerInvariant()}.");
+    }
+
+    private static string AjusteCorto(decimal a) =>
+        a == 0 ? "0 %" : a > 0 ? "+" + a.ToString("0.##") + " %" : "−" + (-a).ToString("0.##") + " %";
+
+    private static string AjusteEjemplo(decimal a)
+    {
+        var baseP = 10000m;
+        var final = baseP + baseP * a / 100m;
+        return a == 0
+            ? "Sin ajuste: se cobra el precio de la góndola."
+            : $"Un producto de $ 10.000 se cobra $ {final.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))}.";
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}

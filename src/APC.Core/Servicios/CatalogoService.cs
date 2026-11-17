@@ -44,6 +44,11 @@ public class CatalogoService
         @"Id, Nombre, ISNULL(PorcentajeRecargo, 0) AS PorcentajeRecargo,
           ISNULL(PorcentajeDescuento, 0) AS PorcentajeDescuento, ISNULL(EsCtaCte, 0) AS EsCtaCte";
 
+    /// <summary>Las mismas columnas con el alias f, para cuando se une con TipoPrecio.</summary>
+    private const string ColumnasFormaPagoF =
+        @"f.Id, f.Nombre, ISNULL(f.PorcentajeRecargo, 0) AS PorcentajeRecargo,
+          ISNULL(f.PorcentajeDescuento, 0) AS PorcentajeDescuento, ISNULL(f.EsCtaCte, 0) AS EsCtaCte";
+
     public async Task<List<FormaPagoItem>> FormasPagoAsync(string cs)
     {
         var lista = await LeerFormasPagoAsync(cs, null);
@@ -63,17 +68,42 @@ public class CatalogoService
         List<FormaPagoItem> lista;
         using (var cn = await Db.AbrirAsync(cs))
         {
-            var filtro = id.HasValue ? " WHERE Id = @id" : "";
+            var filtro = id.HasValue ? " WHERE f.Id = @id" : "";
+            var filtroSimple = id.HasValue ? " WHERE Id = @id" : "";
+            var conTipo = await cn.ExecuteScalarAsync<int>(
+                "SELECT CASE WHEN COL_LENGTH('dbo.FormaPago', 'TipoPrecioId') IS NULL THEN 0 ELSE 1 END") == 1;
             try
             {
-                lista = (await cn.QueryAsync<FormaPagoItem>(
-                    $"SELECT {ColumnasFormaPago}, ISNULL(Precio, 1) AS ListaPrecio FROM dbo.FormaPago{filtro}", new { id })).ToList();
+                lista = conTipo
+                    ? (await cn.QueryAsync<FormaPagoItem>(
+                        $@"SELECT {ColumnasFormaPagoF}, ISNULL(f.Precio, 1) AS ListaPrecio,
+                                  f.TipoPrecioId, tp.Nombre AS TipoPrecio
+                           FROM dbo.FormaPago f LEFT JOIN dbo.TipoPrecio tp ON tp.Id = f.TipoPrecioId{filtro}",
+                        new { id })).ToList()
+                    : (await cn.QueryAsync<FormaPagoItem>(
+                        $"SELECT {ColumnasFormaPago}, ISNULL(Precio, 1) AS ListaPrecio FROM dbo.FormaPago{filtroSimple}",
+                        new { id })).ToList();
             }
             catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 207)
             {
                 // Base sin la columna Precio: todas usan la lista 1
                 lista = (await cn.QueryAsync<FormaPagoItem>(
-                    $"SELECT {ColumnasFormaPago} FROM dbo.FormaPago{filtro}", new { id })).ToList();
+                    $"SELECT {ColumnasFormaPago} FROM dbo.FormaPago{filtroSimple}", new { id })).ToList();
+            }
+
+            if (conTipo)
+            {
+                // El tipo de precio manda sobre el recargo/descuento viejo de la forma de pago.
+                var ajustes = (await cn.QueryAsync<(Guid Id, decimal Ajuste, bool Activo)>(
+                    @"SELECT f.Id, ISNULL(tp.Ajuste, 0) AS Ajuste, ISNULL(tp.Activo, 0) AS Activo
+                      FROM dbo.FormaPago f INNER JOIN dbo.TipoPrecio tp ON tp.Id = f.TipoPrecioId")).ToList();
+                foreach (var a in ajustes.Where(a => a.Activo))
+                {
+                    var f = lista.FirstOrDefault(x => x.Id == a.Id);
+                    if (f == null) continue;
+                    f.PorcentajeRecargo = a.Ajuste > 0 ? a.Ajuste : 0;
+                    f.PorcentajeDescuento = a.Ajuste < 0 ? -a.Ajuste : 0;
+                }
             }
         }
 

@@ -16,6 +16,7 @@ public static class Modulo
     public const string Comprobantes = "COMP";
     public const string Reportes = "REP";
     public const string Usuarios = "USU";
+    public const string Precios = "PREC";
 
     /// <summary>Los módulos en el orden en que aparecen en el menú.</summary>
     public static readonly (string Clave, string Titulo, string Detalle)[] Todos =
@@ -28,6 +29,7 @@ public static class Modulo
         (Sucursales, "Sucursales", "Ver las sucursales y mover stock"),
         (Comprobantes, "Comprobantes", "Listado, reimpresión y anulación"),
         (Reportes, "Reportes", "Ventas, Libro IVA y rankings"),
+        (Precios, "Tipos de precio", "Ajustes por forma de pago"),
         (Usuarios, "Usuarios", "Alta de usuarios del negocio")
     };
 
@@ -44,6 +46,7 @@ public static class Modulo
         if (ruta.StartsWith("/comprobantes")) return Comprobantes;
         if (ruta.StartsWith("/reportes")) return Reportes;
         if (ruta.StartsWith("/usuarios")) return Usuarios;
+        if (ruta.StartsWith("/precios")) return Precios;
         return null;
     }
 }
