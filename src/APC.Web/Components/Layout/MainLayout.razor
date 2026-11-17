@@ -15,6 +15,8 @@
             <span class="rail-marca-txt">APC<span class="rail-marca-dos">Web</span></span>
         </div>
 
+        @* El menú va en su propio bloque: si no entra se desplaza, pero la barra nunca muestra scroll. *@
+        <div class="rail-nav">
         <AuthorizeView Roles="@SesionService.RolEmpleado">
             <p class="rail-grupo">Trabajo diario</p>
             <NavLink class="rail-btn" href="/" Match="NavLinkMatch.All" title="Facturar" aria-label="Facturar">
@@ -83,20 +85,21 @@
             </NavLink>
         </AuthorizeView>
 
-        <div class="rail-spacer"></div>
+        </div>
 
         @if (sesion != null)
         {
             <div class="rail-quien" title="@Quien">
-                <span class="rail-avatar" aria-hidden="true">@Iniciales</span>
-                <span class="rail-quien-txt">
+                <span class="rail-quien-fila">
+                    <span class="rail-avatar" aria-hidden="true">@Iniciales</span>
                     <span class="rail-quien-nombre">@NombreMostrado</span>
-                    <span class="rail-quien-dato">@(sesion.EsSuperAdmin ? "CM Tech" : Comercio)</span>
-                    @if (!sesion.EsSuperAdmin && sesion.Sucursal != null)
-                    {
-                        <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre · Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
-                    }
                 </span>
+                <span class="rail-quien-dato">@(sesion.EsSuperAdmin ? "CM Tech" : Comercio)</span>
+                @if (!sesion.EsSuperAdmin && sesion.Sucursal != null)
+                {
+                    <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre</span>
+                    <span class="rail-quien-dato">Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
+                }
             </div>
         }
         <form method="post" action="/cuenta/salir" data-enhance="false">

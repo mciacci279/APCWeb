@@ -55,10 +55,13 @@ a:hover { color: var(--accion-osc); }
 .app-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .page-pad { padding: 22px 28px; display: flex; flex-direction: column; gap: 16px; }
 
-.rail { flex: 0 0 212px; background: var(--azul); display: flex; flex-direction: column; padding: 16px 12px; gap: 4px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.rail { flex: 0 0 194px; background: var(--azul); display: flex; flex-direction: column; padding: 12px 10px; gap: 2px; position: sticky; top: 0; height: 100vh; overflow: hidden; }
+/* El menú se desplaza por dentro si la pantalla es baja, pero nunca se dibuja la barra de scroll. */
+.rail-nav { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; scrollbar-width: none; -ms-overflow-style: none; }
+.rail-nav::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .rail form { margin: 0; }
 .rail-logo { width: 36px; height: 36px; border-radius: 10px; background: var(--accion); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: none; }
-.rail-btn { width: 100%; min-height: 42px; padding: 0 10px; border-radius: 9px; color: #CBD5E1; display: flex; flex-direction: row; align-items: center; gap: 10px; text-decoration: none; font-size: 14px; background: transparent; border: 0; cursor: pointer; font-family: inherit; text-align: left; }
+.rail-btn { width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; color: #CBD5E1; display: flex; flex-direction: row; align-items: center; gap: 10px; text-decoration: none; font-size: 13.5px; background: transparent; border: 0; cursor: pointer; font-family: inherit; text-align: left; }
 .rail-btn svg { flex: none; }
 .rail form { width: 100%; }
 .rail-btn:hover { background: var(--azul-2); color: #fff; }
@@ -230,6 +233,7 @@ a:hover { color: var(--accion-osc); }
 @media (max-width: 760px) {
   .app { flex-direction: column; }
   .rail { flex-direction: row; height: auto; width: 100%; position: static; padding: 8px; overflow-x: auto; }
+  .rail-nav { flex-direction: row; overflow-x: auto; overflow-y: hidden; }
   .rail-logo { margin: 0 8px 0 0; }
   .rail-spacer { display: none; }
   .ticket { max-width: none; min-height: 0; position: static; }
@@ -525,21 +529,22 @@ input.input-ajuste { width: 72px; text-align: right; }
 @media (max-width: 640px) { .modal-fondo { padding: 12px 8px; } }
 
 /* ---- Barra lateral ---- */
-.rail-marca { display: flex; align-items: center; gap: 10px; padding: 2px 2px 16px; }
+.rail-marca { display: flex; align-items: center; gap: 10px; padding: 2px 2px 10px; }
 .rail-plegar { flex: none; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--azul-linea); background: var(--azul-2); color: #CBD5E1; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .rail-plegar:hover { color: #fff; border-color: var(--accion); }
 .rail-marca-txt { color: #fff; font-family: 'Plus Jakarta Sans', Inter, sans-serif; font-weight: 700; font-size: 18px; white-space: nowrap; }
 .rail-marca-dos { color: #60A5FA; }
 
-.rail-grupo { margin: 16px 0 6px; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #64748B; }
+.rail-grupo { margin: 10px 0 4px; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #64748B; }
 .rail-btn.active { background: #16233A; color: #fff; font-weight: 600; }
 .rail-btn.active svg { color: #60A5FA; }
 
-.rail-quien { display: flex; align-items: center; gap: 10px; padding: 12px 8px; margin-top: 6px; border-top: 1px solid var(--azul-linea); }
-.rail-avatar { flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--azul-2); border: 1px solid var(--azul-linea); color: #93C5FD; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
-.rail-quien-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rail-quien { display: flex; flex-direction: column; align-items: stretch; gap: 2px; padding: 10px 8px 8px; margin-top: 4px; border-top: 1px solid var(--azul-linea); }
+.rail-quien-fila { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
+.rail-avatar { flex: none; width: 32px; height: 32px; border-radius: 10px; background: var(--azul-2); border: 1px solid var(--azul-linea); color: #93C5FD; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+
 .rail-quien-nombre { color: #fff; font-weight: 600; font-size: 13.5px; line-height: 1.25; }
-.rail-quien-dato { color: var(--claro); font-size: 11.5px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-quien-dato { color: var(--claro); font-size: 11.5px; line-height: 1.35; overflow-wrap: anywhere; }
 .rail-quien-suc { color: var(--celeste); }
 
 /* Menú plegado: quedan solo los iconos */
@@ -547,19 +552,22 @@ input.input-ajuste { width: 72px; text-align: right; }
 .rail-plegada .rail-marca { justify-content: center; }
 .rail-plegada .rail-marca-txt,
 .rail-plegada .rail-btn span,
-.rail-plegada .rail-quien-txt { display: none; }
+.rail-plegada .rail-quien-nombre,
+.rail-plegada .rail-quien-dato { display: none; }
 .rail-plegada .rail-grupo { height: 1px; margin: 12px 6px; padding: 0; overflow: hidden; color: transparent; background: var(--azul-linea); }
 .rail-plegada .rail-btn { justify-content: center; padding: 0; min-height: 44px; }
-.rail-plegada .rail-quien { justify-content: center; padding: 12px 0; }
+.rail-plegada .rail-quien { align-items: center; padding: 12px 0; }
+.rail-plegada .rail-quien-fila { margin: 0; }
 
 /* En pantallas angostas se pliega sola */
 @media (max-width: 900px) {
   .rail { flex-basis: 68px; padding: 16px 10px; }
   .rail-marca { justify-content: center; }
-  .rail-marca-txt, .rail-btn span, .rail-quien-txt, .rail-plegar { display: none; }
+  .rail-marca-txt, .rail-btn span, .rail-quien-nombre, .rail-quien-dato, .rail-plegar { display: none; }
   .rail-grupo { height: 1px; margin: 12px 6px; padding: 0; overflow: hidden; color: transparent; background: var(--azul-linea); }
   .rail-btn { justify-content: center; padding: 0; min-height: 44px; }
-  .rail-quien { justify-content: center; padding: 12px 0; }
+  .rail-quien { align-items: center; padding: 12px 0; }
+  .rail-quien-fila { margin: 0; }
 }
 
 /* ---------- Pantalla de ingreso (mismo diseño que Procu360) ---------- */
