@@ -34,8 +34,8 @@
                     }
                 </select>
             </div>
-            <button type="button" class="btn btn-primario" @onclick="() => Nuevo(EstadoTicket.Pendiente)">+ Nueva tarjeta</button>
-            <button type="button" class="btn" @onclick="() => Nuevo(EstadoTicket.Idea)">+ Idea</button>
+            <button type="button" class="btn btn-primario" title="Trabajo a hacer: entra en Pendiente, asignado a vos" @onclick="() => Nuevo(EstadoTicket.Pendiente)">+ Nueva tarjeta</button>
+            <button type="button" class="btn" title="Algo para más adelante: entra en Ideas, sin responsable" @onclick="() => Nuevo(EstadoTicket.Idea)">+ Idea</button>
         </div>
     </header>
 

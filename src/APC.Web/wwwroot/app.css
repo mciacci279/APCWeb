@@ -460,6 +460,7 @@ input.input-ajuste { width: 72px; text-align: right; }
 .columna-cuenta { background: #fff; border: 1px solid var(--borde); border-radius: 999px; min-width: 26px; text-align: center; font-size: 12px; font-weight: 600; padding: 1px 7px; }
 .col-pendiente .columna-cab { border-color: var(--muted); }
 .col-en_curso .columna-cab { border-color: var(--accion); }
+.col-testing .columna-cab { border-color: #B45309; }
 .col-esperando .columna-cab { border-color: var(--presu); }
 .col-listo .columna-cab { border-color: #1C6B3E; }
 .columna-cuerpo { display: flex; flex-direction: column; gap: 8px; padding: 10px; flex-grow: 1; }

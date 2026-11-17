@@ -6,6 +6,8 @@ public static class EstadoTicket
     public const string Idea = "IDEA";
     public const string Pendiente = "PENDIENTE";
     public const string EnCurso = "EN_CURSO";
+    /// <summary>Hecho pero sin probar: queda acá hasta que lo probamos en el sistema publicado.</summary>
+    public const string Testing = "TESTING";
     public const string Esperando = "ESPERANDO";
     public const string Listo = "LISTO";
 
@@ -15,6 +17,7 @@ public static class EstadoTicket
         (Idea, "Ideas"),
         (Pendiente, "Pendiente"),
         (EnCurso, "En curso"),
+        (Testing, "Testing"),
         (Esperando, "Esperando al cliente"),
         (Listo, "Listo")
     };
