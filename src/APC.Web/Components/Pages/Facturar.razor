@@ -128,6 +128,15 @@ else
                 </div>
             }
         </div>
+
+        @if (factura.Renglones.Count > 0 && resultado == null)
+        {
+            <div class="campo campo-obs">
+                <label for="obs">Observaciones</label>
+                <textarea id="obs" class="input input-area" rows="2" maxlength="500" @bind="factura.Observaciones"
+                          placeholder="ej. garantía 12 meses, nº de serie, condiciones"></textarea>
+            </div>
+        }
     </main>
 
     <aside class="ticket" aria-label="Cobro">

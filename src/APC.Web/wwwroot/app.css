@@ -294,6 +294,8 @@ details.sub summary { cursor: pointer; }
 .tk-qr { width: 34mm; height: 34mm; image-rendering: pixelated; }
 .tk-pie-datos { display: flex; flex-direction: column; font-size: 11px; }
 .tk-espacio { margin-top: 6px; }
+.campo-obs { margin-top: 10px; max-width: 640px; }
+.tk-obs { font-size: 12px; white-space: pre-wrap; margin-top: 4px; }
 .tk-gracias { text-align: center; font-weight: 700; font-style: italic; font-size: 13px; margin-top: 8px; }
 .imp-ley { font-weight: 700; font-style: italic; margin-top: 8px; }
 

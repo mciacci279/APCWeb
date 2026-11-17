@@ -101,6 +101,11 @@ else if (EsTicket)
                 }
             </div>
         </div>
+        @if (!string.IsNullOrWhiteSpace(c.Observaciones))
+        {
+            <hr class="tk-linea" />
+            <div class="tk-obs">@c.Observaciones</div>
+        }
         @if (!string.IsNullOrWhiteSpace(leyenda) && !c.EsNotaCredito)
         {
             <div class="tk-gracias">@leyenda</div>
