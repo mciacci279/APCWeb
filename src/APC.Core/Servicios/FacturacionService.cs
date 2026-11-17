@@ -618,11 +618,29 @@ public class FacturacionService
         return c;
     }
 
-    public async Task<List<ComprobanteListado>> ListarAsync(string cs, DateTime desde, DateTime hasta, Guid? usuarioId)
+    /// <summary>
+    /// Listado de comprobantes. Los filtros son opcionales: cliente y número buscan por
+    /// parte del texto, y el estado distingue factura con CAE, pendiente, nota de pedido y anuladas.
+    /// </summary>
+    public async Task<List<ComprobanteListado>> ListarAsync(string cs, DateTime desde, DateTime hasta, Guid? usuarioId,
+        string cliente = null, string numero = null, Guid? formaPagoId = null, string estado = null)
     {
+        cliente = string.IsNullOrWhiteSpace(cliente) ? null : cliente.Trim();
+        numero = string.IsNullOrWhiteSpace(numero) ? null : numero.Trim().TrimStart('0');
+        if (numero == "") numero = null;
+
+        var filtroEstado = estado switch
+        {
+            "CAE"     => "AND f.CAE IS NOT NULL AND f.CAE <> '' AND ISNULL(f.Anulada, 0) = 0 AND nc.NcCAE IS NULL",
+            "SINCAE"  => "AND (f.CAE IS NULL OR f.CAE = '') AND ISNULL(f.Impresa, 0) = 0",
+            "PEDIDO"  => "AND (f.CAE IS NULL OR f.CAE = '') AND ISNULL(f.Impresa, 0) = 1",
+            "ANULADA" => "AND (ISNULL(f.Anulada, 0) = 1 OR (nc.NcCAE IS NOT NULL AND nc.NcCAE <> ''))",
+            _ => ""
+        };
+
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<ComprobanteListado>(
-            @"SELECT TOP 500 f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, f.MontoTotal, f.CAE,
+            $@"SELECT TOP 500 f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, f.MontoTotal, f.CAE,
                      fp.Nombre AS FormaPago, nc.NcId, nc.NcTipo, nc.NcTerminal, nc.NcNumero, nc.NcCAE,
                      f.NumeroInterno, ISNULL(f.Impresa, 0) AS Impresa, ISNULL(f.Anulada, 0) AS MarcadaAnulada
               FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
@@ -633,8 +651,14 @@ public class FacturacionService
                            ORDER BY n.Fecha DESC) nc
               WHERE f.Fecha >= @desde AND f.Fecha < @hasta
                 AND (@usuarioId IS NULL OR f.UsuarioId = @usuarioId)
+                AND (@cliente IS NULL OR f.ClienteNombre LIKE '%' + @cliente + '%')
+                AND (@formaPagoId IS NULL OR f.FormaPagoId = @formaPagoId)
+                AND (@numero IS NULL
+                     OR CAST(ISNULL(f.Numero, 0) AS varchar(20)) LIKE '%' + @numero + '%'
+                     OR CAST(ISNULL(f.NumeroInterno, 0) AS varchar(20)) LIKE '%' + @numero + '%')
+                {filtroEstado}
               ORDER BY f.Fecha DESC",
-            new { desde = desde.Date, hasta = hasta.Date.AddDays(1), usuarioId })).ToList();
+            new { desde = desde.Date, hasta = hasta.Date.AddDays(1), usuarioId, cliente, numero, formaPagoId })).ToList();
     }
 
     public static string QrDataUri(string url) =>

@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = SesionService.RolAdmin)]
 @inject SesionService SesionSrv
 @inject FacturacionService Facturacion
+@inject CatalogoService Catalogo
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject APC.Core.Tenants.TenantRegistry Tenants
@@ -14,10 +15,49 @@
         <div class="fila-campos">
             <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
             <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
-            <label class="check"><input type="checkbox" @bind="soloMios" /> Solo los míos</label>
-            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
+            <button type="button" class="btn btn-primario" @onclick="Buscar">Buscar</button>
         </div>
     </header>
+
+    <div class="panel filtros-comp">
+        <div class="fila-campos">
+            <div class="campo crece">
+                <label for="f-cliente">Cliente</label>
+                <input id="f-cliente" class="input" maxlength="100" placeholder="Parte del nombre"
+                       @bind="fCliente" @bind:event="oninput" @onkeydown="BuscarKey" />
+            </div>
+            <div class="campo">
+                <label for="f-nro">Nº de comprobante</label>
+                <input id="f-nro" class="input mono input-chico" maxlength="20" placeholder="ej. 12"
+                       @bind="fNumero" @bind:event="oninput" @onkeydown="BuscarKey" />
+            </div>
+            <div class="campo">
+                <label for="f-estado">Estado</label>
+                <select id="f-estado" class="input" @bind="fEstado" @bind:after="Buscar">
+                    <option value="">Todos</option>
+                    <option value="CAE">Facturas con CAE</option>
+                    <option value="SINCAE">Pendientes de CAE</option>
+                    <option value="PEDIDO">Notas de pedido</option>
+                    <option value="ANULADA">Anuladas</option>
+                </select>
+            </div>
+            <div class="campo">
+                <label for="f-fp">Forma de pago</label>
+                <select id="f-fp" class="input" @bind="fFormaPago" @bind:after="Buscar">
+                    <option value="">Todas</option>
+                    @foreach (var fp in formasPago)
+                    {
+                        <option value="@fp.Id">@fp.Nombre</option>
+                    }
+                </select>
+            </div>
+            <label class="check"><input type="checkbox" @bind="soloMios" @bind:after="Buscar" /> Solo los míos</label>
+            @if (HayFiltros)
+            {
+                <button type="button" class="btn btn-chico" @onclick="LimpiarFiltros">Limpiar filtros</button>
+            }
+        </div>
+    </div>
 
     @if (mensaje != null)
     {
@@ -133,7 +173,12 @@
     private SesionActual sesion;
     private DateTime desde = DateTime.Today, hasta = DateTime.Today;
     private bool soloMios = false;
+    private string fCliente = "", fNumero = "", fEstado = "", fFormaPago = "";
+    private List<FormaPagoItem> formasPago = new();
     private List<ComprobanteListado> lista = new();
+
+    private bool HayFiltros => soloMios || !string.IsNullOrWhiteSpace(fCliente) || !string.IsNullOrWhiteSpace(fNumero)
+                               || !string.IsNullOrEmpty(fEstado) || !string.IsNullOrEmpty(fFormaPago);
     private string mensaje;
     private bool mensajeOk;
     private bool ocupado;
@@ -145,13 +190,29 @@
     {
         sesion = await SesionSrv.ObtenerAsync();
         devuelveStock = (await Facturacion.ParametrosAsync(sesion.Cs)).DecrementaStock;
+        try { formasPago = await Catalogo.FormasPagoAsync(sesion.Cs); }
+        catch (Exception) { formasPago = new(); }
         await Buscar();
     }
 
     private async Task Buscar()
     {
         var usuario = soloMios ? sesion.UsuarioId : (Guid?)null;
-        lista = await Facturacion.ListarAsync(sesion.Cs, desde, hasta, usuario);
+        Guid? formaPago = Guid.TryParse(fFormaPago, out var fp) ? fp : null;
+        lista = await Facturacion.ListarAsync(sesion.Cs, desde, hasta, usuario, fCliente, fNumero, formaPago, fEstado);
+    }
+
+    private async Task BuscarKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Buscar();
+    }
+
+    private async Task LimpiarFiltros()
+    {
+        fCliente = fNumero = "";
+        fEstado = fFormaPago = "";
+        soloMios = false;
+        await Buscar();
     }
 
     private async Task PedirCae(ComprobanteListado c)
