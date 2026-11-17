@@ -5,7 +5,29 @@
 
 <div class="app">
     <nav class="rail" aria-label="Menú principal">
-        <div class="rail-logo">APC</div>
+        <div class="rail-marca">
+            <div class="rail-logo">APC</div>
+            <span class="rail-marca-txt">APC Web</span>
+        </div>
+
+        @if (sesion != null)
+        {
+            <div class="rail-quien" title="@Quien">
+                <span class="rail-quien-nombre">@(string.IsNullOrWhiteSpace(sesion.Nombre) ? sesion.Usuario : sesion.Nombre)</span>
+                @if (sesion.EsSuperAdmin)
+                {
+                    <span class="rail-quien-dato">CM Tech</span>
+                }
+                else
+                {
+                    <span class="rail-quien-dato">@Comercio</span>
+                    @if (sesion.Sucursal != null)
+                    {
+                        <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre · Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
+                    }
+                }
+            </div>
+        }
 
         <AuthorizeView Roles="@SesionService.RolEmpleado">
             <NavLink class="rail-btn" href="/" Match="NavLinkMatch.All" title="Facturar" aria-label="Facturar">
@@ -97,13 +119,22 @@
 
 @code {
     private string avisoAbono;
+    private SesionActual sesion;
+
+    /// <summary>Nombre de fantasía del comercio; si no tiene, la razón social.</summary>
+    private string Comercio => sesion?.Tenant == null ? "" :
+        string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
+
+    private string Quien => sesion == null ? "" :
+        $"{sesion.Nombre} · {(sesion.EsSuperAdmin ? "CM Tech" : Comercio)}" +
+        (sesion.Sucursal == null ? "" : " · " + sesion.Sucursal.Nombre);
 
     protected override async Task OnInitializedAsync()
     {
         // Si la empresa fue suspendida con el usuario adentro, se cierra la sesión
         var user = (await Auth.GetAuthenticationStateAsync()).User;
         if (user?.Identity?.IsAuthenticated != true) return;
-        var sesion = await SesionSrv.ObtenerAsync();
+        sesion = await SesionSrv.ObtenerAsync();
         if (sesion == null) { Nav.NavigateTo("/cuenta/expirada", forceLoad: true); return; }
 
         // Abono vencido, dentro de los días de gracia: aviso para el administrador del comercio.

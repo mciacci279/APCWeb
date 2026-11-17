@@ -8,43 +8,6 @@ DECLARE @pendientes TABLE (Titulo NVARCHAR(150), Detalle NVARCHAR(MAX), Tipo VAR
 
 INSERT INTO @pendientes (Titulo, Detalle, Tipo, Prioridad, Orden) VALUES
 
--- ---------- Seguridad del servidor (conviene moverlas a Pendiente) ----------
-(N'HTTPS con Let''s Encrypt en el VPS',
- N'Instalar win-acme y emitir el certificado para apc.cm-tech.com.ar. Abrir el puerto 443 en el firewall del proveedor y en Windows. Después: cargar UrlPublica con https en appsettings.Secretos.json y pedir que la cookie de sesión viaje solo por HTTPS. Urgente: hoy las claves viajan sin cifrar y los links de factura que se mandan por WhatsApp muestran "sitio no seguro".',
- 'TAREA', 'ALTA', 1),
-
-(N'Cambiar la clave de sa y crear el usuario apcweb',
- N'La clave de sa quedó expuesta. Crear un usuario SQL propio para la web con permisos de lectura, escritura y ejecución sobre APCWeb_Central y las bases de las empresas (y dbcreator si se usa "Crear base desde la plantilla"), y reemplazar sa en todas las cadenas de conexión.',
- 'TAREA', 'ALTA', 2),
-
-(N'Cerrar el puerto 1433 hacia internet',
- N'Si la web y SQL están en el mismo VPS, la conexión va por .\SQLEXPRESS y no hace falta exponerlo. Para administrar desde afuera, limitar por IP o usar escritorio remoto.',
- 'TAREA', 'ALTA', 3),
-
-(N'Backups automáticos de las bases y de C:\APCWeb',
- N'SQL Express no trae programador: armar una tarea de Windows que respalde APCWeb_Central y cada base de empresa todos los días, con copia fuera del VPS. Incluir C:\APCWeb\Certificados y C:\APCWeb\Datos\enlaces.key: si se pierde esa clave, dejan de funcionar los links de comprobantes ya enviados.',
- 'TAREA', 'ALTA', 4),
-
-(N'Permisos de carpetas y puertos del VPS',
- N'Datos, Certificados y Logs con permiso de Modificar solo para IIS AppPool\APCWeb y administradores. Limitar por IP los puertos 8172 (Web Deploy) y 3389 (escritorio remoto). Dejar el Servicio de administración web (WMSvc) en inicio Automático: se cayó el 16/11 y no dejaba publicar.',
- 'TAREA', 'NORMAL', 5),
-
-(N'SQL Server 2014 sin soporte',
- N'Ya no recibe parches. Primero instalar el Service Pack 3; después planificar la migración a SQL Server 2022 Express.',
- 'TAREA', 'NORMAL', 6),
-
-(N'Sacar los .key de C:\APC Code y guardar aparte las credenciales',
- N'Los certificados y el archivo "Credenciales APC web.txt" están en texto plano en la carpeta del código. No se suben a GitHub, pero conviene moverlos a un lugar seguro.',
- 'TAREA', 'NORMAL', 7),
-
-(N'Repositorio privado y organización de GitHub para CM Tech',
- N'Dejar APCWeb en privado (Settings → Change visibility) y crear una organización gratuita a nombre de CM Tech para que los proyectos no dependan de una cuenta personal.',
- 'TAREA', 'BAJA', 8),
-
-(N'Activar el doble factor en cada usuario de CM Tech',
- N'Desde Configuración → Verificación en dos pasos, con Google o Microsoft Authenticator. Es por usuario: cada uno lo activa en su sesión.',
- 'TAREA', 'NORMAL', 9),
-
 -- ---------- Pruebas que faltan ----------
 (N'Probar facturas con descuento y con recargo',
  N'Emitir una con descuento por producto y otra con recargo sobre el total, y confirmar que ARCA da el CAE y que los importes cierran con el Libro IVA.',
