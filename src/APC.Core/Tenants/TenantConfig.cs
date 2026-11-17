@@ -36,6 +36,18 @@ public class TenantConfig
     /// <summary>Solo se completa en el listado del panel.</summary>
     public bool TieneLogo { get; set; }
 
+    /// <summary>Módulos habilitados, separados por coma (script 17). Vacío = todos.</summary>
+    public string Modulos { get; set; }
+
+    /// <summary>Si la empresa tiene habilitado ese módulo. Sin configurar, los tiene todos.</summary>
+    public bool TieneModulo(string clave)
+    {
+        if (string.IsNullOrWhiteSpace(Modulos) || string.IsNullOrWhiteSpace(clave)) return true;
+        foreach (var m in Modulos.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (string.Equals(m.Trim(), clave, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     // ---- Abono (lo carga CM Tech en el panel) ----
     /// <summary>Último día cubierto por el abono. Null = sin control de abono.</summary>
     public DateTime? AbonoPagoHasta { get; set; }

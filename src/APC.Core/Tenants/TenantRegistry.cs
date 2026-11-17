@@ -58,12 +58,21 @@ public class TenantRegistry
             try
             {
                 lista = cn.Query<TenantConfig>(
-                    $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas FROM dbo.Empresa");
+                    $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas, Modulos FROM dbo.Empresa");
             }
             catch (SqlException)
             {
-                // Todavía no se corrió el script 09 (abono): se sigue sin control de abono.
-                lista = cn.Query<TenantConfig>($"SELECT {columnas} FROM dbo.Empresa");
+                try
+                {
+                    // Todavía no se corrió el script 17 (módulos): las empresas ven todo.
+                    lista = cn.Query<TenantConfig>(
+                        $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas FROM dbo.Empresa");
+                }
+                catch (SqlException)
+                {
+                    // Tampoco el script 09 (abono): se sigue sin control de abono.
+                    lista = cn.Query<TenantConfig>($"SELECT {columnas} FROM dbo.Empresa");
+                }
             }
             _cache = lista.ToDictionary(t => t.Codigo.Trim(), StringComparer.OrdinalIgnoreCase);
             _cargado = DateTime.UtcNow;

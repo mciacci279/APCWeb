@@ -85,6 +85,7 @@
                         <button type="button" role="tab" aria-selected="@(pestania == 0 ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 1 ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Usuarios</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 3 ? "true" : "false")" class="pestania @(pestania == 3 ? "activa" : "")" @onclick="() => pestania = 3">Sucursales</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 4 ? "true" : "false")" class="pestania @(pestania == 4 ? "activa" : "")" @onclick="() => AbrirModulos()">Módulos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
                     <div class="t-fila"><span class="sub">Link de ingreso</span><span class="mono">@LinkIngreso</span></div>
@@ -232,6 +233,28 @@
                 {
                     <GestionSucursales Tenant="edit" />
                 }
+                else if (pestania == 4)
+                {
+                    <h2>Módulos habilitados</h2>
+                    <p class="sub">Lo que queda sin tildar no le aparece en el menú ni lo puede abrir escribiendo la dirección. Si está todo tildado, la empresa ve el sistema completo.</p>
+                    <div class="modulos-lista">
+                        @foreach (var m in Modulo.Todos)
+                        {
+                            <label class="check modulo-item">
+                                <input type="checkbox" checked="@modulos.Contains(m.Clave)"
+                                       @onchange="e => MarcarModulo(m.Clave, (bool)e.Value)" />
+                                <span>
+                                    <span class="modulo-nombre">@m.Titulo</span>
+                                    <span class="sub">@m.Detalle</span>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarModulos">Guardar módulos</button>
+                        <button type="button" class="btn" @onclick="TodosLosModulos">Marcar todos</button>
+                    </div>
+                }
                 else if (pestania == 1)
                 {
                     <GestionUsuarios Tenant="edit" Compacto="true" AdminPorDefecto="true" Cambio="Recargar" />
@@ -303,6 +326,8 @@
     private TenantConfig edit;
     private bool esNueva;
     private int pestania;
+    /// <summary>Módulos tildados de la empresa que se está editando (vacío = todos).</summary>
+    private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
     private string mensaje;
     private bool mensajeOk;
     private bool ocupado;
@@ -456,6 +481,39 @@
 
     private void Cerrar() => edit = null;
 
+    private void AbrirModulos()
+    {
+        pestania = 4;
+        modulos = string.IsNullOrWhiteSpace(edit.Modulos)
+            ? Modulo.Todos.Select(m => m.Clave).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : edit.Modulos.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                  .Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void MarcarModulo(string clave, bool marcado)
+    {
+        if (marcado) modulos.Add(clave); else modulos.Remove(clave);
+    }
+
+    private void TodosLosModulos() => modulos = Modulo.Todos.Select(m => m.Clave).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private async Task GuardarModulos()
+    {
+        ocupado = true;
+        try
+        {
+            // Todos tildados se guarda como vacío: la empresa queda con el sistema completo.
+            var todos = modulos.Count >= Modulo.Todos.Length;
+            var texto = todos ? null : string.Join(",", Modulo.Todos.Where(m => modulos.Contains(m.Clave)).Select(m => m.Clave));
+            var error = await EmpresaSrv.GuardarModulosAsync(edit.Id, texto);
+            if (error != null) { Aviso(false, error); return; }
+            edit.Modulos = texto;
+            await Recargar();
+            Aviso(true, todos ? "La empresa ve todos los módulos." : $"Módulos guardados: {modulos.Count} de {Modulo.Todos.Length}.");
+        }
+        finally { ocupado = false; }
+    }
+
     private async Task Subir(InputFileChangeEventArgs a, bool esClave)
     {
         ocupado = true;
@@ -525,6 +583,7 @@
         Ambiente = e.Ambiente?.Trim(), CertificadoPath = e.CertificadoPath, ClavePath = e.ClavePath, Concepto = e.Concepto,
         Moneda = e.Moneda, Activa = e.Activa, MotivoSuspension = e.MotivoSuspension, FechaAlta = e.FechaAlta,
         AbonoPagoHasta = e.AbonoPagoHasta, AbonoDiasGracia = e.AbonoDiasGracia, AbonoMonto = e.AbonoMonto, AbonoNotas = e.AbonoNotas,
-        CantidadUsuarios = e.CantidadUsuarios, TieneLogo = e.TieneLogo, LeyendaTicket = e.LeyendaTicket
+        CantidadUsuarios = e.CantidadUsuarios, TieneLogo = e.TieneLogo, LeyendaTicket = e.LeyendaTicket,
+        Modulos = e.Modulos
     };
 }

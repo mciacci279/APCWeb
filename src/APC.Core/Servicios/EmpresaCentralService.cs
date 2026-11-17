@@ -77,13 +77,44 @@ public class EmpresaCentralService
         try
         {
             return (await cn.QueryAsync<TenantConfig>(
-                string.Format(sql, ", e.AbonoPagoHasta, e.AbonoDiasGracia, e.AbonoMonto, e.AbonoNotas"))).ToList();
+                string.Format(sql, ", e.AbonoPagoHasta, e.AbonoDiasGracia, e.AbonoMonto, e.AbonoNotas, e.Modulos"))).ToList();
         }
         catch (Microsoft.Data.SqlClient.SqlException)
         {
-            // Todavía no se corrió el script 09 (abono)
-            return (await cn.QueryAsync<TenantConfig>(string.Format(sql, ""))).ToList();
+            try
+            {
+                // Todavía no se corrió el script 17 (módulos): las empresas ven todo
+                return (await cn.QueryAsync<TenantConfig>(
+                    string.Format(sql, ", e.AbonoPagoHasta, e.AbonoDiasGracia, e.AbonoMonto, e.AbonoNotas"))).ToList();
+            }
+            catch (Microsoft.Data.SqlClient.SqlException)
+            {
+                // Tampoco el script 09 (abono)
+                return (await cn.QueryAsync<TenantConfig>(string.Format(sql, ""))).ToList();
+            }
         }
+    }
+
+    /// <summary>
+    /// Módulos que la empresa puede ver, separados por coma. Vacío = todos, que es lo que
+    /// venían teniendo las empresas antes de esta configuración.
+    /// </summary>
+    public async Task<string> GuardarModulosAsync(Guid empresaId, string modulos)
+    {
+        modulos = string.IsNullOrWhiteSpace(modulos) ? null : modulos.Trim();
+        if (modulos?.Length > 200) return "Demasiados módulos.";
+        try
+        {
+            using var cn = await Db.AbrirAsync(Central);
+            await cn.ExecuteAsync("UPDATE dbo.Empresa SET Modulos = @modulos WHERE Id = @empresaId",
+                new { empresaId, modulos });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            return "No se pudieron guardar los módulos. ¿Se ejecutó el script 17 en APCWeb_Central? Detalle: " + ex.Message;
+        }
+        _tenants.Invalidar();
+        return null;
     }
 
     // ------------------------------------------------------------------ abono

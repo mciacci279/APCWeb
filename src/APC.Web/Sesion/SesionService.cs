@@ -26,6 +26,9 @@ public class SesionActual
 
     /// <summary>Punto de venta con el que factura: el de su sucursal.</summary>
     public int PuntoVenta => Sucursal?.PuntoVenta ?? Tenant?.PuntoVenta ?? 0;
+
+    /// <summary>Módulo habilitado para la empresa (lo configura CM Tech). CM Tech ve todo.</summary>
+    public bool TieneModulo(string clave) => EsSuperAdmin || Tenant == null || Tenant.TieneModulo(clave);
     public Guid SucursalId => Sucursal?.Id ?? Guid.Empty;
 }
 
