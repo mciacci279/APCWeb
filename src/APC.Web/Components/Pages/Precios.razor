@@ -5,12 +5,12 @@
 @inject TipoPrecioService TiposSrv
 @inject CatalogoService Catalogo
 
-<PageTitle>Tipos de precio · APC Web</PageTitle>
+<PageTitle>Precios y formas de pago · APC Web</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
         <div class="fact-titulo">
-            <h1>Tipos de precio</h1>
+            <h1>Precios y formas de pago</h1>
             <span class="sub">Cuánto se ajusta el precio de lista según cómo paga el cliente</span>
         </div>
     </header>
@@ -90,16 +90,19 @@
 
             <aside class="panel cierre panel-ancho">
                 <h2>Formas de pago</h2>
-                <p class="sub">A cada forma de pago le asignás un tipo de precio. Al elegirla en la factura, el ajuste se aplica solo.</p>
+                <p class="sub">Las que usa esta empresa. A cada una le asignás su tipo de precio y el ajuste se aplica solo al facturar.</p>
 
                 @if (formas.Count == 0)
                 {
-                    <p class="sub">No hay formas de pago cargadas en esta empresa. Pedile a CM Tech que las configure.</p>
+                    <p class="sub">Todavía no hay formas de pago. Creá la primera, por ejemplo «Efectivo».</p>
                 }
                 @foreach (var f in formas)
                 {
                     <div class="campo">
-                        <label for="fp-@f.Id">@f.Nombre</label>
+                        <label for="fp-@f.Id">
+                            <button type="button" class="link-fila" @onclick="() => SeleccionarForma(f)">@f.Nombre</button>
+                            @if (f.EsCtaCte) { <span class="sub"> · cuenta corriente</span> }
+                        </label>
                         <select id="fp-@f.Id" class="input" value="@(f.TipoPrecioId?.ToString() ?? "")"
                                 @onchange="e => Asignar(f, e.Value?.ToString())">
                             <option value="">Sin tipo (precio de lista)</option>
@@ -109,6 +112,43 @@
                             }
                         </select>
                     </div>
+                }
+
+                <div class="fila-btns">
+                    <button type="button" class="btn" disabled="@ocupado" @onclick="NuevaForma">+ Nueva forma de pago</button>
+                </div>
+
+                @if (editF != null)
+                {
+                    <section class="panel" aria-label="Forma de pago">
+                        <h3 class="sub-titulo">@(editF.Id == Guid.Empty ? "Nueva forma de pago" : editF.Nombre)</h3>
+                        <div class="campo">
+                            <label for="fpe-nombre">Nombre</label>
+                            <input id="fpe-nombre" class="input" maxlength="50" @bind="editF.Nombre" placeholder="ej. Cheque, QR, Tarjeta de débito" />
+                        </div>
+                        <div class="campo">
+                            <label for="fpe-tipo">Tipo de precio</label>
+                            <select id="fpe-tipo" class="input" @bind="editFTipo">
+                                <option value="">Sin tipo (precio de lista)</option>
+                                @foreach (var t in tipos.Where(x => x.Activo))
+                                {
+                                    <option value="@t.Id">@t.Nombre (@AjusteCorto(t.Ajuste))</option>
+                                }
+                            </select>
+                        </div>
+                        <label class="check"><input type="checkbox" @bind="editF.EsCtaCte" /> Es cuenta corriente</label>
+                        <p class="sub">La cuenta corriente no aparece en la pantalla de facturación.</p>
+
+                        <div class="fila-btns">
+                            <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarForma">@(editF.Id == Guid.Empty ? "Crear" : "Guardar cambios")</button>
+                            <button type="button" class="btn" @onclick="() => editF = null">Cancelar</button>
+                            @if (editF.Id != Guid.Empty)
+                            {
+                                <div class="crece"></div>
+                                <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="BorrarForma">Borrar</button>
+                            }
+                        </div>
+                    </section>
                 }
             </aside>
         </div>
@@ -124,6 +164,8 @@
     private List<TipoPrecio> tipos = new();
     private List<FormaPagoItem> formas = new();
     private TipoPrecio edit;
+    private FormaPagoItem editF;
+    private string editFTipo = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -168,6 +210,49 @@
             await Cargar();
             Aviso(true, "Tipo de precio borrado.");
             edit = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private void NuevaForma()
+    {
+        editF = new FormaPagoItem();
+        editFTipo = "";
+        mensaje = null;
+    }
+
+    private void SeleccionarForma(FormaPagoItem f)
+    {
+        editF = new FormaPagoItem { Id = f.Id, Nombre = f.Nombre, EsCtaCte = f.EsCtaCte, TipoPrecioId = f.TipoPrecioId };
+        editFTipo = f.TipoPrecioId?.ToString() ?? "";
+        mensaje = null;
+    }
+
+    private async Task GuardarForma()
+    {
+        ocupado = true;
+        try
+        {
+            editF.TipoPrecioId = Guid.TryParse(editFTipo, out var g) ? g : null;
+            var error = await TiposSrv.GuardarFormaPagoAsync(sesion.Cs, editF);
+            if (error != null) { Aviso(false, error); return; }
+            await Cargar();
+            Aviso(true, "Forma de pago guardada.");
+            editF = null;
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task BorrarForma()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await TiposSrv.BorrarFormaPagoAsync(sesion.Cs, editF.Id);
+            if (error != null) { Aviso(false, error); return; }
+            await Cargar();
+            Aviso(true, "Forma de pago borrada.");
+            editF = null;
         }
         finally { ocupado = false; }
     }

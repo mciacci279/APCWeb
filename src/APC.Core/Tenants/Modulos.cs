@@ -29,7 +29,7 @@ public static class Modulo
         (Sucursales, "Sucursales", "Ver las sucursales y mover stock"),
         (Comprobantes, "Comprobantes", "Listado, reimpresión y anulación"),
         (Reportes, "Reportes", "Ventas, Libro IVA y rankings"),
-        (Precios, "Tipos de precio", "Ajustes por forma de pago"),
+        (Precios, "Precios y formas de pago", "Tipos de precio y ajuste por forma de pago"),
         (Usuarios, "Usuarios", "Alta de usuarios del negocio")
     };
 
