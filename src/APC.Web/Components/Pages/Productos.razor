@@ -57,7 +57,7 @@
                     {
                         <tr class="fila-click @(sel?.Id == p.Id ? "fila-sel" : "") @(p.Activo ? "" : "fila-baja")">
                             <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@(string.IsNullOrWhiteSpace(p.Codigo) ? "—" : p.Codigo)</button></td>
-                            <td>@p.Nombre @(p.Activo ? "" : "(baja)")</td>
+                            <td><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@p.Nombre</button>@(p.Activo ? "" : " (baja)")</td>
                             <td>@p.Rubro</td>
                             <td class="der @(p.Stock <= p.StockMinimo && !p.OmitirControlStock ? "stock-bajo" : "")">@p.Stock.ToString("0.###", Ar)</td>
                             <td class="der">@Pesos(p.PrecioCosto)</td>

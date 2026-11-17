@@ -206,14 +206,21 @@
                                 }
                                 @if (c.Facturado)
                                 {
-                                    <button type="button" class="btn btn-chico" @onclick="() => Imprimir(c)">Ver factura</button>
+                                    <a class="btn btn-chico" href="/admin/cobranzas/factura/@c.Id" target="_blank" rel="noopener"
+                                       title="Abrir la factura emitida">Ver factura</a>
+                                    <button type="button" class="btn btn-chico" title="Imprimir sin abrir la factura"
+                                            @onclick="() => Imprimir(c)">Imprimir</button>
                                     <button type="button" class="btn btn-chico" title="Copiar el link para el cliente"
                                             @onclick="() => CopiarLink(c)">Copiar link</button>
                                 }
-                                @if (!c.Anulado && !c.Abonado)
+                                @if (!c.Anulado)
                                 {
+                                    @* Tambien despues de abonada: sirve para reenviarle la factura al cliente. *@
                                     <a class="btn btn-chico btn-whatsapp" href="@LinkWhatsApp(c)" target="_blank" rel="noopener"
                                        @onclick="@(() => Avisar(c, "WhatsApp", c.ContactoTelefono))">WhatsApp</a>
+                                }
+                                @if (!c.Anulado && !c.Abonado)
+                                {
                                     <button type="button" class="btn btn-chico btn-primario" @onclick="() => AbrirPago(c)">Abonado</button>
                                 }
                                 else if (c.Abonado)
@@ -486,8 +493,10 @@
     private string LinkWhatsApp(Cobro c)
     {
         var facturador = facturadores.FirstOrDefault(f => f.Id == c.FacturadorId);
-        var texto = $"Hola{(string.IsNullOrWhiteSpace(c.ContactoNombre) ? "" : " " + c.ContactoNombre.Split(' ')[0])}! " +
-                    $"Te paso el abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
+        var hola = $"Hola{(string.IsNullOrWhiteSpace(c.ContactoNombre) ? "" : " " + c.ContactoNombre.Split(' ')[0])}! ";
+        var texto = c.Abonado
+            ? hola + $"Te reenvío la factura del abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}."
+            : hola + $"Te paso el abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
 
         if (c.Facturado)
         {
@@ -499,7 +508,8 @@
         }
 
         var datos = facturador?.DatosParaTransferir;
-        if (!string.IsNullOrWhiteSpace(datos)) texto += " Para abonar: " + datos + ".";
+        // Ya abonado: no tiene sentido mandarle otra vez los datos para transferir.
+        if (!c.Abonado && !string.IsNullOrWhiteSpace(datos)) texto += " Para abonar: " + datos + ".";
         texto += " ¡Gracias!";
         return EnlaceComprobante.WhatsApp(c.ContactoTelefono, texto);
     }
