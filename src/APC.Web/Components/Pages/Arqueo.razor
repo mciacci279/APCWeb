@@ -132,7 +132,7 @@ else
 
 @if (!cargando && PuedeSupervisar)
 {
-    <section class="panel panel-ancho" aria-label="Cajas del día">
+    <section class="panel" aria-label="Cajas del día">
         <header class="fact-head">
             <div class="fact-titulo">
                 <h2>Cajas del día</h2>
@@ -184,9 +184,23 @@ else
             </tbody>
         </table>
 
-        @if (cajaVista != null && arqueoVista != null)
-        {
-            <h3 class="sub-titulo">Caja de @cajaVista.Usuario · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")</h3>
+    </section>
+}
+
+@* El arqueo de otra caja se abre en ventana emergente: abajo quedaba fuera de la vista. *@
+@if (cajaVista != null && arqueoVista != null)
+{
+    <div class="modal-fondo" @onclick="CerrarDetalle">
+        <section class="panel modal-caja" role="dialog" aria-modal="true" aria-label="Arqueo de la caja"
+                 @onclick:stopPropagation="true">
+            <header class="modal-cab">
+                <div>
+                    <h2>Caja de @cajaVista.Usuario</h2>
+                    <span class="sub">@cajaVista.Sucursal · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")@(cajaVista.Abierta ? " · abierta" : "")</span>
+                </div>
+                <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarDetalle">×</button>
+            </header>
+
             <div class="kpis kpis-chicos">
                 <div class="kpi"><span class="sub">Ventas</span><span class="mono kpi-num">@Pesos(arqueoVista.Ventas)</span></div>
                 <div class="kpi"><span class="sub">Cantidad de comprobantes</span><span class="mono kpi-num">@arqueoVista.CantidadComprobantes</span></div>
@@ -202,11 +216,36 @@ else
                     </div>
                 }
             </div>
-            <div class="fila-btns">
-                <button type="button" class="btn" @onclick="() => cajaVista = null">Cerrar detalle</button>
+
+            <div class="tabla-scroll">
+                <table class="tabla tabla-chica">
+                    <thead><tr><th>Tipo / forma de pago</th><th class="der">Cantidad de comprobantes</th><th class="der">Total</th></tr></thead>
+                    <tbody>
+                        @foreach (var g in arqueoVista.Grupos)
+                        {
+                            <tr class="fila-grupo"><td>@g.Titulo</td><td class="der">@g.Comprobantes</td><td class="der">@Pesos(g.Total)</td></tr>
+                            @foreach (var f in g.Formas)
+                            {
+                                <tr><td class="sangria">@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@Pesos(f.Total)</td></tr>
+                            }
+                        }
+                        <tr class="fila-total"><td>Total vendido (neto)</td><td class="der">@arqueoVista.CantidadComprobantes</td><td class="der">@Pesos(arqueoVista.Ventas)</td></tr>
+                    </tbody>
+                </table>
             </div>
-        }
-    </section>
+
+            @if (!string.IsNullOrWhiteSpace(cajaVista.Observaciones))
+            {
+                <p class="sub">Observaciones del cierre: @cajaVista.Observaciones</p>
+            }
+
+            <div class="fila-btns">
+                <a class="btn" href="/imprimir/arqueo/@cajaVista.Id" target="_blank">Imprimir</a>
+                <div class="crece"></div>
+                <button type="button" class="btn btn-primario" @onclick="CerrarDetalle">Cerrar</button>
+            </div>
+        </section>
+    </div>
 }
 </div>
 
@@ -262,6 +301,12 @@ else
     {
         cajaVista = t;
         arqueoVista = await Caja.ArqueoAsync(sesion.Cs, t);
+    }
+
+    private void CerrarDetalle()
+    {
+        cajaVista = null;
+        arqueoVista = null;
     }
 
     protected override async Task OnInitializedAsync()
