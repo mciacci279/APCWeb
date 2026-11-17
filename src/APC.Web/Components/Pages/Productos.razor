@@ -1,6 +1,8 @@
 @page "/productos"
-@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
+@inject NavigationManager Nav
 @inject ProductoService ProductoSrv
 @inject ImportadorProductosService ImportadorSrv
 @inject SucursalService SucursalSrv
@@ -358,6 +360,8 @@
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+        if (!sesion.TieneModulo(Modulo.Productos)) { Nav.NavigateTo("/sin-permiso"); return; }
         esAdmin = sesion.EsAdmin;
         listas = await ProductoSrv.ListasAsync(sesion.Cs);
         rubros = await ProductoSrv.RubrosAsync(sesion.Cs);

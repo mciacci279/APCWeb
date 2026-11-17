@@ -236,23 +236,50 @@
                 else if (pestania == 4)
                 {
                     <h2>Módulos habilitados</h2>
-                    <p class="sub">Lo que queda sin tildar no le aparece en el menú ni lo puede abrir escribiendo la dirección. Si está todo tildado, la empresa ve el sistema completo.</p>
-                    <div class="modulos-lista">
-                        @foreach (var m in Modulo.Todos)
-                        {
-                            <label class="check modulo-item">
-                                <input type="checkbox" checked="@modulos.Contains(m.Clave)"
-                                       @onchange="e => MarcarModulo(m.Clave, (bool)e.Value)" />
-                                <span>
-                                    <span class="modulo-nombre">@m.Titulo</span>
-                                    <span class="sub">@m.Detalle</span>
-                                </span>
-                            </label>
-                        }
+                    <p class="sub">La columna <strong>Empresa</strong> es lo que tiene contratado: lo que se destilda ahí no lo ve nadie. Las otras dos achican lo que ve cada rol. El administrador del negocio siempre ve todo lo de la empresa.</p>
+
+                    <div class="tabla-scroll">
+                        <table class="tabla tabla-chica tabla-modulos">
+                            <thead>
+                                <tr>
+                                    <th>Módulo</th>
+                                    <th class="centro">Empresa</th>
+                                    <th class="centro">Supervisor</th>
+                                    <th class="centro">Cajero</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var m in Modulo.Todos)
+                                {
+                                    var hayEmpresa = modulos.Contains(m.Clave);
+                                    <tr class="@(hayEmpresa ? "" : "fila-baja")">
+                                        <td>
+                                            <span class="modulo-nombre">@m.Titulo</span>
+                                            <span class="sub">@m.Detalle</span>
+                                        </td>
+                                        <td class="centro">
+                                            <input type="checkbox" aria-label="@(m.Titulo) para la empresa" checked="@hayEmpresa"
+                                                   @onchange="e => MarcarModulo(modulos, m.Clave, (bool)e.Value)" />
+                                        </td>
+                                        <td class="centro">
+                                            <input type="checkbox" aria-label="@(m.Titulo) para el supervisor" disabled="@(!hayEmpresa)"
+                                                   checked="@(hayEmpresa && modulosSup.Contains(m.Clave))"
+                                                   @onchange="e => MarcarModulo(modulosSup, m.Clave, (bool)e.Value)" />
+                                        </td>
+                                        <td class="centro">
+                                            <input type="checkbox" aria-label="@(m.Titulo) para el cajero" disabled="@(!hayEmpresa)"
+                                                   checked="@(hayEmpresa && modulosEmp.Contains(m.Clave))"
+                                                   @onchange="e => MarcarModulo(modulosEmp, m.Clave, (bool)e.Value)" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
+
                     <div class="fila-btns">
                         <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarModulos">Guardar módulos</button>
-                        <button type="button" class="btn" @onclick="TodosLosModulos">Marcar todos</button>
+                        <button type="button" class="btn" @onclick="TodosLosModulos">Marcar toda la empresa</button>
                     </div>
                 }
                 else if (pestania == 1)
@@ -328,6 +355,8 @@
     private int pestania;
     /// <summary>Módulos tildados de la empresa que se está editando (vacío = todos).</summary>
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> modulosSup = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> modulosEmp = new(StringComparer.OrdinalIgnoreCase);
     private string mensaje;
     private bool mensajeOk;
     private bool ocupado;
@@ -484,18 +513,27 @@
     private void AbrirModulos()
     {
         pestania = 4;
-        modulos = string.IsNullOrWhiteSpace(edit.Modulos)
-            ? Modulo.Todos.Select(m => m.Clave).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : edit.Modulos.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                  .Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        modulos = Leer(edit.Modulos, Modulo.Todos.Select(m => m.Clave));
+        modulosSup = Leer(edit.ModulosSupervisor, Modulo.PorDefectoRol);
+        modulosEmp = Leer(edit.ModulosEmpleado, Modulo.PorDefectoRol);
     }
 
-    private void MarcarModulo(string clave, bool marcado)
+    /// <summary>Vacío en la base significa "lo de siempre", distinto para la empresa y para cada rol.</summary>
+    private static HashSet<string> Leer(string guardado, IEnumerable<string> siEstaVacio) =>
+        string.IsNullOrWhiteSpace(guardado)
+            ? siEstaVacio.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : guardado.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                      .Select(x => x.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private void MarcarModulo(HashSet<string> donde, string clave, bool marcado)
     {
-        if (marcado) modulos.Add(clave); else modulos.Remove(clave);
+        if (marcado) donde.Add(clave); else donde.Remove(clave);
     }
 
     private void TodosLosModulos() => modulos = Modulo.Todos.Select(m => m.Clave).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static string Texto(HashSet<string> set) =>
+        string.Join(",", Modulo.Todos.Where(m => set.Contains(m.Clave)).Select(m => m.Clave));
 
     private async Task GuardarModulos()
     {
@@ -504,12 +542,20 @@
         {
             // Todos tildados se guarda como vacío: la empresa queda con el sistema completo.
             var todos = modulos.Count >= Modulo.Todos.Length;
-            var texto = todos ? null : string.Join(",", Modulo.Todos.Where(m => modulos.Contains(m.Clave)).Select(m => m.Clave));
-            var error = await EmpresaSrv.GuardarModulosAsync(edit.Id, texto);
+            var texto = todos ? null : Texto(modulos);
+            // Cada rol se guarda siempre, salvo que coincida con lo de siempre (trabajo diario).
+            var porDefecto = Modulo.PorDefectoRol.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var sup = modulosSup.SetEquals(porDefecto) ? null : Texto(modulosSup);
+            var emp = modulosEmp.SetEquals(porDefecto) ? null : Texto(modulosEmp);
+
+            var error = await EmpresaSrv.GuardarModulosAsync(edit.Id, texto, sup, emp);
             if (error != null) { Aviso(false, error); return; }
             edit.Modulos = texto;
+            edit.ModulosSupervisor = sup;
+            edit.ModulosEmpleado = emp;
             await Recargar();
-            Aviso(true, todos ? "La empresa ve todos los módulos." : $"Módulos guardados: {modulos.Count} de {Modulo.Todos.Length}.");
+            Aviso(true, $"Módulos guardados. Empresa: {(todos ? "todos" : modulos.Count + " de " + Modulo.Todos.Length)} · " +
+                        $"supervisor: {modulosSup.Count(x => modulos.Contains(x))} · cajero: {modulosEmp.Count(x => modulos.Contains(x))}.");
         }
         finally { ocupado = false; }
     }
@@ -584,6 +630,6 @@
         Moneda = e.Moneda, Activa = e.Activa, MotivoSuspension = e.MotivoSuspension, FechaAlta = e.FechaAlta,
         AbonoPagoHasta = e.AbonoPagoHasta, AbonoDiasGracia = e.AbonoDiasGracia, AbonoMonto = e.AbonoMonto, AbonoNotas = e.AbonoNotas,
         CantidadUsuarios = e.CantidadUsuarios, TieneLogo = e.TieneLogo, LeyendaTicket = e.LeyendaTicket,
-        Modulos = e.Modulos
+        Modulos = e.Modulos, ModulosSupervisor = e.ModulosSupervisor, ModulosEmpleado = e.ModulosEmpleado
     };
 }

@@ -2,6 +2,7 @@
 @page "/presupuestos/{Id:guid}"
 @attribute [Authorize(Roles = SesionService.RolEmpleado)]
 @implements IAsyncDisposable
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
 @inject CatalogoService Catalogo
 @inject PresupuestoService PresupuestoSrv
@@ -242,6 +243,8 @@ else
         try
         {
             sesion = await SesionSrv.ObtenerAsync();
+            // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+            if (!sesion.TieneModulo(Modulo.Presupuestos)) { Nav.NavigateTo("/sin-permiso"); return; }
             formasPago = (await Catalogo.FormasPagoAsync(sesion.Cs)).Where(f => !f.EsCtaCte).ToList();
             AplicarFormaPago(formasPago.FirstOrDefault(f => f.EsEfectivo) ?? formasPago.FirstOrDefault());
             if (Id != null)

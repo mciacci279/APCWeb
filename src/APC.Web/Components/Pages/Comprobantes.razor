@@ -1,5 +1,6 @@
 @page "/comprobantes"
-@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
 @inject FacturacionService Facturacion
 @inject CatalogoService Catalogo
@@ -189,6 +190,8 @@
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+        if (!sesion.TieneModulo(Modulo.Comprobantes)) { Nav.NavigateTo("/sin-permiso"); return; }
         devuelveStock = (await Facturacion.ParametrosAsync(sesion.Cs)).DecrementaStock;
         try { formasPago = await Catalogo.FormasPagoAsync(sesion.Cs); }
         catch (Exception) { formasPago = new(); }

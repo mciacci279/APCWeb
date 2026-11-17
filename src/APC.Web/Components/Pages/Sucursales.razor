@@ -1,6 +1,8 @@
 @page "/sucursales"
-@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
+@inject NavigationManager Nav
 @inject SucursalService SucursalSrv
 @inject CatalogoService Catalogo
 
@@ -203,6 +205,8 @@
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+        if (!sesion.TieneModulo(Modulo.Sucursales)) { Nav.NavigateTo("/sin-permiso"); return; }
         await Recargar();
     }
 

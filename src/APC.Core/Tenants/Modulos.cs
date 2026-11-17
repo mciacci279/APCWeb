@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace APC.Core.Tenants;
 
 /// <summary>
@@ -32,6 +34,23 @@ public static class Modulo
         (Precios, "Precios y formas de pago", "Tipos de precio y ajuste por forma de pago"),
         (Usuarios, "Usuarios", "Alta de usuarios del negocio")
     };
+
+    /// <summary>
+    /// Lo que ve un supervisor o un cajero mientras CM Tech no configure otra cosa:
+    /// el trabajo diario, que es lo que veían antes de que existieran los módulos.
+    /// </summary>
+    public static readonly string[] PorDefectoRol = { Facturar, Caja, Presupuestos };
+
+    /// <summary>Si la clave está en una lista separada por comas. Lista vacía = se usa la de por defecto.</summary>
+    public static bool EnLista(string lista, string clave, string[] siEstaVacia = null)
+    {
+        if (string.IsNullOrWhiteSpace(clave)) return true;
+        if (string.IsNullOrWhiteSpace(lista))
+            return siEstaVacia == null || siEstaVacia.Contains(clave, StringComparer.OrdinalIgnoreCase);
+        foreach (var m in lista.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (string.Equals(m.Trim(), clave, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
 
     /// <summary>Ruta de cada módulo, para saber qué página corresponde a cuál.</summary>
     public static string DeRuta(string ruta)

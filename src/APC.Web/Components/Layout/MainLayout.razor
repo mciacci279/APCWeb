@@ -46,7 +46,8 @@
             }
         </AuthorizeView>
 
-        <AuthorizeView Roles="@SesionService.RolAdmin">
+        @* Qué ve cada rol de este grupo lo deciden los módulos (Empresas → Módulos). *@
+        <AuthorizeView Roles="@SesionService.RolEmpleado">
             @if (HayAdministracion)
             {
                 <p class="rail-grupo">Administración</p>

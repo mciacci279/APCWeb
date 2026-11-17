@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Authorize(Roles = SesionService.RolEmpleado)]
 @implements IAsyncDisposable
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
 @inject CatalogoService Catalogo
 @inject FacturacionService Facturacion
@@ -345,6 +346,8 @@ else
         try
         {
             sesion = await SesionSrv.ObtenerAsync();
+            // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+            if (!sesion.TieneModulo(Modulo.Facturar)) { Nav.NavigateTo("/sin-permiso"); return; }
             empresa = await Catalogo.EmpresaAsync(sesion.Cs);
             if (empresa == null) { errorCarga = "Falta cargar los datos de la empresa."; return; }
             param = await Facturacion.ParametrosAsync(sesion.Cs);

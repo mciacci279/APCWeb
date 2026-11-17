@@ -27,8 +27,18 @@ public class SesionActual
     /// <summary>Punto de venta con el que factura: el de su sucursal.</summary>
     public int PuntoVenta => Sucursal?.PuntoVenta ?? Tenant?.PuntoVenta ?? 0;
 
-    /// <summary>Módulo habilitado para la empresa (lo configura CM Tech). CM Tech ve todo.</summary>
-    public bool TieneModulo(string clave) => EsSuperAdmin || Tenant == null || Tenant.TieneModulo(clave);
+    /// <summary>
+    /// Módulo habilitado para este usuario: primero lo que tiene la empresa y después lo que
+    /// CM Tech le dejó a su rol. CM Tech ve todo.
+    /// </summary>
+    public bool TieneModulo(string clave)
+    {
+        if (EsSuperAdmin || Tenant == null) return true;
+        if (!Tenant.TieneModulo(clave)) return false;
+        if (EsAdmin) return true;
+        var delRol = EsSupervisor ? Tenant.ModulosSupervisor : Tenant.ModulosEmpleado;
+        return Modulo.EnLista(delRol, clave, Modulo.PorDefectoRol);
+    }
     public Guid SucursalId => Sucursal?.Id ?? Guid.Empty;
 }
 

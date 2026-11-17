@@ -38,6 +38,10 @@ public class TenantConfig
 
     /// <summary>Módulos habilitados, separados por coma (script 17). Vacío = todos.</summary>
     public string Modulos { get; set; }
+    /// <summary>Lo que ve un supervisor (script 19). Vacío = solo el trabajo diario.</summary>
+    public string ModulosSupervisor { get; set; }
+    /// <summary>Lo que ve un cajero (script 19). Vacío = solo el trabajo diario.</summary>
+    public string ModulosEmpleado { get; set; }
 
     /// <summary>Si la empresa tiene habilitado ese módulo. Sin configurar, los tiene todos.</summary>
     public bool TieneModulo(string clave)

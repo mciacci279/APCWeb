@@ -1,6 +1,8 @@
 @page "/arqueo"
 @attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
+@inject NavigationManager Nav
 @inject CajaService Caja
 @inject SucursalService SucursalSrv
 
@@ -312,6 +314,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+        if (!sesion.TieneModulo(Modulo.Caja)) { Nav.NavigateTo("/sin-permiso"); return; }
         await Refrescar();
 
         if (sesion.EsAdmin)

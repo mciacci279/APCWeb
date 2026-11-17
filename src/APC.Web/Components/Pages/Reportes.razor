@@ -1,7 +1,9 @@
 @page "/reportes"
-@attribute [Authorize(Roles = SesionService.RolAdmin)]
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
 @using APC.Core.Datos
+@using APC.Core.Tenants
 @inject SesionService SesionSrv
+@inject NavigationManager Nav
 @inject ReporteService ReporteSrv
 @inject SucursalService SucursalSrv
 @inject IJSRuntime JS
@@ -234,6 +236,8 @@
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
+        // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
+        if (!sesion.TieneModulo(Modulo.Reportes)) { Nav.NavigateTo("/sin-permiso"); return; }
         try { sucursales = await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: false); }
         catch (Exception) { sucursales = new(); }   // la empresa todavía no corrió el script de sucursales
         await Buscar();

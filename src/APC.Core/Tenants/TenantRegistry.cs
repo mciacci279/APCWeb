@@ -58,10 +58,19 @@ public class TenantRegistry
             try
             {
                 lista = cn.Query<TenantConfig>(
-                    $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas, Modulos FROM dbo.Empresa");
+                    $@"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas,
+                              Modulos, ModulosSupervisor, ModulosEmpleado FROM dbo.Empresa");
             }
             catch (SqlException)
             {
+                try
+                {
+                    // Sin el script 19 (módulos por rol): cada rol ve lo de siempre.
+                    lista = cn.Query<TenantConfig>(
+                        $"SELECT {columnas}, AbonoPagoHasta, AbonoDiasGracia, AbonoMonto, AbonoNotas, Modulos FROM dbo.Empresa");
+                }
+                catch (SqlException)
+                {
                 try
                 {
                     // Todavía no se corrió el script 17 (módulos): las empresas ven todo.
@@ -72,6 +81,7 @@ public class TenantRegistry
                 {
                     // Tampoco el script 09 (abono): se sigue sin control de abono.
                     lista = cn.Query<TenantConfig>($"SELECT {columnas} FROM dbo.Empresa");
+                }
                 }
             }
             _cache = lista.ToDictionary(t => t.Codigo.Trim(), StringComparer.OrdinalIgnoreCase);

@@ -251,6 +251,10 @@ a:hover { color: var(--accion-osc); }
 .fila-sel td { background: var(--sel); }
 .fila-baja td { color: var(--muted); }
 .filtros-comp { padding: 12px 14px; }
+.centro { text-align: center; }
+.tabla-modulos input[type="checkbox"] { width: 18px; height: 18px; }
+.tabla-modulos .modulo-nombre { display: block; font-weight: 600; }
+.tabla-modulos .sub { display: block; }
 .modulos-lista { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin: 10px 0 14px; }
 .modulo-item { align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 9px; background: #fff; }
 .modulo-item .modulo-nombre { display: block; font-weight: 600; }
