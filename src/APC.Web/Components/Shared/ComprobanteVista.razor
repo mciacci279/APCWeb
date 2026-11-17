@@ -9,9 +9,13 @@ else if (EsTicket)
     <div class="impresion ticket-80" data-autoprint="@(AutoImprimir ? "true" : "false")">
         @if (logo != null)
         {
-            <img class="imp-logo" src="@logo" alt="@empresa.Nombre" />
+            <img class="imp-logo" src="@logo" alt="@titular" />
         }
-        <div class="tk-razon">@empresa.Nombre</div>
+        <div class="tk-razon">@titular</div>
+        @if (!string.Equals(titular, razon, StringComparison.OrdinalIgnoreCase))
+        {
+            <div class="tk-dato tk-razon-social"><span>Razón social:</span><span>@razon</span></div>
+        }
         @if (!string.IsNullOrWhiteSpace(empresa.Domicilio)) { <div>@empresa.Domicilio</div> }
         <div class="tk-dato"><span>CUIT Nro:</span><span>@FormatoCuit(empresa.Cuit)</span></div>
         <div class="tk-dato"><span>Ing. Brutos:</span><span>@empresa.IngresosBrutos</span></div>
@@ -125,14 +129,14 @@ else
             <div class="fa-emisor">
                 @if (logo != null)
                 {
-                    <img class="imp-logo" src="@logo" alt="@empresa.Nombre" />
+                    <img class="imp-logo" src="@logo" alt="@titular" />
                 }
                 else
                 {
-                    <div class="fa-nombre-grande">@empresa.Nombre</div>
+                    <div class="fa-nombre-grande">@titular</div>
                 }
                 <div class="fa-datos">
-                    <div><span class="fa-et">Razón Social:</span> <strong>@empresa.Nombre</strong></div>
+                    <div><span class="fa-et">Razón Social:</span> <strong>@razon</strong></div>
                     <div><span class="fa-et">Domicilio Comercial:</span> @empresa.Domicilio</div>
                     <div><span class="fa-et">C.P.:</span> @empresa.CP <span class="fa-et fa-sep">Tel.:</span> @empresa.Telefono1</div>
                     <div><span class="fa-et">Condición frente al IVA:</span> <strong>@CondicionEmisor</strong></div>
@@ -277,9 +281,18 @@ else
     [Parameter] public string UrlBase { get; set; }
     /// <summary>Abrir el diálogo de impresión al cargar.</summary>
     [Parameter] public bool AutoImprimir { get; set; } = true;
+    /// <summary>Razón social de la empresa (la de la ficha de CM Tech). Vacía = la de la base del negocio.</summary>
+    [Parameter] public string RazonSocial { get; set; }
+    /// <summary>Nombre de fantasía del negocio. Es el que se muestra arriba cuando no hay logo.</summary>
+    [Parameter] public string Fantasia { get; set; }
 
     private ComprobanteImpresion c => C;
     private EmpresaDatos empresa => Empresa;
+
+    /// <summary>Lo que va en «Razón Social»: es el dato fiscal, el que figura en ARCA.</summary>
+    private string razon => string.IsNullOrWhiteSpace(RazonSocial) ? empresa?.Nombre : RazonSocial.Trim();
+    /// <summary>Encabezado del comprobante: el nombre con el que se conoce al negocio.</summary>
+    private string titular => string.IsNullOrWhiteSpace(Fantasia) ? razon : Fantasia.Trim();
     private string logo => Logo;
     private string leyenda => Leyenda;
     private string qr => C == null ? null : FacturacionService.QrDataUri(C.QRURLAFIP);

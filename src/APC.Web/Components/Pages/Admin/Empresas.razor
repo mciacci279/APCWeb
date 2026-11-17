@@ -38,11 +38,11 @@
     <div class="arqueo-cols">
         <section class="panel crece tabla-scroll">
             <table class="tabla">
-                <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Pto. Vta.</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
+                <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
                 <tbody>
                     @if (lista.Count == 0)
                     {
-                        <tr><td colspan="7" class="sub">Todavía no hay empresas. Creá la primera con «Nueva empresa».</td></tr>
+                        <tr><td colspan="6" class="sub">Todavía no hay empresas. Creá la primera con «Nueva empresa».</td></tr>
                     }
                     @foreach (var e in lista)
                     {
@@ -57,7 +57,7 @@
                                     <span class="cert-chip @ClaseCertificado(cert)">@TextoCertificado(cert)</span>
                                 }
                             </td>
-                            <td class="der">@e.PuntoVenta</td>
+                            @* El punto de venta no va acá: la empresa puede tener varios, uno por sucursal. *@
                             <td class="der">@e.CantidadUsuarios</td>
                             <td>
                                 @if (!e.Activa) { <span class="etiqueta etiqueta-falta">Suspendida</span> }

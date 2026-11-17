@@ -19,14 +19,14 @@ else
             <div class="fa-emisor">
                 @if (logo != null)
                 {
-                    <img class="imp-logo" src="@logo" alt="@empresa.Nombre" />
+                    <img class="imp-logo" src="@logo" alt="@titular" />
                 }
                 else
                 {
-                    <div class="fa-nombre-grande">@empresa.Nombre</div>
+                    <div class="fa-nombre-grande">@titular</div>
                 }
                 <div class="fa-datos">
-                    <div><span class="fa-et">Razón Social:</span> <strong>@empresa.Nombre</strong></div>
+                    <div><span class="fa-et">Razón Social:</span> <strong>@razon</strong></div>
                     <div><span class="fa-et">Domicilio Comercial:</span> @empresa.Domicilio</div>
                     <div><span class="fa-et">C.P.:</span> @empresa.CP <span class="fa-et fa-sep">Tel.:</span> @empresa.Telefono1</div>
                 </div>
@@ -117,6 +117,12 @@ else
     private PresupuestoCliente cli;
     private EmpresaDatos empresa;
     private string logo;
+    private string razonSocial, fantasia;
+
+    /// <summary>Dato fiscal: la razón social de la ficha de CM Tech, o la de la base del negocio.</summary>
+    private string razon => string.IsNullOrWhiteSpace(razonSocial) ? empresa?.Nombre : razonSocial.Trim();
+    /// <summary>Encabezado: el nombre con el que se conoce al negocio.</summary>
+    private string titular => string.IsNullOrWhiteSpace(fantasia) ? razon : fantasia.Trim();
 
     protected override async Task OnInitializedAsync()
     {
@@ -125,6 +131,8 @@ else
         if (p != null) cli = p.Cliente;
         empresa = await Catalogo.EmpresaAsync(s.Cs);
         logo = await EmpresaSrv.LogoDataUriAsync(s.Tenant.Id);
+        razonSocial = s.Tenant.Nombre;
+        fantasia = s.Tenant.NombreFantasia;
     }
 
     /// <summary>Descuento del renglón; en negativo es un incremento (DetallePresupuesto solo tiene DescuentoRenglon).</summary>

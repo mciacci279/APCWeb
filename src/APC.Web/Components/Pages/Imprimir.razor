@@ -9,7 +9,7 @@
 <PageTitle>@ComprobanteVista.TituloDe(c, empresa)</PageTitle>
 
 <ComprobanteVista C="c" Empresa="empresa" Logo="@logo" Leyenda="@leyenda" Formato="@Formato"
-                  UrlBase="@UrlBase" />
+                  RazonSocial="@razonSocial" Fantasia="@fantasia" UrlBase="@UrlBase" />
 
 @code {
     [Parameter] public Guid Id { get; set; }
@@ -21,6 +21,8 @@
     private EmpresaDatos empresa;
     private string logo;
     private string leyenda;
+    private string razonSocial;
+    private string fantasia;
 
     private string UrlBase => $"/imprimir/{Id}" + (Nc == 1 ? "?nc=1" : "");
 
@@ -31,5 +33,7 @@
         empresa = await Catalogo.EmpresaAsync(s.Cs);
         logo = await EmpresaSrv.LogoDataUriAsync(s.Tenant.Id);
         leyenda = s.Sucursal?.LeyendaTicket is { Length: > 0 } propia ? propia : s.Tenant.LeyendaTicket;
+        razonSocial = s.Tenant.Nombre;
+        fantasia = s.Tenant.NombreFantasia;
     }
 }

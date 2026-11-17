@@ -22,7 +22,7 @@
 else
 {
     <ComprobanteVista C="c" Empresa="empresa" Logo="@logo" Leyenda="@leyenda" Formato="@(Formato ?? "a4")"
-                      UrlBase="@UrlBase" AutoImprimir="false" />
+                      RazonSocial="@razonSocial" Fantasia="@fantasia" UrlBase="@UrlBase" AutoImprimir="false" />
 }
 
 @code {
@@ -36,6 +36,8 @@ else
     private EmpresaDatos empresa;
     private string logo;
     private string leyenda;
+    private string razonSocial;
+    private string fantasia;
 
     private string UrlBase => $"/ver/{Uri.EscapeDataString(Codigo ?? "")}/{Id}?f={Uri.EscapeDataString(Firma ?? "")}" + (Nc == 1 ? "&nc=1" : "");
 
@@ -54,6 +56,8 @@ else
             empresa = await Catalogo.EmpresaAsync(tenant.ConnectionString);
             logo = await EmpresaSrv.LogoDataUriAsync(tenant.Id);
             leyenda = tenant.LeyendaTicket;
+            razonSocial = tenant.Nombre;
+            fantasia = tenant.NombreFantasia;
             c = comprobante;
         }
         catch (Exception)
