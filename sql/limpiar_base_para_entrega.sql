@@ -17,10 +17,10 @@
 
 SET NOCOUNT ON;
 
-DECLARE @Simular            BIT           = 1,        -- 1 = solo informar, 0 = borrar
-        @SucursalABorrar    NVARCHAR(100) = NULL,     -- ej. N'ACME' (NULL = no borra ninguna)
-        @BorrarClientes     BIT           = 0,        -- 1 = tambien borra los clientes cargados
-        @PonerStockEnCero   BIT           = 0;        -- 1 = deja todo el stock en cero
+DECLARE @Simular            BIT           = 0,        -- 1 = solo informar, 0 = borrar
+        @SucursalABorrar    NVARCHAR(100) = 'ACME',     -- ej. N'ACME' (NULL = no borra ninguna)
+        @BorrarClientes     BIT           = 1,        -- 1 = tambien borra los clientes cargados
+        @PonerStockEnCero   BIT           = 1;        -- 1 = deja todo el stock en cero
 
 PRINT '=== Base: ' + DB_NAME() + ' ===';
 IF @Simular = 1 PRINT '*** MODO SIMULACION: no se borra nada ***';

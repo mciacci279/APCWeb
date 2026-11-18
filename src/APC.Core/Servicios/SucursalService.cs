@@ -19,14 +19,27 @@ public class SucursalService
             ? "ExigeCaja"
             : "CAST(1 AS BIT) AS ExigeCaja";
 
-    public async Task<List<Sucursal>> ListarAsync(string cs, bool incluirInactivas = true)
+    /// <summary>Columna agregada por el script 20: puede no existir todavía.</summary>
+    private static async Task<bool> ExisteBorradaAsync(IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.Sucursal', 'Borrada') IS NULL THEN 0 ELSE 1 END") == 1;
+
+    public async Task<List<Sucursal>> ListarAsync(string cs, bool incluirInactivas = true, bool incluirBorradas = false)
     {
         using var cn = await Db.AbrirAsync(cs);
+        var conBorrada = await ExisteBorradaAsync(cn);
+        var columnaBorrada = conBorrada ? "Borrada" : "CAST(0 AS BIT) AS Borrada";
+
+        var condiciones = new List<string>();
+        if (!incluirInactivas) condiciones.Add("Activa = 1");
+        if (conBorrada && !incluirBorradas) condiciones.Add("Borrada = 0");
+        var donde = condiciones.Count == 0 ? "" : "WHERE " + string.Join(" AND ", condiciones);
+
         return (await cn.QueryAsync<Sucursal>(
             $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta,
-                      {await ColumnaExigeCajaAsync(cn)}
+                      {await ColumnaExigeCajaAsync(cn)}, {columnaBorrada}
                FROM dbo.Sucursal
-               {(incluirInactivas ? "" : "WHERE Activa = 1")}
+               {donde}
                ORDER BY PuntoVenta")).ToList();
     }
 
@@ -48,7 +61,9 @@ public class SucursalService
         using var cn = await Db.AbrirAsync(tenant.ConnectionString);
         var existente = await cn.QueryFirstOrDefaultAsync<Sucursal>(
             $@"SELECT TOP 1 Id, Nombre, PuntoVenta, LeyendaTicket, Activa, {await ColumnaExigeCajaAsync(cn)}
-               FROM dbo.Sucursal ORDER BY PuntoVenta");
+               FROM dbo.Sucursal
+               {(await ExisteBorradaAsync(cn) ? "WHERE Borrada = 0" : "")}
+               ORDER BY PuntoVenta");
         if (existente != null) return existente;
 
         var id = Guid.NewGuid();
@@ -78,7 +93,8 @@ public class SucursalService
 
         using var cn = await Db.AbrirAsync(cs);
         var repetido = await cn.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Sucursal WHERE PuntoVenta = @pv AND Id <> @id",
+            $@"SELECT COUNT(*) FROM dbo.Sucursal
+               WHERE PuntoVenta = @pv AND Id <> @id {(await ExisteBorradaAsync(cn) ? "AND Borrada = 0" : "")}",
             new { pv = s.PuntoVenta, id = s.Id });
         if (repetido > 0) return "Ya hay otra sucursal con ese punto de venta.";
 
@@ -133,46 +149,43 @@ public class SucursalService
     }
 
     /// <summary>
-    /// Borra una sucursal que no se usó. Si ya hay comprobantes con su punto de venta o
-    /// cajas abiertas ahí, no se borra: se desactiva, para no romper el historial.
+    /// Borrado lógico: la sucursal deja de aparecer en todo el sistema, pero la fila queda
+    /// con su stock y sus movimientos, así los comprobantes viejos siguen resolviendo su
+    /// nombre y se puede recuperar si fue un error.
     /// </summary>
     public async Task<string> BorrarAsync(string cs, Guid id)
     {
         using var cn = await Db.AbrirAsync(cs);
+        if (!await ExisteBorradaAsync(cn))
+            return "Falta correr el script 20 en la base de esta empresa para poder borrar sucursales.";
+
         var s = await cn.QueryFirstOrDefaultAsync<Sucursal>(
             "SELECT Id, Nombre, PuntoVenta FROM dbo.Sucursal WHERE Id = @id", new { id });
         if (s == null) return "La sucursal ya no existe.";
 
-        if (await cn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Sucursal") <= 1)
+        if (await cn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Sucursal WHERE Borrada = 0") <= 1)
             return "Tiene que quedar al menos una sucursal.";
 
-        var comprobantes = await cn.ExecuteScalarAsync<int>(
-            "SELECT COUNT(*) FROM dbo.Factura WHERE Terminal = @pv", new { pv = s.PuntoVenta });
-        if (comprobantes > 0)
-            return $"No se puede borrar: hay {comprobantes} comprobante(s) emitidos con el punto de venta {s.PuntoVenta:0000}. Desactivala en vez de borrarla.";
+        await cn.ExecuteAsync("UPDATE dbo.Sucursal SET Borrada = 1, Activa = 0 WHERE Id = @id", new { id });
+        return null;
+    }
 
-        if (await cn.ExecuteScalarAsync<int>(
-                "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'SucursalId') IS NULL THEN 0 ELSE 1 END") == 1)
-        {
-            var cajas = await cn.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM dbo.CajaTurno WHERE SucursalId = @id", new { id });
-            if (cajas > 0)
-                return $"No se puede borrar: tiene {cajas} caja(s) registradas. Desactivala en vez de borrarla.";
-        }
+    /// <summary>Vuelve a poner en uso una sucursal borrada.</summary>
+    public async Task<string> RestaurarAsync(string cs, Guid id)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        if (!await ExisteBorradaAsync(cn))
+            return "Falta correr el script 20 en la base de esta empresa.";
 
-        using var tx = cn.BeginTransaction();
-        try
-        {
-            await cn.ExecuteAsync("DELETE FROM dbo.MovimientoStock WHERE SucursalId = @id", new { id }, tx);
-            await cn.ExecuteAsync("DELETE FROM dbo.StockSucursal WHERE SucursalId = @id", new { id }, tx);
-            await cn.ExecuteAsync("DELETE FROM dbo.Sucursal WHERE Id = @id", new { id }, tx);
-            tx.Commit();
-        }
-        catch (Microsoft.Data.SqlClient.SqlException ex)
-        {
-            tx.Rollback();
-            return "No se pudo borrar: algo más en el sistema la está usando. Detalle: " + ex.Message;
-        }
+        var pv = await cn.ExecuteScalarAsync<int?>("SELECT PuntoVenta FROM dbo.Sucursal WHERE Id = @id", new { id });
+        if (pv == null) return "La sucursal ya no existe.";
+
+        var repetido = await cn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Sucursal WHERE PuntoVenta = @pv AND Id <> @id AND Borrada = 0",
+            new { pv, id });
+        if (repetido > 0) return "Ya hay otra sucursal usando ese punto de venta.";
+
+        await cn.ExecuteAsync("UPDATE dbo.Sucursal SET Borrada = 0, Activa = 1 WHERE Id = @id", new { id });
         return null;
     }
 

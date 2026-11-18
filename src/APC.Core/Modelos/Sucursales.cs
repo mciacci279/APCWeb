@@ -15,6 +15,8 @@ public class Sucursal
     /// <summary>Si hay que abrir la caja para poder facturar en esta sucursal.
     /// Un dueño que factura solo no la necesita; con empleados conviene dejarla en true.</summary>
     public bool ExigeCaja { get; set; } = true;
+    /// <summary>Borrado lógico (script 20): la fila queda, pero la sucursal no se usa más.</summary>
+    public bool Borrada { get; set; }
     public DateTime FechaAlta { get; set; }
 
     /// <summary>Cantidad de usuarios asignados (solo se completa en el listado).</summary>
