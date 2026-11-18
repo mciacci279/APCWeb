@@ -102,6 +102,9 @@ public class SucursalService
         else
         {
             var conExigeCaja = await ColumnaExigeCajaAsync(cn) == "ExigeCaja";
+            // Sin la columna, el tilde de la caja no se podría guardar y quedaría en "Sí" sin avisar.
+            if (!conExigeCaja && !s.ExigeCaja)
+                return "No se puede cambiar la apertura de caja: falta correr el script 16 en la base de esta empresa.";
             await cn.ExecuteAsync(
                 $@"UPDATE dbo.Sucursal SET Nombre = @Nombre, PuntoVenta = @PuntoVenta, Domicilio = @Domicilio,
                           Localidad = @Localidad, Telefono = @Telefono, LeyendaTicket = @LeyendaTicket, Activa = @Activa
