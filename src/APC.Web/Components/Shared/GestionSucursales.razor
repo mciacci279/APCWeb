@@ -10,11 +10,11 @@
     }
 
     <table class="tabla tabla-chica">
-        <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Estado</th></tr></thead>
+        <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Caja</th><th>Estado</th></tr></thead>
         <tbody>
             @if (lista.Count == 0)
             {
-                <tr><td colspan="4" class="sub">Todavía no hay sucursales. Se crea una sola, «Casa central», la primera vez que el cliente entra.</td></tr>
+                <tr><td colspan="5" class="sub">Todavía no hay sucursales. Se crea una sola, «Casa central», la primera vez que el cliente entra.</td></tr>
             }
             @foreach (var s in lista)
             {
@@ -22,6 +22,7 @@
                     <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
                     <td><button type="button" class="link-fila" @onclick="() => Seleccionar(s)">@s.Nombre</button></td>
                     <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
+                    <td>@(s.ExigeCaja ? "Sí" : "No")</td>
                     <td>@(s.Activa ? "Activa" : "Inactiva")</td>
                 </tr>
             }
@@ -128,9 +129,14 @@
         {
             var error = await SucursalSrv.GuardarAsync(Tenant.ConnectionString, edit);
             if (error != null) { Aviso(false, error); return; }
-            Aviso(true, edit.EsNueva ? "Sucursal creada." : "Sucursal actualizada.");
+            var id = edit.Id;
+            var nueva = edit.EsNueva;
             edit = null;
             await Cargar();
+            // Se informa lo que quedó realmente guardado en la base, no lo que se tildó en pantalla.
+            var guardada = lista.FirstOrDefault(x => x.Id == id);
+            Aviso(true, (nueva ? "Sucursal creada." : "Sucursal actualizada.") +
+                        (guardada == null ? "" : $" Apertura de caja: {(guardada.ExigeCaja ? "sí" : "no")}."));
         }
         finally { ocupado = false; }
     }
