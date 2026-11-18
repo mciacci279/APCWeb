@@ -616,7 +616,6 @@ input.input-ajuste { width: 72px; text-align: right; }
 .boton-acceso { margin-top: 6px; min-height: 52px; border: 0; border-radius: 14px; background: var(--accion); color: #fff; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer; }
 .boton-acceso:hover { background: var(--accion-osc); }
 .tarjeta-acceso .login-link { align-self: center; font-size: 14px; color: var(--accion); }
-.acceso-nota { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }
 .tarjeta-acceso .alerta { margin: 0; }
 
 @media (max-width: 980px) {
