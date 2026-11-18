@@ -111,6 +111,24 @@ public class SucursalService
         return null;
     }
 
+    /// <summary>
+    /// Prende o apaga la apertura de caja de una sucursal. Lo puede hacer el administrador
+    /// del negocio: es una decisión suya, no de ARCA.
+    /// </summary>
+    public async Task<string> CambiarExigeCajaAsync(string cs, Guid id, bool exige)
+    {
+        try
+        {
+            using var cn = await Db.AbrirAsync(cs);
+            await cn.ExecuteAsync("UPDATE dbo.Sucursal SET ExigeCaja = @exige WHERE Id = @id", new { id, exige });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            return "No se pudo guardar. ¿Se ejecutó el script 16 en la base de esta empresa? Detalle: " + ex.Message;
+        }
+        return null;
+    }
+
     public async Task<string> CambiarEstadoAsync(string cs, Guid id, bool activa)
     {
         using var cn = await Db.AbrirAsync(cs);

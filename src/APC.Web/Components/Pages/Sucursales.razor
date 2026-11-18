@@ -31,19 +31,32 @@
     {
         <div class="panel tabla-scroll">
             <table class="tabla">
-                <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Estado</th></tr></thead>
+                <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Apertura de caja</th><th>Estado</th></tr></thead>
                 <tbody>
                     @if (lista.Count == 0)
                     {
-                        <tr><td colspan="5" class="sub">Todavía no hay sucursales cargadas.</td></tr>
+                        <tr><td colspan="6" class="sub">Todavía no hay sucursales cargadas.</td></tr>
                     }
                     @foreach (var s in lista)
                     {
-                        <tr class="@(s.Activa ? "" : "fila-baja")">
+                        <tr class="@(s.Activa ? "" : "fila-baja") @(verCaja?.Id == s.Id ? "fila-sel" : "")">
                             <td class="der mono">@s.PuntoVenta.ToString("0000")</td>
-                            <td>@s.Nombre</td>
+                            <td>
+                                @if (sesion.EsAdmin)
+                                {
+                                    <button type="button" class="link-fila" @onclick="() => AbrirCaja(s)">@s.Nombre</button>
+                                }
+                                else
+                                {
+                                    <span>@s.Nombre</span>
+                                }
+                            </td>
                             <td>@s.Domicilio@(string.IsNullOrWhiteSpace(s.Localidad) ? "" : " - " + s.Localidad)</td>
                             <td>@s.Telefono</td>
+                            <td>
+                                @if (s.ExigeCaja) { <span class="cert-chip cert-bien">Sí</span> }
+                                else { <span class="etiqueta etiqueta-empleado">No</span> }
+                            </td>
                             <td>
                                 @if (s.Activa) { <span>Activa</span> }
                                 else { <span class="etiqueta etiqueta-falta">Inactiva</span> }
@@ -53,6 +66,33 @@
                 </tbody>
             </table>
         </div>
+
+        @if (verCaja != null)
+        {
+            <section class="panel cierre panel-ancho" aria-label="Apertura de caja">
+                <h2>@verCaja.Nombre</h2>
+                <p class="sub">Pto. Vta. @verCaja.PuntoVenta.ToString("0000")</p>
+
+                <div class="campo">
+                    <label for="caja-si">¿Hay que abrir la caja para facturar en esta sucursal?</label>
+                    <select id="caja-si" class="input" @bind="exigeCaja">
+                        <option value="true">Sí, primero se abre la caja</option>
+                        <option value="false">No, se factura directo</option>
+                    </select>
+                </div>
+                <p class="sub">
+                    Con caja, cada usuario abre su turno, el sistema lleva el arqueo y al cerrar compara lo contado
+                    con lo esperado. Sin caja se factura directo: es para el dueño que atiende solo.
+                    Lo que ya está facturado no cambia.
+                </p>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarCaja">Guardar</button>
+                    <button type="button" class="btn" @onclick="() => verCaja = null">Cancelar</button>
+                </div>
+            </section>
+        }
+
         <p class="sub">Para abrir una sucursal nueva o cambiar su punto de venta, comunicate con CM Tech: cada punto de venta se da de alta en ARCA.</p>
     }
     else if (pestania == 1)
@@ -202,6 +242,10 @@
 
     private List<MovimientoStockItem> movimientos = new();
 
+    /// <summary>Sucursal a la que se le está cambiando la apertura de caja.</summary>
+    private Sucursal verCaja;
+    private bool exigeCaja = true;
+
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
@@ -229,6 +273,33 @@
 
 
 
+
+    private void AbrirCaja(Sucursal s)
+    {
+        verCaja = s;
+        exigeCaja = s.ExigeCaja;
+        mensaje = null;
+    }
+
+    private async Task GuardarCaja()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.CambiarExigeCajaAsync(sesion.Cs, verCaja.Id, exigeCaja);
+            if (error != null) { Aviso(false, error); return; }
+
+            // Si es la sucursal del usuario, que valga ya mismo sin tener que volver a entrar.
+            if (sesion.Sucursal != null && sesion.Sucursal.Id == verCaja.Id) sesion.Sucursal.ExigeCaja = exigeCaja;
+
+            Aviso(true, exigeCaja
+                ? $"En {verCaja.Nombre} hay que abrir la caja para facturar."
+                : $"En {verCaja.Nombre} se factura sin abrir la caja.");
+            verCaja = null;
+            await Recargar();
+        }
+        finally { ocupado = false; }
+    }
 
     private async Task BuscarProducto(KeyboardEventArgs e)
     {
