@@ -59,9 +59,9 @@
                     <label for="c-doc">CUIT / DNI</label>
                     <div class="fila-btns">
                         <input id="c-doc" class="input mono crece" maxlength="13" inputmode="numeric" @bind="edit.NroDocumento" />
-                        <button type="button" class="btn" disabled="@ocupado" @onclick="TraerDeArca">Traer de ARCA</button>
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="BuscarDocumento">Buscar</button>
                     </div>
-                    <span class="sub">Con el CUIT, ARCA devuelve la razón social, el domicilio y la condición frente al IVA.</span>
+                    <span class="sub">Primero lo busca entre tus clientes. Si no está, trae de ARCA la razón social, el domicilio y la condición frente al IVA, y al guardar queda cargado.</span>
                 </div>
 
                 <div class="campo">
@@ -206,6 +206,33 @@
             await Buscar();
         }
         finally { ocupado = false; }
+    }
+
+    /// <summary>
+    /// Primero en la base del negocio: si el cliente ya existe se abre para editarlo, así no
+    /// se duplica ni se consulta ARCA al pedo. Si no está, se va al padrón.
+    /// </summary>
+    private async Task BuscarDocumento()
+    {
+        mensaje = null;
+        if (string.IsNullOrWhiteSpace(edit.NroDocumento)) { Aviso(false, "Escribí el CUIT o el DNI."); return; }
+
+        ocupado = true;
+        StateHasChanged();
+        ClienteDetalle existente = null;
+        try { existente = await ClienteSrv.PorDocumentoAsync(sesion.Cs, edit.NroDocumento); }
+        catch (Exception) { existente = null; }
+        finally { ocupado = false; }
+
+        if (existente != null && existente.Id != edit.Id)
+        {
+            edit = existente;
+            confirmarBaja = false;
+            Aviso(true, $"Ya estaba cargado: {existente.NombreCompleto}. Te lo abrí para editarlo.");
+            return;
+        }
+
+        await TraerDeArca();
     }
 
     private async Task TraerDeArca()

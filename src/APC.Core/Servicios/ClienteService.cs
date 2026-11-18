@@ -41,6 +41,24 @@ public class ClienteService
               FROM dbo.Cliente WHERE Id = @id", new { id });
     }
 
+    /// <summary>
+    /// Busca un cliente por documento, ignorando guiones y espacios. Se usa antes de ir a ARCA:
+    /// si ya está cargado no tiene sentido consultar el padrón ni crearlo de nuevo.
+    /// </summary>
+    public async Task<ClienteDetalle> PorDocumentoAsync(string cs, string nroDocumento)
+    {
+        var doc = new string((nroDocumento ?? "").Where(char.IsDigit).ToArray());
+        if (doc.Length < 7) return null;
+
+        using var cn = await Db.AbrirAsync(cs);
+        return await cn.QueryFirstOrDefaultAsync<ClienteDetalle>(
+            @"SELECT TOP 1 Id, Apellido, Nombre, TipoDocumentoId, NroDocumento, IvaId, Domicilio, NroCalle,
+                     Barrio, Localidad, Cp, IngresosBrutos, Telefono1, Telefono2, Email
+              FROM dbo.Cliente
+              WHERE REPLACE(REPLACE(ISNULL(NroDocumento, ''), '-', ''), ' ', '') = @doc
+              ORDER BY Apellido, Nombre", new { doc });
+    }
+
     public async Task<List<OpcionItem>> TiposDocumentoAsync(string cs)
     {
         using var cn = await Db.AbrirAsync(cs);

@@ -43,6 +43,10 @@ public class ClienteDetalle
     public string Email { get; set; }
 
     public bool EsNuevo => Id == Guid.Empty;
+
+    /// <summary>Razón social, o apellido y nombre.</summary>
+    public string NombreCompleto =>
+        string.Join(" ", new[] { Apellido, Nombre }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
 }
 
 /// <summary>Una fila de dbo.TipoDocumento o dbo.Iva, para los desplegables.</summary>
