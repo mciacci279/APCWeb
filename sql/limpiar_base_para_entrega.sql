@@ -80,8 +80,12 @@ BEGIN TRY
 
     IF @PonerStockEnCero = 1
     BEGIN
-        IF OBJECT_ID(N'dbo.StockSucursal', N'U') IS NOT NULL UPDATE dbo.StockSucursal SET Stock = 0;
-        IF COL_LENGTH('dbo.Producto', 'Stock') IS NOT NULL   UPDATE dbo.Producto SET Stock = 0;
+        /* Van por EXEC: SQL Server valida las columnas al compilar el lote, aunque el IF de
+           afuera sea falso, y no todas las bases tienen las mismas columnas.                */
+        IF OBJECT_ID(N'dbo.StockSucursal', N'U') IS NOT NULL
+            EXEC (N'UPDATE dbo.StockSucursal SET Stock = 0');
+        IF COL_LENGTH('dbo.Producto', 'Stock') IS NOT NULL
+            EXEC (N'UPDATE dbo.Producto SET Stock = 0');
     END
 
     /* Sucursal de prueba: se borra con su stock, siempre que quede otra activa */
@@ -96,8 +100,12 @@ BEGIN TRY
             PRINT 'No se borro la sucursal: tiene que quedar al menos una.';
         ELSE
         BEGIN
+            /* En esta base los usuarios no tienen sucursal: la asignacion esta en APCWeb_Central.
+               Si algun usuario quedaba apuntando a esta sucursal, el sistema lo manda solo a la
+               primera sucursal activa la proxima vez que entra.                                  */
             IF COL_LENGTH('dbo.Usuario', 'SucursalId') IS NOT NULL
-                UPDATE dbo.Usuario SET SucursalId = NULL WHERE SucursalId = @sucId;
+                EXEC sp_executesql N'UPDATE dbo.Usuario SET SucursalId = NULL WHERE SucursalId = @id',
+                     N'@id UNIQUEIDENTIFIER', @id = @sucId;
             IF OBJECT_ID(N'dbo.StockSucursal', N'U') IS NOT NULL
                 DELETE FROM dbo.StockSucursal WHERE SucursalId = @sucId;
             DELETE FROM dbo.Sucursal WHERE Id = @sucId;
