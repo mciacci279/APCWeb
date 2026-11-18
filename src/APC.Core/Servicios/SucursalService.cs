@@ -132,6 +132,50 @@ public class SucursalService
         return null;
     }
 
+    /// <summary>
+    /// Borra una sucursal que no se usó. Si ya hay comprobantes con su punto de venta o
+    /// cajas abiertas ahí, no se borra: se desactiva, para no romper el historial.
+    /// </summary>
+    public async Task<string> BorrarAsync(string cs, Guid id)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var s = await cn.QueryFirstOrDefaultAsync<Sucursal>(
+            "SELECT Id, Nombre, PuntoVenta FROM dbo.Sucursal WHERE Id = @id", new { id });
+        if (s == null) return "La sucursal ya no existe.";
+
+        if (await cn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Sucursal") <= 1)
+            return "Tiene que quedar al menos una sucursal.";
+
+        var comprobantes = await cn.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.Factura WHERE Terminal = @pv", new { pv = s.PuntoVenta });
+        if (comprobantes > 0)
+            return $"No se puede borrar: hay {comprobantes} comprobante(s) emitidos con el punto de venta {s.PuntoVenta:0000}. Desactivala en vez de borrarla.";
+
+        if (await cn.ExecuteScalarAsync<int>(
+                "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'SucursalId') IS NULL THEN 0 ELSE 1 END") == 1)
+        {
+            var cajas = await cn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(*) FROM dbo.CajaTurno WHERE SucursalId = @id", new { id });
+            if (cajas > 0)
+                return $"No se puede borrar: tiene {cajas} caja(s) registradas. Desactivala en vez de borrarla.";
+        }
+
+        using var tx = cn.BeginTransaction();
+        try
+        {
+            await cn.ExecuteAsync("DELETE FROM dbo.MovimientoStock WHERE SucursalId = @id", new { id }, tx);
+            await cn.ExecuteAsync("DELETE FROM dbo.StockSucursal WHERE SucursalId = @id", new { id }, tx);
+            await cn.ExecuteAsync("DELETE FROM dbo.Sucursal WHERE Id = @id", new { id }, tx);
+            tx.Commit();
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            tx.Rollback();
+            return "No se pudo borrar: algo más en el sistema la está usando. Detalle: " + ex.Message;
+        }
+        return null;
+    }
+
     public async Task<string> CambiarEstadoAsync(string cs, Guid id, bool activa)
     {
         using var cn = await Db.AbrirAsync(cs);

@@ -68,9 +68,19 @@
                     <button type="button" class="btn" disabled="@ocupado" @onclick="() => CambiarEstado(!edit.Activa)">
                         @(edit.Activa ? "Desactivar" : "Reactivar")
                     </button>
+                    @if (confirmarBorrado)
+                    {
+                        <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Borrar">Sí, borrar</button>
+                        <button type="button" class="btn" @onclick="() => confirmarBorrado = false">No</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="() => confirmarBorrado = true">Borrar</button>
+                    }
                 }
             </div>
 
+            <p class="sub">Solo se puede borrar una sucursal sin comprobantes ni cajas. Si ya facturó, desactivala: así deja de usarse pero el historial queda.</p>
             <p class="sub">El punto de venta tiene que estar dado de alta en ARCA para factura electrónica por webservice, con el CUIT de esta empresa. La sucursal nueva arranca con todos los productos en cero.</p>
         </section>
     }
@@ -84,6 +94,7 @@
     private string mensaje;
     private bool mensajeOk;
     private bool ocupado;
+    private bool confirmarBorrado;
     private Guid tenantCargado;
 
     protected override async Task OnParametersSetAsync()
@@ -108,7 +119,24 @@
     private void Nueva()
     {
         edit = new Sucursal { PuntoVenta = lista.Count == 0 ? Tenant.PuntoVenta : lista.Max(s => s.PuntoVenta) + 1 };
+        confirmarBorrado = false;
         mensaje = null;
+    }
+
+    private async Task Borrar()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.BorrarAsync(Tenant.ConnectionString, edit.Id);
+            if (error != null) { Aviso(false, error); confirmarBorrado = false; return; }
+            var nombre = edit.Nombre;
+            edit = null;
+            confirmarBorrado = false;
+            await Cargar();
+            Aviso(true, $"Sucursal «{nombre}» borrada.");
+        }
+        finally { ocupado = false; }
     }
 
     private void Seleccionar(Sucursal s)
@@ -119,6 +147,7 @@
             Localidad = s.Localidad, Telefono = s.Telefono, LeyendaTicket = s.LeyendaTicket, Activa = s.Activa,
             ExigeCaja = s.ExigeCaja
         };
+        confirmarBorrado = false;
         mensaje = null;
     }
 
