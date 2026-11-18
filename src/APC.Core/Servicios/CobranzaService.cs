@@ -25,6 +25,7 @@ public class CobranzaService
         e.Codigo AS EmpresaCodigo, e.Nombre AS EmpresaNombre, e.NombreFantasia AS EmpresaFantasia,
         e.ContactoNombre, e.ContactoTelefono, e.ContactoEmail,
         f.Nombre AS Facturador, f.Alias AS FacturadorDatos,
+        c.TipoComprobanteAFIP, c.PuntoVenta, c.Numero, c.CAE, c.CAEVencimiento, c.FechaEmision,
         ua.NombreUsuario AS CreadoPorNombre, ue.NombreUsuario AS EnviadoPorNombre, uc.NombreUsuario AS CobradoPorNombre,
         (SELECT COUNT(*) FROM dbo.CobroEnvio ce WHERE ce.CobroId = c.Id) AS Avisos";
 

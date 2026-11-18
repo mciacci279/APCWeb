@@ -3,6 +3,7 @@
 @using APC.Core.Tenants
 @inject EmpresaCentralService EmpresaSrv
 @inject CertificadoService CertSrv
+@inject CatalogoService Catalogo
 @inject NavigationManager Nav
 
 <PageTitle>Empresas · APC Web</PageTitle>
@@ -85,6 +86,7 @@
                         <button type="button" role="tab" aria-selected="@(pestania == 0 ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 1 ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Usuarios</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 3 ? "true" : "false")" class="pestania @(pestania == 3 ? "activa" : "")" @onclick="() => pestania = 3">Sucursales</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 5 ? "true" : "false")" class="pestania @(pestania == 5 ? "activa" : "")" @onclick="() => AbrirNegocio()">Datos fiscales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 4 ? "true" : "false")" class="pestania @(pestania == 4 ? "activa" : "")" @onclick="() => AbrirModulos()">Módulos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
@@ -233,6 +235,63 @@
                 {
                     <GestionSucursales Tenant="edit" />
                 }
+                else if (pestania == 5)
+                {
+                    <h2>Datos fiscales del negocio</h2>
+                    <p class="sub">Son los que salen impresos en la factura y los que se mandan a ARCA. Viven en la base de la empresa, la misma que usa el sistema de escritorio.</p>
+
+                    @if (negocio == null)
+                    {
+                        <p class="alerta alerta-error">No se pudieron leer los datos: revisá la conexión a la base de esta empresa.</p>
+                    }
+                    else
+                    {
+                        <div class="fila-campos">
+                            <div class="campo">
+                                <label for="n-cuit">CUIT</label>
+                                <input id="n-cuit" class="input mono" maxlength="13" @bind="negocio.Cuit" placeholder="30712345678" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="n-ib">Ingresos Brutos</label>
+                                <input id="n-ib" class="input" maxlength="50" @bind="negocio.IngresosBrutos" />
+                            </div>
+                            <div class="campo">
+                                <label for="n-inicio">Inicio de actividades</label>
+                                <input id="n-inicio" class="input" type="date" @bind="negocio.FechaInicioActividades" />
+                            </div>
+                        </div>
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="n-dom">Domicilio comercial</label>
+                                <input id="n-dom" class="input" maxlength="150" @bind="negocio.Domicilio" />
+                            </div>
+                            <div class="campo">
+                                <label for="n-cp">C.P.</label>
+                                <input id="n-cp" class="input input-chico" maxlength="10" @bind="negocio.CP" />
+                            </div>
+                            <div class="campo">
+                                <label for="n-tel">Teléfono</label>
+                                <input id="n-tel" class="input" maxlength="50" @bind="negocio.Telefono1" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="n-mail">Email</label>
+                                <input id="n-mail" class="input" type="email" maxlength="100" @bind="negocio.Email" />
+                            </div>
+                        </div>
+
+                        <p class="sub">Condición frente al IVA: <strong>@(negocio.CondicionIva ?? "sin definir")</strong>. Se cambia desde el sistema de escritorio.</p>
+                        @if (certInfo?.Cuit != null && SoloNumeros(certInfo.Cuit) != SoloNumeros(negocio.Cuit))
+                        {
+                            <p class="alerta alerta-aviso">El CUIT no coincide con el del certificado de ARCA (@certInfo.Cuit). Así no se van a poder emitir facturas.</p>
+                        }
+
+                        <div class="fila-btns">
+                            <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarNegocio">Guardar datos fiscales</button>
+                        </div>
+
+                        <p class="sub">La razón social y el nombre de fantasía que salen en el comprobante se cargan en la solapa «Datos».</p>
+                    }
+                }
                 else if (pestania == 4)
                 {
                     <h2>Módulos habilitados</h2>
@@ -354,6 +413,7 @@
     private bool esNueva;
     private int pestania;
     /// <summary>Módulos tildados de la empresa que se está editando (vacío = todos).</summary>
+    private EmpresaDatos negocio;
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosSup = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosEmp = new(StringComparer.OrdinalIgnoreCase);
@@ -509,6 +569,30 @@
     }
 
     private void Cerrar() => edit = null;
+
+    private async Task AbrirNegocio()
+    {
+        pestania = 5;
+        mensaje = null;
+        negocio = null;
+        try { negocio = await Catalogo.EmpresaAsync(edit.ConnectionString); }
+        catch (Exception) { negocio = null; }
+    }
+
+    private async Task GuardarNegocio()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await Catalogo.GuardarEmpresaAsync(edit.ConnectionString, negocio);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, "Datos fiscales guardados.");
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo guardar: " + ex.Message); }
+        finally { ocupado = false; }
+    }
+
+    private static string SoloNumeros(string t) => new string((t ?? "").Where(char.IsDigit).ToArray());
 
     private void AbrirModulos()
     {

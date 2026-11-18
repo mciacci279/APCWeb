@@ -131,6 +131,44 @@ public class CatalogoService
               FROM dbo.Empresa e LEFT JOIN dbo.Iva i ON i.Id = e.IvaId");
     }
 
+    /// <summary>
+    /// Guarda los datos fiscales del negocio (los que salen impresos en la factura).
+    /// Están en la base de la empresa, la misma que usa el sistema de escritorio.
+    /// </summary>
+    public async Task<string> GuardarEmpresaAsync(string cs, EmpresaDatos e)
+    {
+        e.Cuit = (e.Cuit ?? "").Replace("-", "").Replace(" ", "").Trim();
+        var error = ValidarCuit(e.Cuit);
+        if (error != null) return error;
+
+        e.IngresosBrutos = e.IngresosBrutos?.Trim();
+        e.Domicilio = e.Domicilio?.Trim();
+        e.CP = e.CP?.Trim();
+        e.Telefono1 = e.Telefono1?.Trim();
+        e.Email = e.Email?.Trim();
+
+        using var cn = await Db.AbrirAsync(cs);
+        var filas = await cn.ExecuteAsync(
+            @"UPDATE dbo.Empresa SET Cuit = @Cuit, IngresosBrutos = @IngresosBrutos,
+                     FechaInicioActividades = @FechaInicioActividades, Domicilio = @Domicilio,
+                     CP = @CP, Telefono1 = @Telefono1, Email = @Email
+              WHERE Id = @Id", e);
+        return filas == 0 ? "No se encontró la empresa en su base de datos." : null;
+    }
+
+    /// <summary>CUIT: 11 dígitos y dígito verificador (el mismo control que hace ARCA).</summary>
+    public static string ValidarCuit(string cuit)
+    {
+        if (string.IsNullOrWhiteSpace(cuit)) return "Escribí el CUIT.";
+        if (cuit.Length != 11 || !cuit.All(char.IsDigit)) return "El CUIT tiene que tener 11 dígitos.";
+        int[] peso = { 5, 4, 3, 2, 7, 6, 5, 4, 3, 2 };
+        var suma = 0;
+        for (var i = 0; i < 10; i++) suma += (cuit[i] - '0') * peso[i];
+        var resto = suma % 11;
+        var verificador = resto == 0 ? 0 : resto == 1 ? 9 : 11 - resto;
+        return verificador == cuit[10] - '0' ? null : "El CUIT no es válido: revisá los números.";
+    }
+
     public async Task<Dictionary<string, (string Texto, bool? Bit, double? Numero)>> ConfiguracionAsync(string cs)
     {
         using var cn = await Db.AbrirAsync(cs);
