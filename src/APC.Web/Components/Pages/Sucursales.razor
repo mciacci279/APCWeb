@@ -75,9 +75,10 @@
 
                 <div class="campo">
                     <label for="caja-si">¿Hay que abrir la caja para facturar en esta sucursal?</label>
-                    <select id="caja-si" class="input" @bind="exigeCaja">
-                        <option value="true">Sí, primero se abre la caja</option>
-                        <option value="false">No, se factura directo</option>
+                    @* Blazor escribe los bool como "True"/"False", así que el select va con texto propio. *@
+                    <select id="caja-si" class="input" value="@(exigeCaja ? "si" : "no")" @onchange="ElegirCaja">
+                        <option value="si">Sí, primero se abre la caja</option>
+                        <option value="no">No, se factura directo</option>
                     </select>
                 </div>
                 <p class="sub">
@@ -139,9 +140,9 @@
                 <div class="fila-campos">
                     <div class="campo">
                         <label for="mv-tipo">Operación</label>
-                        <select id="mv-tipo" class="input" @bind="esTransferencia">
-                            <option value="false">Ajuste (entra o sale mercadería)</option>
-                            <option value="true">Transferencia entre sucursales</option>
+                        <select id="mv-tipo" class="input" value="@(esTransferencia ? "transf" : "ajuste")" @onchange="ElegirTipoMovimiento">
+                            <option value="ajuste">Ajuste (entra o sale mercadería)</option>
+                            <option value="transf">Transferencia entre sucursales</option>
                         </select>
                     </div>
                     @if (esTransferencia)
@@ -273,6 +274,11 @@
 
 
 
+
+    /// <summary>Los bool de Blazor se escriben "True"/"False" y no coinciden con el value del option.</summary>
+    private void ElegirCaja(ChangeEventArgs e) => exigeCaja = e.Value?.ToString() == "si";
+
+    private void ElegirTipoMovimiento(ChangeEventArgs e) => esTransferencia = e.Value?.ToString() == "transf";
 
     private void AbrirCaja(Sucursal s)
     {
