@@ -165,7 +165,7 @@ public class MercadoPagoService
                 fixed_amount = true,
                 store_id = cuenta.StoreId,
                 external_id = externo,
-                config = new { qr = new { operating_mode = "pdv", category = "621102" } }
+                category = 621102
             });
 
             // Si ya existía con ese external_id, lo buscamos en vez de fallar.
