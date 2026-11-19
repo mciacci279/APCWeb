@@ -642,7 +642,7 @@ else
 
     private string DescripcionCobro()
     {
-        var primero = factura.Renglones.FirstOrDefault()?.Descripcion ?? "Venta";
+        var primero = factura.Renglones.FirstOrDefault()?.Producto?.Nombre ?? "Venta";
         return factura.Renglones.Count > 1 ? $"{primero} y {factura.Renglones.Count - 1} más" : primero;
     }
 
