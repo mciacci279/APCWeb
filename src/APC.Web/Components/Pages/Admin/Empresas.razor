@@ -291,7 +291,7 @@
                     @if (mpCuenta != null && string.IsNullOrWhiteSpace(mpCuenta.StoreId))
                     {
                         <h3 class="sub-titulo">Dirección del comercio</h3>
-                        <p class="sub">Mercado Pago pide una dirección real para crear la tienda: tiene que ser una localidad y una provincia que existan y se correspondan. Se usa una sola vez.</p>
+                        <p class="sub">Mercado Pago pide una dirección real para crear la tienda y sólo acepta las localidades de su catálogo, que en varias provincias son los departamentos (Salsipuedes entra como «Colón»). Se usa una sola vez y no sale impresa en ningún lado: lo que va en la factura es la dirección de la sucursal.</p>
                         <div class="fila-campos">
                             <div class="campo crece">
                                 <label for="mp-calle">Calle</label>
@@ -312,7 +312,7 @@
                                 </select>
                             </div>
                             <div class="campo crece">
-                                <label for="mp-loc">Localidad</label>
+                                <label for="mp-loc">Localidad o departamento</label>
                                 @if (mpLocalidades.Count > 0)
                                 {
                                     <select id="mp-loc" class="input" @bind="mpLocalidad">
@@ -340,7 +340,7 @@
                             </div>
                             <div class="campo crece">
                                 <label>&nbsp;</label>
-                                <p class="sub">Si no las completás se buscan por la dirección. Mercado Pago sólo acepta las localidades de su catálogo: si la del comercio no está, elegí la más cercana y dejá las coordenadas del local.</p>
+                                <p class="sub">Si no las completás se buscan por la dirección. Conviene pegarlas a mano cuando la lista de arriba no tiene la localidad exacta, así el punto queda sobre el local: buscalo en Google Maps, clic derecho y copiá los dos números.</p>
                             </div>
                         </div>
                     }
