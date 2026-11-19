@@ -302,18 +302,31 @@
                                 <input id="mp-nro" class="input" maxlength="10" @bind="mpNumero" />
                             </div>
                             <div class="campo crece">
-                                <label for="mp-loc">Localidad</label>
-                                <input id="mp-loc" class="input" maxlength="60" @bind="mpLocalidad" />
-                            </div>
-                            <div class="campo crece">
                                 <label for="mp-prov">Provincia</label>
-                                <select id="mp-prov" class="input" @bind="mpProvincia">
+                                <select id="mp-prov" class="input" value="@mpProvincia" @onchange="ElegirProvincia">
                                     <option value="">Elegí la provincia</option>
                                     @foreach (var pr in DireccionTienda.Provincias)
                                     {
                                         <option value="@pr">@pr</option>
                                     }
                                 </select>
+                            </div>
+                            <div class="campo crece">
+                                <label for="mp-loc">Localidad</label>
+                                @if (mpLocalidades.Count > 0)
+                                {
+                                    <select id="mp-loc" class="input" @bind="mpLocalidad">
+                                        <option value="">Elegí la localidad</option>
+                                        @foreach (var lo in mpLocalidades)
+                                        {
+                                            <option value="@lo">@lo</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <input id="mp-loc" class="input" maxlength="60" @bind="mpLocalidad" />
+                                }
                             </div>
                         </div>
                         <div class="fila-campos">
@@ -327,7 +340,7 @@
                             </div>
                             <div class="campo crece">
                                 <label>&nbsp;</label>
-                                <p class="sub">Si no las completás se buscan por la dirección. Si falla, buscá el local en Google Maps, clic derecho sobre el punto y pegá los dos números.</p>
+                                <p class="sub">Si no las completás se buscan por la dirección. Mercado Pago sólo acepta las localidades de su catálogo: si la del comercio no está, elegí la más cercana y dejá las coordenadas del local.</p>
                             </div>
                         </div>
                     }
@@ -559,6 +572,7 @@
     private string mpNumero = "";
     private string mpLocalidad = "";
     private string mpProvincia = "";
+    private List<string> mpLocalidades = new();
     private string mpLatitud = "";
     private string mpLongitud = "";
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
@@ -736,6 +750,23 @@
         mensaje = null;
         mpToken = "";
         await CargarMpAsync();
+    }
+
+    private async Task ElegirProvincia(ChangeEventArgs e)
+    {
+        mpProvincia = e.Value?.ToString() ?? "";
+        mpLocalidades = new();
+        if (string.IsNullOrWhiteSpace(mpProvincia)) return;
+
+        ocupado = true;
+        try
+        {
+            mpLocalidades = await MpSrv.LocalidadesAsync(mpProvincia);
+            // Si la localidad que venía de la sucursal no está en el catálogo, se pide elegir otra.
+            if (mpLocalidades.Count > 0 && !mpLocalidades.Contains(mpLocalidad, StringComparer.CurrentCultureIgnoreCase))
+                mpLocalidad = "";
+        }
+        finally { ocupado = false; }
     }
 
     /// <summary>Acepta la coordenada con coma o con punto, como sale de Google Maps.</summary>

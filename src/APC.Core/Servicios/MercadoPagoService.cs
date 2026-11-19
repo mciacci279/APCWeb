@@ -503,6 +503,42 @@ public class MercadoPagoService
     /// que es el que usa Mercado Pago para validar la dirección de la tienda.
     /// Si el catálogo no responde se manda lo que se escribió.
     /// </summary>
+    /// <summary>
+    /// Localidades que Mercado Pago acepta para una provincia, juntando sus dos catálogos.
+    /// Si no se puede consultar, la lista vuelve vacía y la localidad se escribe a mano.
+    /// </summary>
+    public async Task<List<string>> LocalidadesAsync(string provincia)
+    {
+        var nombres = new List<string>();
+        foreach (var baseUrl in new[] { "https://api.mercadolibre.com/classified_locations",
+                                        "https://api.mercadolibre.com" })
+        {
+            try
+            {
+                var paises = await LeerJsonAsync($"{baseUrl}/countries/AR");
+                if (paises == null) continue;
+                using var doc = paises;
+                if (!doc.RootElement.TryGetProperty("states", out var estados)) continue;
+
+                var estado = Buscar(estados, provincia);
+                if (estado == null) continue;
+
+                var detalle = await LeerJsonAsync($"{baseUrl}/states/{estado.Value.Id}");
+                if (detalle == null) continue;
+                using var doc2 = detalle;
+                if (!doc2.RootElement.TryGetProperty("cities", out var ciudades)) continue;
+
+                nombres.AddRange(ciudades.EnumerateArray().Select(x => Texto(x, "name")).Where(x => x != null));
+            }
+            catch { }
+        }
+        return nombres
+            .GroupBy(SinAcentos)
+            .Select(g => g.First())
+            .OrderBy(x => x, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
     private static async Task<(string Provincia, string Localidad, string Aviso)> NormalizarLugarAsync(string provincia, string localidad)
     {
         // Mercado Libre tiene dos catálogos de localidades y no siempre traen los mismos pueblos:
