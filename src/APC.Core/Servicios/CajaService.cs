@@ -87,9 +87,9 @@ public class CajaService
 
     private static readonly (string Codigo, string Titulo)[] TiposArqueo =
     {
-        ("F", "Facturas (fiscal)"),
+        ("F", "Facturas"),
         ("S", "Facturas sin CAE (pendientes)"),
-        ("P", "Notas de pedido (no fiscal)"),
+        ("P", "Notas de pedido"),
         ("N", "Notas de crédito"),
         ("C", "Ingresos y retiros de caja")
     };

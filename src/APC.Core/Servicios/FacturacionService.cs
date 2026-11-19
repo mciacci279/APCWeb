@@ -277,7 +277,7 @@ public class FacturacionService
             @"SELECT Id, Fecha, Tipo, MontoTotal, IvaId, ClienteCUIT, CAE, Terminal, Numero, ISNULL(Impresa, 0) AS Impresa
               FROM dbo.Factura WHERE Id = @id", new { id = facturaId });
         if (fac == null) return Falla("La factura no existe.");
-        if (fac.Impresa && string.IsNullOrEmpty(fac.CAE)) return Falla("Es una nota de pedido (no fiscal): no lleva CAE.");
+        if (fac.Impresa && string.IsNullOrEmpty(fac.CAE)) return Falla("Es una nota de pedido: no lleva CAE.");
         if (!string.IsNullOrEmpty(fac.CAE))
             return new ResultadoEmision { Ok = true, FacturaId = fac.Id, Letra = fac.Tipo, PuntoVenta = fac.Terminal, Numero = fac.Numero ?? 0, Cae = fac.CAE };
 
