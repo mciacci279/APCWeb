@@ -66,6 +66,10 @@
             {
                 <p class="alerta alerta-error" role="alert">El acceso de esta empresa está suspendido. Comunicate con CM Tech.</p>
             }
+            else if (Error == "demasiados")
+            {
+                <p class="alerta alerta-error" role="alert">Hubo demasiados intentos desde esta conexión. Esperá unos minutos y volvé a probar.</p>
+            }
             else if (Error == "bloqueado")
             {
                 <p class="alerta alerta-error" role="alert">Por demasiados intentos fallidos, el usuario quedó bloqueado 15 minutos. Si no recordás la clave, pedile al administrador que te la cambie.</p>

@@ -35,6 +35,12 @@ public class UsuarioService
 {
     private const int MaxIntentos = 5;
     private static readonly TimeSpan DuracionBloqueo = TimeSpan.FromMinutes(15);
+    /// <summary>
+    /// Cada intento fallido tarda un poco más (hasta 2 segundos). No se nota al tipear mal la clave
+    /// y le arruina el ritmo a quien prueba claves de a miles.
+    /// </summary>
+    private static Task EsperarPorIntento(int intentos) =>
+        Task.Delay(Math.Min(intentos, 5) * 400);
     // Se usa para tardar lo mismo cuando el usuario no existe (no revela qué usuarios existen)
     private static readonly string HashFicticio = HashClave.Crear(Guid.NewGuid().ToString());
 
@@ -82,6 +88,7 @@ public class UsuarioService
         {
             HashClave.Verificar(clave ?? "", HashFicticio);
             await LogAsync(empresa, usuario, u?.Id, false, u == null ? "Usuario inexistente" : "Usuario inactivo", ip);
+            await EsperarPorIntento(1);
             return new IngresoResultado { Estado = EstadoIngreso.ClaveIncorrecta };
         }
 
@@ -99,6 +106,7 @@ public class UsuarioService
                 "UPDATE dbo.Usuario SET IntentosFallidos = @i, BloqueadoHasta = @b WHERE Id = @id",
                 new { i = bloquear ? 0 : intentos, b = bloquear ? DateTime.Now.Add(DuracionBloqueo) : (DateTime?)null, id = u.Id });
             await LogAsync(empresa, usuario, u.Id, false, bloquear ? "Clave incorrecta: bloqueado 15 min" : "Clave incorrecta", ip);
+            await EsperarPorIntento(intentos);
             return new IngresoResultado { Estado = bloquear ? EstadoIngreso.Bloqueado : EstadoIngreso.ClaveIncorrecta };
         }
 
@@ -117,6 +125,7 @@ public class UsuarioService
                     "UPDATE dbo.Usuario SET IntentosFallidos = @i, BloqueadoHasta = @b WHERE Id = @id",
                     new { i = bloquear ? 0 : intentos, b = bloquear ? DateTime.Now.Add(DuracionBloqueo) : (DateTime?)null, id = u.Id });
                 await LogAsync(empresa, usuario, u.Id, false, bloquear ? "Código incorrecto: bloqueado 15 min" : "Código de verificación incorrecto", ip);
+                await EsperarPorIntento(intentos);
                 return new IngresoResultado { Estado = bloquear ? EstadoIngreso.Bloqueado : EstadoIngreso.CodigoIncorrecto };
             }
         }

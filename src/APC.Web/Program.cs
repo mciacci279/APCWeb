@@ -9,6 +9,8 @@ using APC.Web.Sesion;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,9 +49,41 @@ builder.Services
         o.SlidingExpiration = true;
         o.Cookie.Name = "apcweb";
         o.Cookie.HttpOnly = true;
-        o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        // La cookie no viaja nunca por http, aunque alguien entre por ahí antes del redirect.
+        o.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        o.Cookie.SameSite = SameSiteMode.Lax;
     });
 builder.Services.AddAuthorization();
+
+// ---- Límite de intentos por IP en las pantallas de acceso ----
+// El bloqueo de 5 intentos es por usuario; esto frena al que prueba una clave
+// en muchos usuarios distintos (o inunda el formulario) desde la misma máquina.
+const string PoliticaAcceso = "acceso";
+builder.Services.AddRateLimiter(o =>
+{
+    // Para un cliente que no sea un navegador (un script), la respuesta es 429.
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    o.AddPolicy(PoliticaAcceso, ctx => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "sin-ip",
+        factory: _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,                    // 10 envíos
+            Window = TimeSpan.FromMinutes(5),    // cada 5 minutos
+            QueueLimit = 0
+        }));
+
+    o.OnRejected = async (contexto, _) =>
+    {
+        var ip = contexto.HttpContext.Connection.RemoteIpAddress?.ToString();
+        contexto.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Acceso")
+            .LogWarning("Demasiados intentos de acceso desde {ip}", ip);
+
+        contexto.HttpContext.Response.Redirect("/ingresar?error=demasiados");
+        await Task.CompletedTask;
+    };
+});
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddSingleton<TenantRegistry>();
@@ -91,6 +125,7 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.UseRateLimiter();
 
 // ---- Ingreso / salida (formulario HTML clásico, fuera del circuito de Blazor) ----
 app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, UsuarioService usuarios) =>
@@ -152,7 +187,7 @@ app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, Usuario
     var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
     return Results.Redirect(u.Rol == RolUsuario.SuperAdmin ? "/admin/empresas" : "/");
-}).DisableAntiforgery(); // se valida a mano arriba
+}).DisableAntiforgery().RequireRateLimiting(PoliticaAcceso); // se valida a mano arriba
 
 app.MapPost("/cuenta/salir", async (HttpContext ctx) =>
 {
@@ -181,7 +216,7 @@ app.MapPost("/cuenta/recuperar", async (HttpContext ctx, IAntiforgery af, Recupe
     }
     // Misma respuesta exista o no el usuario
     return Results.Redirect("/recuperar?enviado=1&e=" + Uri.EscapeDataString(empresa ?? ""));
-}).DisableAntiforgery();
+}).DisableAntiforgery().RequireRateLimiting(PoliticaAcceso);
 
 app.MapPost("/cuenta/restablecer", async (HttpContext ctx, IAntiforgery af, RecuperoClaveService recupero) =>
 {
@@ -193,7 +228,7 @@ app.MapPost("/cuenta/restablecer", async (HttpContext ctx, IAntiforgery af, Recu
     var (error, empresa) = await recupero.RestablecerAsync(token, clave, ctx.Connection.RemoteIpAddress?.ToString());
     if (error != null) return Results.Redirect($"/restablecer?t={t}&error=" + Uri.EscapeDataString(error));
     return Results.Redirect("/ingresar?ok=clave&e=" + Uri.EscapeDataString(empresa ?? ""));
-}).DisableAntiforgery();
+}).DisableAntiforgery().RequireRateLimiting(PoliticaAcceso);
 
 // Sesión de una empresa que fue suspendida mientras el usuario estaba adentro
 app.MapGet("/cuenta/expirada", async (HttpContext ctx) =>
