@@ -57,6 +57,11 @@ public class MercadoPagoService
         var userId = Texto(datos, "id");
         var apodo = Texto(datos, "nickname");
 
+        // El ambiente lo decide la cuenta, no el combo: los usuarios de prueba de Mercado Pago
+        // también tienen tokens APP_USR-, así que la única señal confiable es el apodo.
+        if (apodo != null && apodo.StartsWith("TESTUSER", StringComparison.OrdinalIgnoreCase)) ambiente = "TEST";
+        else if (!string.IsNullOrWhiteSpace(apodo)) ambiente = "PROD";
+
         try
         {
             using var cn = await Db.AbrirAsync(Central);

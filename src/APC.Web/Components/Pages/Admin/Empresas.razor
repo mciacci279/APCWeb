@@ -267,7 +267,7 @@
                     {
                         <div class="kpis kpis-chicos">
                             <div class="kpi"><span class="sub">Cuenta</span><span class="kpi-num">@(mpCuenta.Apodo ?? "—")</span><span class="sub mono">@mpCuenta.UserId</span></div>
-                            <div class="kpi"><span class="sub">Ambiente</span><span class="kpi-num">@(mpCuenta.EsPrueba ? "Prueba" : "Producción")</span></div>
+                            <div class="kpi"><span class="sub">Ambiente</span><span class="kpi-num">@(mpCuenta.EsPrueba ? "Prueba" : "Producción")</span>@if (mpCuenta.EsPrueba) { <span class="sub">cuenta de prueba: sólo cobra a usuarios de prueba</span> }</div>
                             <div class="kpi"><span class="sub">Token</span><span class="mono">@mpCuenta.TokenCorto</span></div>
                             <div class="kpi"><span class="sub">Tienda</span><span class="mono">@(mpCuenta.StoreId ?? "sin crear")</span></div>
                         </div>
@@ -280,11 +280,8 @@
                                    placeholder="@(mpCuenta == null ? "APP_USR-… o TEST-…" : "Pegá uno nuevo para reemplazarlo")" />
                         </div>
                         <div class="campo">
-                            <label for="mp-amb">Ambiente</label>
-                            <select id="mp-amb" class="input" @bind="mpAmbiente">
-                                <option value="TEST">Prueba</option>
-                                <option value="PROD">Producción</option>
-                            </select>
+                            <label>Ambiente</label>
+                            <p class="sub">Lo define la cuenta del token: si es un usuario de prueba de Mercado Pago, sólo le pueden pagar otros usuarios de prueba.</p>
                         </div>
                     </div>
 
