@@ -95,6 +95,19 @@ public class MercadoPagoService
         if (string.IsNullOrWhiteSpace(cuenta.UserId)) return "Falta el id de la cuenta: volvé a guardar el token.";
 
         // ---- tienda ----
+        // Puede existir de un intento anterior (se quitó la cuenta y se volvió a cargar): se reusa.
+        if (string.IsNullOrWhiteSpace(cuenta.StoreId))
+        {
+            var yaEsta = await BuscarTiendaAsync(cuenta.AccessToken, cuenta.UserId, Clave(empresa.Codigo));
+            if (yaEsta != null)
+            {
+                cuenta.StoreId = yaEsta;
+                using var cnT = await Db.AbrirAsync(Central);
+                await cnT.ExecuteAsync("UPDATE dbo.MercadoPagoCuenta SET StoreId = @s WHERE EmpresaId = @e",
+                    new { s = cuenta.StoreId, e = empresa.Id });
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(cuenta.StoreId))
         {
             if (direccion == null || !direccion.Completa)
@@ -459,6 +472,32 @@ public class MercadoPagoService
     }
 
     /// <summary>Solo letras y números en mayúscula: Mercado Pago no acepta cualquier cosa como external id.</summary>
+    /// <summary>Busca la tienda de la empresa por su external_id. Null si todavía no existe.</summary>
+    private static async Task<string> BuscarTiendaAsync(string token, string userId, string externo)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(externo)) return null;
+
+        var (ok, datos, _) = await GetAsync(token, $"/users/{userId}/stores/search?external_id={Uri.EscapeDataString(externo)}");
+        if (ok)
+        {
+            var id = PrimerResultado(datos, externo);
+            if (id != null) return id;
+        }
+
+        // Sin filtro: algunas cuentas no aceptan la búsqueda por external_id.
+        (ok, datos, _) = await GetAsync(token, $"/users/{userId}/stores/search");
+        return ok ? PrimerResultado(datos, externo) : null;
+    }
+
+    private static string PrimerResultado(JsonElement datos, string externo)
+    {
+        if (!datos.TryGetProperty("results", out var lista) || lista.ValueKind != JsonValueKind.Array) return null;
+        foreach (var x in lista.EnumerateArray())
+            if (string.Equals(Texto(x, "external_id"), externo, StringComparison.OrdinalIgnoreCase))
+                return Texto(x, "id");
+        return null;
+    }
+
     private static string Clave(string texto) =>
         new string((texto ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
 
