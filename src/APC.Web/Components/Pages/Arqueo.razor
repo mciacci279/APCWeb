@@ -366,6 +366,8 @@ else
         observaciones = null;
         montoInicial = 0;
         await Refrescar();
+        // La caja recien cerrada quedaba figurando como abierta en la lista del dia.
+        if (PuedeSupervisar) await CargarCajas();
     }
 
     private static string ClaseDif(decimal d) => d == 0 ? "ok" : (d < 0 ? "falta" : "sobra");
