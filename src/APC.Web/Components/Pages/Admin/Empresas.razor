@@ -316,6 +316,20 @@
                                 </select>
                             </div>
                         </div>
+                        <div class="fila-campos">
+                            <div class="campo">
+                                <label for="mp-lat">Latitud</label>
+                                <input id="mp-lat" class="input mono" @bind="mpLatitud" placeholder="se busca sola" />
+                            </div>
+                            <div class="campo">
+                                <label for="mp-lon">Longitud</label>
+                                <input id="mp-lon" class="input mono" @bind="mpLongitud" placeholder="se busca sola" />
+                            </div>
+                            <div class="campo crece">
+                                <label>&nbsp;</label>
+                                <p class="sub">Si no las completás se buscan por la dirección. Si falla, buscá el local en Google Maps, clic derecho sobre el punto y pegá los dos números.</p>
+                            </div>
+                        </div>
                     }
 
                     <div class="fila-btns">
@@ -545,6 +559,8 @@
     private string mpNumero = "";
     private string mpLocalidad = "";
     private string mpProvincia = "";
+    private string mpLatitud = "";
+    private string mpLongitud = "";
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosSup = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosEmp = new(StringComparer.OrdinalIgnoreCase);
@@ -722,6 +738,11 @@
         await CargarMpAsync();
     }
 
+    /// <summary>Acepta la coordenada con coma o con punto, como sale de Google Maps.</summary>
+    private static double Coordenada(string v) =>
+        double.TryParse((v ?? "").Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+
     private async Task CargarMpAsync()
     {
         try
@@ -778,7 +799,8 @@
 
             var direccion = new DireccionTienda
             {
-                Calle = mpCalle, Numero = mpNumero, Localidad = mpLocalidad, Provincia = mpProvincia
+                Calle = mpCalle, Numero = mpNumero, Localidad = mpLocalidad, Provincia = mpProvincia,
+                Latitud = Coordenada(mpLatitud), Longitud = Coordenada(mpLongitud)
             };
             var error = await MpSrv.SincronizarCajasAsync(edit, sucursales, direccion);
             await CargarMpAsync();

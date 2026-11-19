@@ -47,6 +47,18 @@ public class DireccionTienda
     public string Numero { get; set; }
     public string Localidad { get; set; }
     public string Provincia { get; set; }
+    /// <summary>Mercado Pago exige las coordenadas. Si quedan en cero se buscan por la dirección.</summary>
+    public double Latitud { get; set; }
+    public double Longitud { get; set; }
+
+    public bool TieneCoordenadas => Latitud != 0 && Longitud != 0;
+
+    /// <summary>La dirección en una línea, para buscar las coordenadas.</summary>
+    public string Linea => string.Join(", ", new[]
+    {
+        string.Join(" ", new[] { Calle, Numero }.Where(x => !string.IsNullOrWhiteSpace(x))),
+        Localidad, Provincia, "Argentina"
+    }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
     public bool Completa => !string.IsNullOrWhiteSpace(Calle)
                          && !string.IsNullOrWhiteSpace(Localidad)

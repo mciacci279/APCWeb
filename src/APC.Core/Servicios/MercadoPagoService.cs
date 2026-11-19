@@ -100,6 +100,17 @@ public class MercadoPagoService
             if (direccion == null || !direccion.Completa)
                 return "Para crear la tienda hace falta la dirección del comercio: calle, localidad y provincia.";
 
+            // Mercado Pago exige latitud y longitud. Si no se cargaron a mano, se buscan por la dirección.
+            if (!direccion.TieneCoordenadas)
+            {
+                var punto = await BuscarCoordenadasAsync(direccion.Linea);
+                if (punto == null)
+                    return "No se pudieron encontrar las coordenadas de esa dirección. "
+                         + "Buscala en Google Maps, hacé clic derecho sobre el punto y pegá la latitud y la longitud en los campos de abajo.";
+                direccion.Latitud = punto.Value.Lat;
+                direccion.Longitud = punto.Value.Lon;
+            }
+
             var nombre = Recortar(string.IsNullOrWhiteSpace(empresa.NombreFantasia) ? empresa.Nombre : empresa.NombreFantasia, 60);
             var (ok, datos, error) = await PostAsync(cuenta.AccessToken, $"/users/{cuenta.UserId}/stores", new
             {
@@ -111,6 +122,8 @@ public class MercadoPagoService
                     street_number = Recortar((direccion.Numero ?? "").Trim(), 10),
                     city_name = Recortar(SoloTexto(direccion.Localidad), 60),
                     state_name = Recortar(SoloTexto(direccion.Provincia), 60),
+                    latitude = direccion.Latitud,
+                    longitude = direccion.Longitud,
                     reference = Recortar(nombre, 60)
                 }
             });
@@ -439,6 +452,35 @@ public class MercadoPagoService
     /// <summary>Solo letras y números en mayúscula: Mercado Pago no acepta cualquier cosa como external id.</summary>
     private static string Clave(string texto) =>
         new string((texto ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    /// <summary>
+    /// Busca la latitud y la longitud de una dirección en OpenStreetMap (Nominatim, sin clave).
+    /// Si no se puede, devuelve null y la dirección se carga a mano.
+    /// </summary>
+    private static async Task<(double Lat, double Lon)?> BuscarCoordenadasAsync(string direccion)
+    {
+        try
+        {
+            var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q="
+                    + Uri.EscapeDataString(direccion ?? "");
+            using var pedido = new HttpRequestMessage(HttpMethod.Get, url);
+            pedido.Headers.UserAgent.ParseAdd("APCWeb/1.0 (soporte@cm-tech.com.ar)");
+            using var respuesta = await Http.SendAsync(pedido);
+            if (!respuesta.IsSuccessStatusCode) return null;
+
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            using var json = JsonDocument.Parse(texto);
+            if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() == 0) return null;
+
+            var primero = json.RootElement[0];
+            if (!double.TryParse(Texto(primero, "lat"), System.Globalization.NumberStyles.Float,
+                                 System.Globalization.CultureInfo.InvariantCulture, out var lat)) return null;
+            if (!double.TryParse(Texto(primero, "lon"), System.Globalization.NumberStyles.Float,
+                                 System.Globalization.CultureInfo.InvariantCulture, out var lon)) return null;
+            return (lat, lon);
+        }
+        catch { return null; }
+    }
 
     /// <summary>Mercado Pago rechaza números y signos en la localidad y la provincia.</summary>
     private static string SoloTexto(string v) =>
