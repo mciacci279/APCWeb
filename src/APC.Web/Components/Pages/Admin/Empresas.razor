@@ -37,6 +37,9 @@
     }
 
     <div class="arqueo-cols">
+        @* Con una empresa abierta, el detalle ocupa todo el ancho: adentro hay tablas que no entran en una columna. *@
+        @if (edit == null)
+        {
         <section class="panel crece tabla-scroll">
             <table class="tabla">
                 <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
@@ -71,12 +74,16 @@
                 </tbody>
             </table>
         </section>
+        }
 
         @if (edit != null)
         {
-            <aside class="panel cierre panel-ancho">
+            <section class="panel panel-detalle">
                 <div class="fila-btns entre">
-                    <h2>@(esNueva ? "Nueva empresa" : edit.Nombre)</h2>
+                    <h2>
+                        <button type="button" class="btn btn-chico" @onclick="Cerrar">← Empresas</button>
+                        @(esNueva ? "Nueva empresa" : edit.Nombre)
+                    </h2>
                     <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
                 </div>
 
@@ -402,7 +409,7 @@
                         <button type="button" class="btn btn-primario btn-grande" @onclick="() => CambiarEstado(true)">Reactivar empresa</button>
                     }
                 }
-            </aside>
+            </section>
         }
     </div>
 </div>

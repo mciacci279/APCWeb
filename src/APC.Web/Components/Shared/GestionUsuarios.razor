@@ -60,7 +60,22 @@
                             <button type="button" class="link-fila" title="Cambiar email" @onclick="() => { editandoEmail = u.Id; emailNuevo = u.Email; }">@(string.IsNullOrWhiteSpace(u.Email) ? "Agregar email" : u.Email)</button>
                         }
                     </td>
-                    <td><span class="etiqueta @(u.EsAdmin ? "etiqueta-admin" : u.EsSupervisor ? "etiqueta-presu" : "etiqueta-empleado")">@u.RolTitulo</span></td>
+                    <td>
+                        @if (u.Activo && u.Id != UsuarioActualId)
+                        {
+                            <label class="sr-only" for="rol-@u.Id">Tipo de @u.NombreUsuario</label>
+                            <select id="rol-@u.Id" class="input input-chico" value="@u.Rol"
+                                    @onchange="e => CambiarTipo(u, e.Value?.ToString())">
+                                <option value="@RolUsuario.Empleado">Cajero</option>
+                                <option value="@RolUsuario.Supervisor">Supervisor</option>
+                                <option value="@RolUsuario.Admin">Administrador</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <span class="etiqueta @(u.EsAdmin ? "etiqueta-admin" : u.EsSupervisor ? "etiqueta-presu" : "etiqueta-empleado")">@u.RolTitulo</span>
+                        }
+                    </td>
                     <td>
                         @if (sucursales.Count > 1)
                         {
@@ -98,16 +113,6 @@
                             <button type="button" class="btn btn-chico" @onclick="() => { reseteando = u.Id; claveReset = null; }">@(u.Bloqueado ? "Desbloquear / clave" : "Cambiar clave")</button>
                             @if (u.Id != UsuarioActualId)
                             {
-                                @if (u.Activo)
-                                {
-                                    <label class="sr-only" for="rol-@u.Id">Tipo de @u.NombreUsuario</label>
-                                    <select id="rol-@u.Id" class="input input-chico" value="@u.Rol"
-                                            @onchange="e => CambiarTipo(u, e.Value?.ToString())">
-                                        <option value="@RolUsuario.Empleado">Cajero</option>
-                                        <option value="@RolUsuario.Supervisor">Supervisor</option>
-                                        <option value="@RolUsuario.Admin">Administrador</option>
-                                    </select>
-                                }
                                 <button type="button" class="btn btn-chico" @onclick="() => CambiarActivo(u)">@(u.Activo ? "Dar de baja" : "Reactivar")</button>
                             }
                         }
