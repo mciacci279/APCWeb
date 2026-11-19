@@ -157,14 +157,15 @@ public class MercadoPagoService
                 continue;
             }
 
+            // Con store_id alcanza: mandar también external_store_id hace que Mercado Pago
+            // valide los dos y falle con «External store id does not refer any store».
             var (ok, datos, error) = await PostAsync(cuenta.AccessToken, "/pos", new
             {
                 name = Recortar(s.Nombre, 60),
                 fixed_amount = true,
                 store_id = cuenta.StoreId,
-                external_store_id = Clave(empresa.Codigo),
                 external_id = externo,
-                category = 621102
+                config = new { qr = new { operating_mode = "pdv", category = "621102" } }
             });
 
             // Si ya existía con ese external_id, lo buscamos en vez de fallar.
