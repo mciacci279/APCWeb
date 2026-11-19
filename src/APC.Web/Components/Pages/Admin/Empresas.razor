@@ -4,6 +4,7 @@
 @inject EmpresaCentralService EmpresaSrv
 @inject CertificadoService CertSrv
 @inject CatalogoService Catalogo
+@inject IJSRuntime JS
 @inject NavigationManager Nav
 
 <PageTitle>Empresas · APC Web</PageTitle>
@@ -81,7 +82,7 @@
             <section class="panel panel-detalle">
                 <div class="fila-btns entre">
                     <h2>
-                        <button type="button" class="btn btn-chico" @onclick="Cerrar">← Empresas</button>
+                        <button type="button" class="btn btn-chico" @onclick="Cerrar">← Regresar</button>
                         @(esNueva ? "Nueva empresa" : edit.Nombre)
                     </h2>
                     <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
@@ -89,6 +90,12 @@
 
                 @if (!esNueva)
                 {
+                    <div class="link-empresa">
+                        <span class="sub">Link de ingreso</span>
+                        <a class="mono" href="@LinkIngreso" target="_blank" rel="noopener">@LinkIngreso</a>
+                        <button type="button" class="btn btn-chico" @onclick="CopiarLink">Copiar</button>
+                    </div>
+
                     <div class="pestanias" role="tablist">
                         <button type="button" role="tab" aria-selected="@(pestania == 0 ? "true" : "false")" class="pestania @(pestania == 0 ? "activa" : "")" @onclick="() => pestania = 0">Datos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 1 ? "true" : "false")" class="pestania @(pestania == 1 ? "activa" : "")" @onclick="() => pestania = 1">Usuarios</button>
@@ -97,7 +104,6 @@
                         <button type="button" role="tab" aria-selected="@(pestania == 4 ? "true" : "false")" class="pestania @(pestania == 4 ? "activa" : "")" @onclick="() => AbrirModulos()">Módulos</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
-                    <div class="t-fila"><span class="sub">Link de ingreso</span><span class="mono">@LinkIngreso</span></div>
                 }
 
                 @if (esNueva || pestania == 0)
@@ -484,6 +490,12 @@
     private bool CertOk => certInfo?.Existe == true && certInfo.ClaveCoincide && !certInfo.Vencido && !AmbienteNoCoincide;
 
     private string LinkIngreso => Nav.BaseUri + "ingresar?e=" + edit?.Codigo;
+
+    private async Task CopiarLink()
+    {
+        await JS.InvokeVoidAsync("apc.copiar", LinkIngreso);
+        Aviso(true, "Link copiado: ya se lo podés pasar al cliente.");
+    }
 
     /// <summary>Estado del certificado de ARCA de cada empresa, para avisar antes de que venza.</summary>
     private readonly Dictionary<Guid, CertificadoInfo> certificados = new();

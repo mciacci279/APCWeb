@@ -252,6 +252,9 @@ a:hover { color: var(--accion-osc); }
 .fila-baja td { color: var(--muted); }
 .filtros-comp { padding: 12px 14px; }
 .panel-detalle { flex: 1 1 100%; width: 100%; max-width: none; }
+.link-empresa { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 12px; margin-bottom: 12px;
+                background: var(--sel); border: 1px solid var(--borde); border-radius: 9px; }
+.link-empresa a { color: var(--accion); word-break: break-all; }
 .panel-detalle .fila-btns.entre h2 { display: flex; align-items: center; gap: 10px; margin: 0; }
 .centro { text-align: center; }
 .tabla-modulos input[type="checkbox"] { width: 18px; height: 18px; }
