@@ -302,6 +302,8 @@ public class MercadoPagoService
 
         var estado = (Texto(datos, "status") ?? "").ToLowerInvariant();
         var estadoDetalle = (Texto(datos, "status_detail") ?? "").ToLowerInvariant();
+        // Queda a la vista en la pantalla del QR, para saber por qué un pago no entra.
+        pago.Detalle = $"{estado}/{estadoDetalle}";
 
         if (estado == "processed" || estadoDetalle == "accredited")
         {

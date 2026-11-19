@@ -309,6 +309,10 @@ else
                     {
                         <p class="qr-estado">Esperando el pago…</p>
                     }
+                    @if (pagoQr != null)
+                    {
+                        <p class="sub mono qr-tecnico">@pagoQr.OrderId @pagoQr.Detalle</p>
+                    }
                 </div>
             }
 
