@@ -102,7 +102,6 @@ public class MercadoPagoService
 
             // Mercado Pago valida la localidad contra su catálogo: se manda escrita como figura ahí.
             var lugar = await NormalizarLugarAsync(direccion.Provincia, direccion.Localidad);
-            if (lugar.Error != null) return lugar.Error;
             if (lugar.Provincia != null) direccion.Provincia = lugar.Provincia;
             if (lugar.Localidad != null) direccion.Localidad = lugar.Localidad;
 
@@ -134,7 +133,10 @@ public class MercadoPagoService
                 }
             });
             if (!ok) return "No se pudo crear la tienda en Mercado Pago: " + error
-                          + " · Revisá que la localidad y la provincia existan y se correspondan.";
+                          + $" · Se mandó: {direccion.Calle} {direccion.Numero}, {direccion.Localidad}, {direccion.Provincia} "
+                          + $"({direccion.Latitud.ToString(System.Globalization.CultureInfo.InvariantCulture)}, "
+                          + $"{direccion.Longitud.ToString(System.Globalization.CultureInfo.InvariantCulture)})."
+                          + (lugar.Aviso ?? "");
 
             cuenta.StoreId = Texto(datos, "id");
             using var cn = await Db.AbrirAsync(Central);
@@ -501,36 +503,40 @@ public class MercadoPagoService
     /// que es el que usa Mercado Pago para validar la dirección de la tienda.
     /// Si el catálogo no responde se manda lo que se escribió.
     /// </summary>
-    private static async Task<(string Provincia, string Localidad, string Error)> NormalizarLugarAsync(string provincia, string localidad)
+    private static async Task<(string Provincia, string Localidad, string Aviso)> NormalizarLugarAsync(string provincia, string localidad)
+    {
+        // Mercado Libre tiene dos catálogos de localidades y no siempre traen los mismos pueblos:
+        // se prueban los dos y, si ninguno la tiene, se manda la localidad tal como se escribió.
+        foreach (var baseUrl in new[] { "https://api.mercadolibre.com/classified_locations",
+                                        "https://api.mercadolibre.com" })
+        {
+            var (prov, loc) = await BuscarEnCatalogoAsync(baseUrl, provincia, localidad);
+            if (loc != null) return (prov, loc, null);
+        }
+        return (null, null, " La localidad no figura en el catálogo de Mercado Pago: probá con la cabecera del departamento o con la ciudad más cercana.");
+    }
+
+    private static async Task<(string Provincia, string Localidad)> BuscarEnCatalogoAsync(string baseUrl, string provincia, string localidad)
     {
         try
         {
-            var paises = await LeerJsonAsync("https://api.mercadolibre.com/classified_locations/countries/AR");
-            if (paises == null) return (null, null, null);
+            var paises = await LeerJsonAsync($"{baseUrl}/countries/AR");
+            if (paises == null) return (null, null);
             using var doc = paises;
-            if (!doc.RootElement.TryGetProperty("states", out var estados)) return (null, null, null);
+            if (!doc.RootElement.TryGetProperty("states", out var estados)) return (null, null);
 
             var estado = Buscar(estados, provincia);
-            if (estado == null)
-                return (null, null, $"Mercado Pago no reconoce la provincia «{provincia}».");
+            if (estado == null) return (null, null);
 
-            var detalle = await LeerJsonAsync($"https://api.mercadolibre.com/classified_locations/states/{estado.Value.Id}");
-            if (detalle == null) return (estado.Value.Nombre, null, null);
+            var detalle = await LeerJsonAsync($"{baseUrl}/states/{estado.Value.Id}");
+            if (detalle == null) return (estado.Value.Nombre, null);
             using var doc2 = detalle;
-            if (!doc2.RootElement.TryGetProperty("cities", out var ciudades))
-                return (estado.Value.Nombre, null, null);
+            if (!doc2.RootElement.TryGetProperty("cities", out var ciudades)) return (estado.Value.Nombre, null);
 
             var ciudad = Buscar(ciudades, localidad);
-            if (ciudad == null)
-            {
-                var parecidas = Parecidas(ciudades, localidad);
-                return (estado.Value.Nombre, null,
-                    $"Mercado Pago no reconoce la localidad «{localidad}» en {estado.Value.Nombre}."
-                    + (parecidas.Count > 0 ? " ¿Quisiste decir: " + string.Join(", ", parecidas) + "?" : ""));
-            }
-            return (estado.Value.Nombre, ciudad.Value.Nombre, null);
+            return (estado.Value.Nombre, ciudad?.Nombre);
         }
-        catch { return (null, null, null); }
+        catch { return (null, null); }
     }
 
     private static (string Id, string Nombre)? Buscar(JsonElement lista, string nombre)
@@ -548,17 +554,6 @@ public class MercadoPagoService
             if (n.StartsWith(buscado) || buscado.StartsWith(n)) return (Texto(x, "id"), Texto(x, "name"));
         }
         return null;
-    }
-
-    private static List<string> Parecidas(JsonElement lista, string nombre)
-    {
-        var buscado = SinAcentos(nombre);
-        if (buscado.Length < 3 || lista.ValueKind != JsonValueKind.Array) return new();
-        var trozo = buscado[..Math.Min(4, buscado.Length)];
-        return lista.EnumerateArray()
-            .Select(x => Texto(x, "name"))
-            .Where(n => n != null && SinAcentos(n).Contains(trozo))
-            .Take(5).ToList();
     }
 
     private static string SinAcentos(string v)
