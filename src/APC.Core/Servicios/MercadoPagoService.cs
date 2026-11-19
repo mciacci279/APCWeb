@@ -88,7 +88,7 @@ public class MercadoPagoService
     /// Crea en Mercado Pago la tienda de la empresa y una caja por cada sucursal.
     /// Se puede repetir: lo que ya existe se reusa.
     /// </summary>
-    public async Task<string> SincronizarCajasAsync(TenantConfig empresa, List<Sucursal> sucursales)
+    public async Task<string> SincronizarCajasAsync(TenantConfig empresa, List<Sucursal> sucursales, DireccionTienda direccion = null)
     {
         var cuenta = await CuentaAsync(empresa.Id);
         if (cuenta == null) return "Primero guardá el access token de la cuenta.";
@@ -97,14 +97,25 @@ public class MercadoPagoService
         // ---- tienda ----
         if (string.IsNullOrWhiteSpace(cuenta.StoreId))
         {
+            if (direccion == null || !direccion.Completa)
+                return "Para crear la tienda hace falta la dirección del comercio: calle, localidad y provincia.";
+
             var nombre = Recortar(string.IsNullOrWhiteSpace(empresa.NombreFantasia) ? empresa.Nombre : empresa.NombreFantasia, 60);
             var (ok, datos, error) = await PostAsync(cuenta.AccessToken, $"/users/{cuenta.UserId}/stores", new
             {
                 name = nombre,
                 external_id = Clave(empresa.Codigo),
-                location = new { street_name = "-", city_name = "-", state_name = "-", latitude = 0, longitude = 0 }
+                location = new
+                {
+                    street_name = Recortar(SoloTexto(direccion.Calle), 60),
+                    street_number = Recortar((direccion.Numero ?? "").Trim(), 10),
+                    city_name = Recortar(SoloTexto(direccion.Localidad), 60),
+                    state_name = Recortar(SoloTexto(direccion.Provincia), 60),
+                    reference = Recortar(nombre, 60)
+                }
             });
-            if (!ok) return "No se pudo crear la tienda en Mercado Pago: " + error;
+            if (!ok) return "No se pudo crear la tienda en Mercado Pago: " + error
+                          + " · Revisá que la localidad y la provincia existan y se correspondan.";
 
             cuenta.StoreId = Texto(datos, "id");
             using var cn = await Db.AbrirAsync(Central);
@@ -428,6 +439,11 @@ public class MercadoPagoService
     /// <summary>Solo letras y números en mayúscula: Mercado Pago no acepta cualquier cosa como external id.</summary>
     private static string Clave(string texto) =>
         new string((texto ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    /// <summary>Mercado Pago rechaza números y signos en la localidad y la provincia.</summary>
+    private static string SoloTexto(string v) =>
+        string.IsNullOrWhiteSpace(v) ? v
+        : System.Text.RegularExpressions.Regex.Replace(v, @"[^\p{L}\p{M}\s'.-]", "").Trim();
 
     private static string Recortar(string t, int largo) =>
         string.IsNullOrWhiteSpace(t) ? t : (t.Length <= largo ? t : t[..largo]);

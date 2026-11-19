@@ -37,6 +37,40 @@ public class MercadoPagoCaja
     public bool Creada => !string.IsNullOrWhiteSpace(PosId);
 }
 
+/// <summary>
+/// Dirección de la tienda en Mercado Pago. No se guarda: se usa una sola vez, al crearla.
+/// Mercado Pago valida que la provincia exista y que concomitancia con la localidad, así que no admite relleno.
+/// </summary>
+public class DireccionTienda
+{
+    public string Calle { get; set; }
+    public string Numero { get; set; }
+    public string Localidad { get; set; }
+    public string Provincia { get; set; }
+
+    public bool Completa => !string.IsNullOrWhiteSpace(Calle)
+                         && !string.IsNullOrWhiteSpace(Localidad)
+                         && !string.IsNullOrWhiteSpace(Provincia);
+
+    /// <summary>Jurisdicciones tal como las espera Mercado Pago.</summary>
+    public static readonly string[] Provincias =
+    {
+        "Buenos Aires", "Catamarca", "Chaco", "Chubut", "Ciudad Autónoma de Buenos Aires",
+        "Córdoba", "Corrientes", "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja",
+        "Mendoza", "Misiones", "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis",
+        "Santa Cruz", "Santa Fe", "Santiago del Estero", "Tierra del Fuego", "Tucumán"
+    };
+
+    /// <summary>Parte un domicilio como «Av. Colón 1234» en calle y número.</summary>
+    public static (string Calle, string Numero) Partir(string domicilio)
+    {
+        var texto = (domicilio ?? "").Trim();
+        if (texto.Length == 0) return ("", "");
+        var m = System.Text.RegularExpressions.Regex.Match(texto, @"^(.*?)[\s,]*(\d+[A-Za-z]?)$");
+        return m.Success ? (m.Groups[1].Value.Trim(), m.Groups[2].Value) : (texto, "");
+    }
+}
+
 /// <summary>Un cobro con QR (script 22, base de la empresa).</summary>
 public class PagoQr
 {

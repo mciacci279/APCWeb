@@ -288,6 +288,36 @@
                         </div>
                     </div>
 
+                    @if (mpCuenta != null && string.IsNullOrWhiteSpace(mpCuenta.StoreId))
+                    {
+                        <h3 class="sub-titulo">Dirección del comercio</h3>
+                        <p class="sub">Mercado Pago pide una dirección real para crear la tienda: tiene que ser una localidad y una provincia que existan y se correspondan. Se usa una sola vez.</p>
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="mp-calle">Calle</label>
+                                <input id="mp-calle" class="input" maxlength="60" @bind="mpCalle" />
+                            </div>
+                            <div class="campo">
+                                <label for="mp-nro">Número</label>
+                                <input id="mp-nro" class="input" maxlength="10" @bind="mpNumero" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="mp-loc">Localidad</label>
+                                <input id="mp-loc" class="input" maxlength="60" @bind="mpLocalidad" />
+                            </div>
+                            <div class="campo crece">
+                                <label for="mp-prov">Provincia</label>
+                                <select id="mp-prov" class="input" @bind="mpProvincia">
+                                    <option value="">Elegí la provincia</option>
+                                    @foreach (var pr in DireccionTienda.Provincias)
+                                    {
+                                        <option value="@pr">@pr</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                    }
+
                     <div class="fila-btns">
                         <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarMp">Guardar y probar</button>
                         @if (mpCuenta != null)
@@ -511,6 +541,10 @@
     private List<MercadoPagoCaja> mpCajas = new();
     private string mpToken = "";
     private string mpAmbiente = "TEST";
+    private string mpCalle = "";
+    private string mpNumero = "";
+    private string mpLocalidad = "";
+    private string mpProvincia = "";
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosSup = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosEmp = new(StringComparer.OrdinalIgnoreCase);
@@ -696,12 +730,18 @@
             mpAmbiente = mpCuenta?.Ambiente ?? "TEST";
             mpCajas = await MpSrv.CajasAsync(edit.Id);
 
-            // El nombre de la sucursal vive en la base de la empresa.
-            if (mpCajas.Count > 0)
+            // El nombre de la sucursal y la dirección viven en la base de la empresa.
+            var sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString);
+            foreach (var c in mpCajas)
+                c.Sucursal = sucursales.FirstOrDefault(s => s.PuntoVenta == c.PuntoVenta)?.Nombre ?? "";
+
+            if (string.IsNullOrWhiteSpace(mpCalle))
             {
-                var sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString);
-                foreach (var c in mpCajas)
-                    c.Sucursal = sucursales.FirstOrDefault(s => s.PuntoVenta == c.PuntoVenta)?.Nombre ?? "";
+                var casa = sucursales.FirstOrDefault(x => x.Activa) ?? sucursales.FirstOrDefault();
+                var (calle, numero) = DireccionTienda.Partir(casa?.Domicilio);
+                mpCalle = calle;
+                mpNumero = numero;
+                mpLocalidad = casa?.Localidad ?? "";
             }
         }
         catch (Exception ex)
@@ -736,7 +776,11 @@
             try { sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString, incluirInactivas: false); }
             catch (Exception ex) { Aviso(false, "No se pudieron leer las sucursales: " + ex.Message); return; }
 
-            var error = await MpSrv.SincronizarCajasAsync(edit, sucursales);
+            var direccion = new DireccionTienda
+            {
+                Calle = mpCalle, Numero = mpNumero, Localidad = mpLocalidad, Provincia = mpProvincia
+            };
+            var error = await MpSrv.SincronizarCajasAsync(edit, sucursales, direccion);
             await CargarMpAsync();
             if (error != null) { Aviso(false, error); return; }
             Aviso(true, $"Listo: tienda y {mpCajas.Count(c => c.Creada)} caja(s) creadas en Mercado Pago.");
