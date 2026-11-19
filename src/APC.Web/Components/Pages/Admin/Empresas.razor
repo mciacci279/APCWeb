@@ -108,13 +108,16 @@
 
                 @if (esNueva || pestania == 0)
                 {
-                    <div class="campo">
-                        <label for="e-codigo">Código de empresa</label>
-                        <input id="e-codigo" class="input mono" maxlength="30" @bind="edit.Codigo" disabled="@(!esNueva)" placeholder="ej. mena" />
-                        <span class="sub">Lo escribe el cliente al ingresar. Minúsculas, números o guiones. No se puede cambiar después.</span>
+                    @* Tres por fila: el panel ocupa toda la pantalla y el ancho sobra. *@
+                    <div class="fila-campos">
+                        <div class="campo">
+                            <label for="e-codigo">Código de empresa</label>
+                            <input id="e-codigo" class="input mono" maxlength="30" @bind="edit.Codigo" disabled="@(!esNueva)" placeholder="ej. mena" />
+                        </div>
+                        <div class="campo crece"><label for="e-nombre">Razón social</label><input id="e-nombre" class="input" maxlength="150" @bind="edit.Nombre" /></div>
+                        <div class="campo crece"><label for="e-fantasia">Nombre de fantasía</label><input id="e-fantasia" class="input" maxlength="150" @bind="edit.NombreFantasia" placeholder="ej. Súper Mena" /></div>
                     </div>
-                    <div class="campo"><label for="e-nombre">Razón social</label><input id="e-nombre" class="input" maxlength="150" @bind="edit.Nombre" /></div>
-                    <div class="campo"><label for="e-fantasia">Nombre de fantasía</label><input id="e-fantasia" class="input" maxlength="150" @bind="edit.NombreFantasia" placeholder="ej. Súper Mena" /></div>
+                    <span class="sub">El código lo escribe el cliente al ingresar. Minúsculas, números o guiones. No se puede cambiar después.</span>
                     <div class="campo">
                         <label for="e-cs">Conexión a la base de la empresa</label>
                         <textarea id="e-cs" class="input input-area mono" rows="3" @bind="edit.ConnectionString"
