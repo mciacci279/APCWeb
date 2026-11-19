@@ -100,10 +100,16 @@ public class MercadoPagoService
             if (direccion == null || !direccion.Completa)
                 return "Para crear la tienda hace falta la dirección del comercio: calle, localidad y provincia.";
 
+            // Mercado Pago valida la localidad contra su catálogo: se manda escrita como figura ahí.
+            var lugar = await NormalizarLugarAsync(direccion.Provincia, direccion.Localidad);
+            if (lugar.Error != null) return lugar.Error;
+            if (lugar.Provincia != null) direccion.Provincia = lugar.Provincia;
+            if (lugar.Localidad != null) direccion.Localidad = lugar.Localidad;
+
             // Mercado Pago exige latitud y longitud. Si no se cargaron a mano, se buscan por la dirección.
             if (!direccion.TieneCoordenadas)
             {
-                var punto = await BuscarCoordenadasAsync(direccion.Linea);
+                var punto = await BuscarCoordenadasAsync(direccion);
                 if (punto == null)
                     return "No se pudieron encontrar las coordenadas de esa dirección. "
                          + "Buscala en Google Maps, hacé clic derecho sobre el punto y pegá la latitud y la longitud en los campos de abajo.";
@@ -457,27 +463,126 @@ public class MercadoPagoService
     /// Busca la latitud y la longitud de una dirección en OpenStreetMap (Nominatim, sin clave).
     /// Si no se puede, devuelve null y la dirección se carga a mano.
     /// </summary>
-    private static async Task<(double Lat, double Lon)?> BuscarCoordenadasAsync(string direccion)
+    private static async Task<(double Lat, double Lon)?> BuscarCoordenadasAsync(DireccionTienda d)
+    {
+        // Primero con la calle; si no aparece, alcanza con la localidad.
+        var calle = string.Join(" ", new[] { d.Calle, d.Numero }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        return await NominatimAsync(calle, d.Localidad, d.Provincia)
+            ?? await NominatimAsync(null, d.Localidad, d.Provincia);
+    }
+
+    private static async Task<(double Lat, double Lon)?> NominatimAsync(string calle, string localidad, string provincia)
     {
         try
         {
-            var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q="
-                    + Uri.EscapeDataString(direccion ?? "");
-            using var pedido = new HttpRequestMessage(HttpMethod.Get, url);
-            pedido.Headers.UserAgent.ParseAdd("APCWeb/1.0 (soporte@cm-tech.com.ar)");
-            using var respuesta = await Http.SendAsync(pedido);
-            if (!respuesta.IsSuccessStatusCode) return null;
+            // Consulta estructurada: con texto libre, "Santa Rosa" puede caer en otra provincia.
+            var partes = new List<string> { "format=json", "limit=1", "countrycodes=ar" };
+            if (!string.IsNullOrWhiteSpace(calle)) partes.Add("street=" + Uri.EscapeDataString(calle));
+            if (!string.IsNullOrWhiteSpace(localidad)) partes.Add("city=" + Uri.EscapeDataString(localidad));
+            if (!string.IsNullOrWhiteSpace(provincia)) partes.Add("state=" + Uri.EscapeDataString(provincia));
 
-            var texto = await respuesta.Content.ReadAsStringAsync();
-            using var json = JsonDocument.Parse(texto);
-            if (json.RootElement.ValueKind != JsonValueKind.Array || json.RootElement.GetArrayLength() == 0) return null;
+            var json = await LeerJsonAsync("https://nominatim.openstreetmap.org/search?" + string.Join("&", partes));
+            if (json == null) return null;
+            using var doc = json;
+            if (doc.RootElement.ValueKind != JsonValueKind.Array || doc.RootElement.GetArrayLength() == 0) return null;
 
-            var primero = json.RootElement[0];
+            var primero = doc.RootElement[0];
             if (!double.TryParse(Texto(primero, "lat"), System.Globalization.NumberStyles.Float,
                                  System.Globalization.CultureInfo.InvariantCulture, out var lat)) return null;
             if (!double.TryParse(Texto(primero, "lon"), System.Globalization.NumberStyles.Float,
                                  System.Globalization.CultureInfo.InvariantCulture, out var lon)) return null;
             return (lat, lon);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Deja la provincia y la localidad escritas como figuran en el catálogo de Mercado Libre,
+    /// que es el que usa Mercado Pago para validar la dirección de la tienda.
+    /// Si el catálogo no responde se manda lo que se escribió.
+    /// </summary>
+    private static async Task<(string Provincia, string Localidad, string Error)> NormalizarLugarAsync(string provincia, string localidad)
+    {
+        try
+        {
+            var paises = await LeerJsonAsync("https://api.mercadolibre.com/classified_locations/countries/AR");
+            if (paises == null) return (null, null, null);
+            using var doc = paises;
+            if (!doc.RootElement.TryGetProperty("states", out var estados)) return (null, null, null);
+
+            var estado = Buscar(estados, provincia);
+            if (estado == null)
+                return (null, null, $"Mercado Pago no reconoce la provincia «{provincia}».");
+
+            var detalle = await LeerJsonAsync($"https://api.mercadolibre.com/classified_locations/states/{estado.Value.Id}");
+            if (detalle == null) return (estado.Value.Nombre, null, null);
+            using var doc2 = detalle;
+            if (!doc2.RootElement.TryGetProperty("cities", out var ciudades))
+                return (estado.Value.Nombre, null, null);
+
+            var ciudad = Buscar(ciudades, localidad);
+            if (ciudad == null)
+            {
+                var parecidas = Parecidas(ciudades, localidad);
+                return (estado.Value.Nombre, null,
+                    $"Mercado Pago no reconoce la localidad «{localidad}» en {estado.Value.Nombre}."
+                    + (parecidas.Count > 0 ? " ¿Quisiste decir: " + string.Join(", ", parecidas) + "?" : ""));
+            }
+            return (estado.Value.Nombre, ciudad.Value.Nombre, null);
+        }
+        catch { return (null, null, null); }
+    }
+
+    private static (string Id, string Nombre)? Buscar(JsonElement lista, string nombre)
+    {
+        var buscado = SinAcentos(nombre);
+        if (buscado.Length == 0 || lista.ValueKind != JsonValueKind.Array) return null;
+
+        foreach (var x in lista.EnumerateArray())
+            if (SinAcentos(Texto(x, "name")) == buscado) return (Texto(x, "id"), Texto(x, "name"));
+
+        // "Capital" vs "Córdoba Capital", "CABA" vs "Capital Federal", etc.
+        foreach (var x in lista.EnumerateArray())
+        {
+            var n = SinAcentos(Texto(x, "name"));
+            if (n.StartsWith(buscado) || buscado.StartsWith(n)) return (Texto(x, "id"), Texto(x, "name"));
+        }
+        return null;
+    }
+
+    private static List<string> Parecidas(JsonElement lista, string nombre)
+    {
+        var buscado = SinAcentos(nombre);
+        if (buscado.Length < 3 || lista.ValueKind != JsonValueKind.Array) return new();
+        var trozo = buscado[..Math.Min(4, buscado.Length)];
+        return lista.EnumerateArray()
+            .Select(x => Texto(x, "name"))
+            .Where(n => n != null && SinAcentos(n).Contains(trozo))
+            .Take(5).ToList();
+    }
+
+    private static string SinAcentos(string v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return "";
+        var plano = v.Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in plano)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ");
+    }
+
+    /// <summary>GET a un servicio público (sin token) que devuelve JSON.</summary>
+    private static async Task<JsonDocument> LeerJsonAsync(string url)
+    {
+        try
+        {
+            using var pedido = new HttpRequestMessage(HttpMethod.Get, url);
+            pedido.Headers.UserAgent.ParseAdd("APCWeb/1.0 (soporte@cm-tech.com.ar)");
+            using var respuesta = await Http.SendAsync(pedido);
+            if (!respuesta.IsSuccessStatusCode) return null;
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            return string.IsNullOrWhiteSpace(texto) ? null : JsonDocument.Parse(texto);
         }
         catch { return null; }
     }
