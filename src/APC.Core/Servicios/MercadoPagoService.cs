@@ -1,0 +1,414 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using APC.Core.Datos;
+using APC.Core.Modelos;
+using APC.Core.Tenants;
+using Dapper;
+
+namespace APC.Core.Servicios;
+
+/// <summary>
+/// Cobro con el QR de Mercado Pago (Orders API). El comercio pone su propia cuenta:
+/// la plata va directo a su cuenta de MP, CM Tech no toca el dinero.
+///
+/// Circuito: se crea una order contra la caja (POS) de la sucursal, se muestra el QR,
+/// el cliente paga con cualquier billetera y Mercado Pago avisa por webhook. Recién
+/// cuando el pago está aprobado se emite la factura.
+/// </summary>
+public class MercadoPagoService
+{
+    private const string Api = "https://api.mercadopago.com";
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+
+    private readonly TenantRegistry _tenants;
+    public MercadoPagoService(TenantRegistry tenants) => _tenants = tenants;
+
+    private string Central => _tenants.Central;
+
+    // ------------------------------------------------------------------ cuenta y cajas (base central)
+
+    public async Task<MercadoPagoCuenta> CuentaAsync(Guid empresaId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        return await cn.QueryFirstOrDefaultAsync<MercadoPagoCuenta>(
+            "SELECT * FROM dbo.MercadoPagoCuenta WHERE EmpresaId = @empresaId", new { empresaId });
+    }
+
+    public async Task<List<MercadoPagoCaja>> CajasAsync(Guid empresaId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        return (await cn.QueryAsync<MercadoPagoCaja>(
+            "SELECT * FROM dbo.MercadoPagoCaja WHERE EmpresaId = @empresaId ORDER BY PuntoVenta",
+            new { empresaId })).ToList();
+    }
+
+    /// <summary>Guarda el token y consulta /users/me para quedarse con el id de la cuenta.</summary>
+    public async Task<string> GuardarCuentaAsync(Guid empresaId, string accessToken, string ambiente)
+    {
+        accessToken = (accessToken ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(accessToken)) return "Pegá el access token de la cuenta de Mercado Pago.";
+        if (accessToken.Length > 400) return "El access token no parece válido: es demasiado largo.";
+
+        var (ok, datos, error) = await GetAsync(accessToken, "/users/me");
+        if (!ok) return "Mercado Pago no aceptó ese token: " + error;
+
+        var userId = Texto(datos, "id");
+        var apodo = Texto(datos, "nickname");
+
+        try
+        {
+            using var cn = await Db.AbrirAsync(Central);
+            await cn.ExecuteAsync(
+                @"MERGE dbo.MercadoPagoCuenta AS d
+                  USING (SELECT @empresaId AS EmpresaId) AS o ON d.EmpresaId = o.EmpresaId
+                  WHEN MATCHED THEN UPDATE SET AccessToken = @accessToken, Ambiente = @ambiente,
+                       UserId = @userId, Apodo = @apodo, Activo = 1
+                  WHEN NOT MATCHED THEN INSERT (EmpresaId, AccessToken, Ambiente, UserId, Apodo)
+                       VALUES (@empresaId, @accessToken, @ambiente, @userId, @apodo);",
+                new { empresaId, accessToken, ambiente = ambiente == "PROD" ? "PROD" : "TEST", userId, apodo });
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex)
+        {
+            return "No se pudo guardar. ¿Se ejecutó el script 21 en APCWeb_Central? Detalle: " + ex.Message;
+        }
+        return null;
+    }
+
+    public async Task<string> BorrarCuentaAsync(Guid empresaId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        await cn.ExecuteAsync("DELETE FROM dbo.MercadoPagoCaja WHERE EmpresaId = @empresaId", new { empresaId });
+        await cn.ExecuteAsync("DELETE FROM dbo.MercadoPagoCuenta WHERE EmpresaId = @empresaId", new { empresaId });
+        return null;
+    }
+
+    /// <summary>
+    /// Crea en Mercado Pago la tienda de la empresa y una caja por cada sucursal.
+    /// Se puede repetir: lo que ya existe se reusa.
+    /// </summary>
+    public async Task<string> SincronizarCajasAsync(TenantConfig empresa, List<Sucursal> sucursales)
+    {
+        var cuenta = await CuentaAsync(empresa.Id);
+        if (cuenta == null) return "Primero guardá el access token de la cuenta.";
+        if (string.IsNullOrWhiteSpace(cuenta.UserId)) return "Falta el id de la cuenta: volvé a guardar el token.";
+
+        // ---- tienda ----
+        if (string.IsNullOrWhiteSpace(cuenta.StoreId))
+        {
+            var nombre = Recortar(string.IsNullOrWhiteSpace(empresa.NombreFantasia) ? empresa.Nombre : empresa.NombreFantasia, 60);
+            var (ok, datos, error) = await PostAsync(cuenta.AccessToken, $"/users/{cuenta.UserId}/stores", new
+            {
+                name = nombre,
+                external_id = Clave(empresa.Codigo),
+                location = new { street_name = "-", city_name = "-", state_name = "-", latitude = 0, longitude = 0 }
+            });
+            if (!ok) return "No se pudo crear la tienda en Mercado Pago: " + error;
+
+            cuenta.StoreId = Texto(datos, "id");
+            using var cn = await Db.AbrirAsync(Central);
+            await cn.ExecuteAsync("UPDATE dbo.MercadoPagoCuenta SET StoreId = @s WHERE EmpresaId = @e",
+                new { s = cuenta.StoreId, e = empresa.Id });
+        }
+
+        // ---- una caja por sucursal ----
+        var cajas = await CajasAsync(empresa.Id);
+        foreach (var s in sucursales.Where(x => x.Activa))
+        {
+            var caja = cajas.FirstOrDefault(c => c.PuntoVenta == s.PuntoVenta);
+            var externo = $"{Clave(empresa.Codigo)}POS{s.PuntoVenta:0000}";
+
+            if (caja?.PosId != null)
+            {
+                await ActualizarCajaAsync(caja.Id, s.Id, caja.PosId, caja.QrEstatico);
+                continue;
+            }
+
+            var (ok, datos, error) = await PostAsync(cuenta.AccessToken, "/pos", new
+            {
+                name = Recortar(s.Nombre, 60),
+                fixed_amount = true,
+                store_id = cuenta.StoreId,
+                external_store_id = Clave(empresa.Codigo),
+                external_id = externo,
+                category = 621102
+            });
+
+            // Si ya existía con ese external_id, lo buscamos en vez de fallar.
+            string posId = null, qr = null;
+            if (ok)
+            {
+                posId = Texto(datos, "id");
+                qr = TextoAnidado(datos, "qr", "image");
+            }
+            else
+            {
+                var (okBusca, lista, _) = await GetAsync(cuenta.AccessToken, $"/pos?external_id={Uri.EscapeDataString(externo)}");
+                if (okBusca && lista.TryGetProperty("results", out var res) && res.GetArrayLength() > 0)
+                {
+                    posId = Texto(res[0], "id");
+                    qr = TextoAnidado(res[0], "qr", "image");
+                }
+                if (posId == null) return $"No se pudo crear la caja de {s.Nombre}: {error}";
+            }
+
+            if (caja == null)
+            {
+                using var cn = await Db.AbrirAsync(Central);
+                await cn.ExecuteAsync(
+                    @"INSERT INTO dbo.MercadoPagoCaja (Id, EmpresaId, SucursalId, PuntoVenta, ExternalPosId, PosId, QrEstatico)
+                      VALUES (NEWID(), @e, @suc, @pv, @ext, @pos, @qr)",
+                    new { e = empresa.Id, suc = s.Id, pv = s.PuntoVenta, ext = externo, pos = posId, qr });
+            }
+            else
+            {
+                await ActualizarCajaAsync(caja.Id, s.Id, posId, qr);
+            }
+        }
+        return null;
+    }
+
+    private async Task ActualizarCajaAsync(Guid id, Guid sucursalId, string posId, string qr)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        await cn.ExecuteAsync(
+            "UPDATE dbo.MercadoPagoCaja SET SucursalId = @suc, PosId = @pos, QrEstatico = @qr WHERE Id = @id",
+            new { id, suc = sucursalId, pos = posId, qr });
+    }
+
+    // ------------------------------------------------------------------ cobro
+
+    /// <summary>
+    /// Crea la order con QR dinámico y la deja registrada en la base de la empresa.
+    /// Devuelve el texto del QR para dibujarlo en pantalla.
+    /// </summary>
+    public async Task<(OrdenQr Orden, PagoQr Pago)> CobrarAsync(
+        TenantConfig empresa, Sucursal sucursal, Guid usuarioId, decimal importe, string descripcion)
+    {
+        var pago = new PagoQr
+        {
+            Id = Guid.NewGuid(),
+            Fecha = DateTime.Now,
+            SucursalId = sucursal?.Id,
+            UsuarioId = usuarioId,
+            Importe = importe,
+            Referencia = $"APC-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..6]}".ToUpperInvariant()
+        };
+
+        var cuenta = await CuentaAsync(empresa.Id);
+        if (cuenta == null || !cuenta.Listo)
+            return (Falla("Esta empresa todavía no tiene configurada la cuenta de Mercado Pago."), pago);
+
+        var puntoVenta = sucursal?.PuntoVenta ?? empresa.PuntoVenta;
+        var cajas = await CajasAsync(empresa.Id);
+        var caja = cajas.FirstOrDefault(c => c.PuntoVenta == puntoVenta);
+        if (caja?.PosId == null)
+            return (Falla($"No hay una caja de Mercado Pago para el punto de venta {puntoVenta:0000}. Pedile a CM Tech que la cree."), pago);
+
+        var cuerpo = new
+        {
+            type = "qr",
+            total_amount = importe.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+            description = Recortar(descripcion, 60),
+            external_reference = pago.Referencia,
+            expiration_time = "PT10M",
+            config = new { qr = new { external_pos_id = caja.ExternalPosId, mode = "dynamic" } },
+            transactions = new
+            {
+                payments = new[]
+                {
+                    new { amount = importe.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) }
+                }
+            }
+        };
+
+        var (ok, datos, error) = await PostAsync(cuenta.AccessToken, "/v1/orders", cuerpo, idempotencia: pago.Referencia);
+        if (!ok)
+        {
+            pago.Estado = EstadoPagoQr.Error;
+            pago.Detalle = Recortar(error, 300);
+            await GuardarPagoAsync(empresa.ConnectionString, pago);
+            return (Falla("Mercado Pago no pudo generar el QR: " + error), pago);
+        }
+
+        pago.OrderId = Texto(datos, "id");
+        pago.QrData = TextoAnidado(datos, "type_response", "qr_data") ?? Texto(datos, "qr_data");
+        await GuardarPagoAsync(empresa.ConnectionString, pago);
+
+        if (string.IsNullOrWhiteSpace(pago.QrData))
+            return (Falla("Mercado Pago creó la order pero no devolvió el QR. Revisá que la caja esté en modo dinámico."), pago);
+
+        return (new OrdenQr { Ok = true, OrderId = pago.OrderId, QrData = pago.QrData }, pago);
+    }
+
+    /// <summary>Pregunta a Mercado Pago cómo viene la order y actualiza el cobro.</summary>
+    public async Task<PagoQr> RefrescarAsync(TenantConfig empresa, Guid pagoId)
+    {
+        var pago = await PagoAsync(empresa.ConnectionString, pagoId);
+        if (pago == null || pago.Estado != EstadoPagoQr.Creada || string.IsNullOrWhiteSpace(pago.OrderId)) return pago;
+
+        var cuenta = await CuentaAsync(empresa.Id);
+        if (cuenta == null) return pago;
+
+        var (ok, datos, _) = await GetAsync(cuenta.AccessToken, $"/v1/orders/{pago.OrderId}");
+        if (!ok) return pago;
+
+        var estado = (Texto(datos, "status") ?? "").ToLowerInvariant();
+        var estadoDetalle = (Texto(datos, "status_detail") ?? "").ToLowerInvariant();
+
+        if (estado == "processed" || estadoDetalle == "accredited")
+        {
+            pago.Estado = EstadoPagoQr.Pagada;
+            pago.FechaPago = DateTime.Now;
+            pago.PagoId = PrimerPagoId(datos);
+        }
+        else if (estado == "canceled")
+        {
+            pago.Estado = EstadoPagoQr.Cancelada;
+        }
+        else if (estado == "expired")
+        {
+            pago.Estado = EstadoPagoQr.Vencida;
+        }
+
+        if (pago.Estado != EstadoPagoQr.Creada) await ActualizarEstadoAsync(empresa.ConnectionString, pago);
+        return pago;
+    }
+
+    public async Task<string> CancelarAsync(TenantConfig empresa, Guid pagoId)
+    {
+        var pago = await PagoAsync(empresa.ConnectionString, pagoId);
+        if (pago == null) return "No se encontró el cobro.";
+        if (pago.Estado == EstadoPagoQr.Pagada) return "El cobro ya está pagado: no se puede cancelar.";
+
+        var cuenta = await CuentaAsync(empresa.Id);
+        if (cuenta != null && !string.IsNullOrWhiteSpace(pago.OrderId))
+            await PostAsync(cuenta.AccessToken, $"/v1/orders/{pago.OrderId}/cancel", new { });
+
+        pago.Estado = EstadoPagoQr.Cancelada;
+        await ActualizarEstadoAsync(empresa.ConnectionString, pago);
+        return null;
+    }
+
+    /// <summary>Marca el cobro con la factura que se emitió después de cobrarlo.</summary>
+    public async Task AsociarFacturaAsync(string cs, Guid pagoId, Guid facturaId)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        await cn.ExecuteAsync("UPDATE dbo.PagoQr SET FacturaId = @f WHERE Id = @id", new { f = facturaId, id = pagoId });
+    }
+
+    // ------------------------------------------------------------------ base de la empresa
+
+    public async Task<PagoQr> PagoAsync(string cs, Guid id)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return await cn.QueryFirstOrDefaultAsync<PagoQr>("SELECT * FROM dbo.PagoQr WHERE Id = @id", new { id });
+    }
+
+    public async Task<PagoQr> PagoPorReferenciaAsync(string cs, string referencia)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return await cn.QueryFirstOrDefaultAsync<PagoQr>(
+            "SELECT * FROM dbo.PagoQr WHERE Referencia = @referencia", new { referencia });
+    }
+
+    private static async Task GuardarPagoAsync(string cs, PagoQr p)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        await cn.ExecuteAsync(
+            @"INSERT INTO dbo.PagoQr (Id, Fecha, SucursalId, UsuarioId, Importe, Referencia, OrderId, Estado, Detalle, QrData)
+              VALUES (@Id, @Fecha, @SucursalId, @UsuarioId, @Importe, @Referencia, @OrderId, @Estado, @Detalle, @QrData)", p);
+    }
+
+    private static async Task ActualizarEstadoAsync(string cs, PagoQr p)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        await cn.ExecuteAsync(
+            @"UPDATE dbo.PagoQr SET Estado = @Estado, PagoId = @PagoId, FechaPago = @FechaPago, Detalle = @Detalle
+              WHERE Id = @Id", p);
+    }
+
+    // ------------------------------------------------------------------ http
+
+    private static async Task<(bool Ok, JsonElement Datos, string Error)> GetAsync(string token, string ruta)
+    {
+        using var pedido = new HttpRequestMessage(HttpMethod.Get, Api + ruta);
+        pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await EnviarAsync(pedido);
+    }
+
+    private static async Task<(bool Ok, JsonElement Datos, string Error)> PostAsync(
+        string token, string ruta, object cuerpo, string idempotencia = null)
+    {
+        using var pedido = new HttpRequestMessage(HttpMethod.Post, Api + ruta)
+        {
+            Content = JsonContent.Create(cuerpo)
+        };
+        pedido.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        pedido.Headers.Add("X-Idempotency-Key", idempotencia ?? Guid.NewGuid().ToString());
+        return await EnviarAsync(pedido);
+    }
+
+    private static async Task<(bool Ok, JsonElement Datos, string Error)> EnviarAsync(HttpRequestMessage pedido)
+    {
+        try
+        {
+            using var respuesta = await Http.SendAsync(pedido);
+            var texto = await respuesta.Content.ReadAsStringAsync();
+            JsonElement datos = default;
+            if (!string.IsNullOrWhiteSpace(texto))
+            {
+                try { datos = JsonSerializer.Deserialize<JsonElement>(texto, Json); } catch (JsonException) { }
+            }
+            if (respuesta.IsSuccessStatusCode) return (true, datos, null);
+
+            var mensaje = Texto(datos, "message") ?? Texto(datos, "error") ?? respuesta.ReasonPhrase;
+            return (false, datos, $"{(int)respuesta.StatusCode} {mensaje}");
+        }
+        catch (TaskCanceledException)
+        {
+            return (false, default, "Mercado Pago no respondió a tiempo.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, default, "No se pudo conectar con Mercado Pago: " + ex.Message);
+        }
+    }
+
+    // ------------------------------------------------------------------ auxiliares
+
+    private static OrdenQr Falla(string mensaje) => new() { Ok = false, Mensaje = mensaje };
+
+    private static string Texto(JsonElement e, string campo)
+    {
+        if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(campo, out var v)) return null;
+        return v.ValueKind switch
+        {
+            JsonValueKind.String => v.GetString(),
+            JsonValueKind.Number => v.ToString(),
+            JsonValueKind.Null or JsonValueKind.Undefined => null,
+            _ => v.ToString()
+        };
+    }
+
+    private static string TextoAnidado(JsonElement e, string objeto, string campo)
+    {
+        if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(objeto, out var o)) return null;
+        return Texto(o, campo);
+    }
+
+    private static string PrimerPagoId(JsonElement orden)
+    {
+        if (orden.ValueKind != JsonValueKind.Object) return null;
+        if (!orden.TryGetProperty("transactions", out var t) || !t.TryGetProperty("payments", out var p)) return null;
+        return p.ValueKind == JsonValueKind.Array && p.GetArrayLength() > 0 ? Texto(p[0], "id") : null;
+    }
+
+    /// <summary>Solo letras y números en mayúscula: Mercado Pago no acepta cualquier cosa como external id.</summary>
+    private static string Clave(string texto) =>
+        new string((texto ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+
+    private static string Recortar(string t, int largo) =>
+        string.IsNullOrWhiteSpace(t) ? t : (t.Length <= largo ? t : t[..largo]);
+}

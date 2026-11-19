@@ -4,6 +4,8 @@
 @inject EmpresaCentralService EmpresaSrv
 @inject CertificadoService CertSrv
 @inject CatalogoService Catalogo
+@inject MercadoPagoService MpSrv
+@inject SucursalService SucursalSrv
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
@@ -102,6 +104,7 @@
                         <button type="button" role="tab" aria-selected="@(pestania == 3 ? "true" : "false")" class="pestania @(pestania == 3 ? "activa" : "")" @onclick="() => pestania = 3">Sucursales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 5 ? "true" : "false")" class="pestania @(pestania == 5 ? "activa" : "")" @onclick="() => AbrirNegocio()">Datos fiscales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 4 ? "true" : "false")" class="pestania @(pestania == 4 ? "activa" : "")" @onclick="() => AbrirModulos()">Módulos</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 6 ? "true" : "false")" class="pestania @(pestania == 6 ? "activa" : "")" @onclick="() => AbrirMercadoPago()">Mercado Pago</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
                 }
@@ -250,6 +253,70 @@
                 else if (pestania == 3)
                 {
                     <GestionSucursales Tenant="edit" />
+                }
+                else if (pestania == 6)
+                {
+                    <h2>Cobro con QR de Mercado Pago</h2>
+                    <p class="sub">El comercio pone su propia cuenta: la plata va directo ahí, CM Tech no toca el dinero. Hace falta una aplicación creada en «Tus integraciones» de Mercado Pago, y de ahí sale el access token.</p>
+
+                    @if (mpCuenta == null)
+                    {
+                        <p class="sub">Todavía no hay una cuenta configurada.</p>
+                    }
+                    else
+                    {
+                        <div class="kpis kpis-chicos">
+                            <div class="kpi"><span class="sub">Cuenta</span><span class="kpi-num">@(mpCuenta.Apodo ?? "—")</span><span class="sub mono">@mpCuenta.UserId</span></div>
+                            <div class="kpi"><span class="sub">Ambiente</span><span class="kpi-num">@(mpCuenta.EsPrueba ? "Prueba" : "Producción")</span></div>
+                            <div class="kpi"><span class="sub">Token</span><span class="mono">@mpCuenta.TokenCorto</span></div>
+                            <div class="kpi"><span class="sub">Tienda</span><span class="mono">@(mpCuenta.StoreId ?? "sin crear")</span></div>
+                        </div>
+                    }
+
+                    <div class="fila-campos">
+                        <div class="campo crece">
+                            <label for="mp-token">Access token</label>
+                            <input id="mp-token" class="input mono" maxlength="400" @bind="mpToken"
+                                   placeholder="@(mpCuenta == null ? "APP_USR-… o TEST-…" : "Pegá uno nuevo para reemplazarlo")" />
+                        </div>
+                        <div class="campo">
+                            <label for="mp-amb">Ambiente</label>
+                            <select id="mp-amb" class="input" @bind="mpAmbiente">
+                                <option value="TEST">Prueba</option>
+                                <option value="PROD">Producción</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarMp">Guardar y probar</button>
+                        @if (mpCuenta != null)
+                        {
+                            <button type="button" class="btn" disabled="@ocupado" @onclick="SincronizarMp">Crear tienda y cajas</button>
+                            <div class="crece"></div>
+                            <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="BorrarMp">Quitar la cuenta</button>
+                        }
+                    </div>
+
+                    @if (mpCajas.Count > 0)
+                    {
+                        <h3 class="sub-titulo">Cajas</h3>
+                        <table class="tabla tabla-chica">
+                            <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Id en Mercado Pago</th><th>Estado</th></tr></thead>
+                            <tbody>
+                                @foreach (var c in mpCajas)
+                                {
+                                    <tr>
+                                        <td class="der mono">@c.PuntoVenta.ToString("0000")</td>
+                                        <td>@c.Sucursal</td>
+                                        <td class="mono">@c.ExternalPosId</td>
+                                        <td>@(c.Creada ? "Lista" : "Falta crearla")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        <p class="sub">Se crea una caja por sucursal: el QR sale siempre de la caja del punto de venta donde se factura.</p>
+                    }
                 }
                 else if (pestania == 5)
                 {
@@ -430,6 +497,10 @@
     private int pestania;
     /// <summary>Módulos tildados de la empresa que se está editando (vacío = todos).</summary>
     private EmpresaDatos negocio;
+    private MercadoPagoCuenta mpCuenta;
+    private List<MercadoPagoCaja> mpCajas = new();
+    private string mpToken = "";
+    private string mpAmbiente = "TEST";
     private HashSet<string> modulos = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosSup = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> modulosEmp = new(StringComparer.OrdinalIgnoreCase);
@@ -591,6 +662,82 @@
     }
 
     private void Cerrar() => edit = null;
+
+    private async Task AbrirMercadoPago()
+    {
+        pestania = 6;
+        mensaje = null;
+        mpToken = "";
+        await CargarMpAsync();
+    }
+
+    private async Task CargarMpAsync()
+    {
+        try
+        {
+            mpCuenta = await MpSrv.CuentaAsync(edit.Id);
+            mpAmbiente = mpCuenta?.Ambiente ?? "TEST";
+            mpCajas = await MpSrv.CajasAsync(edit.Id);
+
+            // El nombre de la sucursal vive en la base de la empresa.
+            if (mpCajas.Count > 0)
+            {
+                var sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString);
+                foreach (var c in mpCajas)
+                    c.Sucursal = sucursales.FirstOrDefault(s => s.PuntoVenta == c.PuntoVenta)?.Nombre ?? "";
+            }
+        }
+        catch (Exception ex)
+        {
+            mpCuenta = null;
+            mpCajas = new();
+            Aviso(false, "No se pudo leer la configuración de Mercado Pago. ¿Se ejecutó el script 21? Detalle: " + ex.Message);
+        }
+    }
+
+    private async Task GuardarMp()
+    {
+        ocupado = true;
+        try
+        {
+            var token = string.IsNullOrWhiteSpace(mpToken) ? mpCuenta?.AccessToken : mpToken;
+            var error = await MpSrv.GuardarCuentaAsync(edit.Id, token, mpAmbiente);
+            if (error != null) { Aviso(false, error); return; }
+            mpToken = "";
+            await CargarMpAsync();
+            Aviso(true, $"Conectado a la cuenta {mpCuenta?.Apodo}. Ahora creá la tienda y las cajas.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task SincronizarMp()
+    {
+        ocupado = true;
+        try
+        {
+            List<Sucursal> sucursales;
+            try { sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString, incluirInactivas: false); }
+            catch (Exception ex) { Aviso(false, "No se pudieron leer las sucursales: " + ex.Message); return; }
+
+            var error = await MpSrv.SincronizarCajasAsync(edit, sucursales);
+            await CargarMpAsync();
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, $"Listo: tienda y {mpCajas.Count(c => c.Creada)} caja(s) creadas en Mercado Pago.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task BorrarMp()
+    {
+        ocupado = true;
+        try
+        {
+            await MpSrv.BorrarCuentaAsync(edit.Id);
+            await CargarMpAsync();
+            Aviso(true, "Se quitó la cuenta de Mercado Pago de esta empresa.");
+        }
+        finally { ocupado = false; }
+    }
 
     private async Task AbrirNegocio()
     {
