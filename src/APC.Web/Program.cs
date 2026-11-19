@@ -238,6 +238,41 @@ app.MapGet("/cuenta/expirada", async (HttpContext ctx) =>
     return Results.Redirect("/ingresar?error=suspendida");
 });
 
+// Aviso de Mercado Pago (webhook). Del aviso se toma sólo el id: el estado real se consulta
+// contra la API de Mercado Pago, así un aviso falso no puede marcar un cobro como pagado.
+app.MapPost("/mp/aviso/{codigo}", async (string codigo, HttpContext ctx, TenantRegistry tenants,
+                                        MercadoPagoService mp, ILoggerFactory logs) =>
+{
+    var log = logs.CreateLogger("MercadoPago");
+    try
+    {
+        var empresa = tenants.Buscar(codigo);
+        if (empresa == null) return Results.Ok();   // 200 siempre: Mercado Pago reintenta si no.
+
+        using var lector = new StreamReader(ctx.Request.Body);
+        var cuerpo = await lector.ReadToEndAsync();
+        string id = null;
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(cuerpo);
+            var raiz = json.RootElement;
+            if (raiz.TryGetProperty("data", out var datos) && datos.TryGetProperty("id", out var idDatos))
+                id = idDatos.ValueKind == System.Text.Json.JsonValueKind.String ? idDatos.GetString() : idDatos.ToString();
+            else if (raiz.TryGetProperty("id", out var idRaiz))
+                id = idRaiz.ValueKind == System.Text.Json.JsonValueKind.String ? idRaiz.GetString() : idRaiz.ToString();
+        }
+        catch { }
+
+        id ??= ctx.Request.Query["id"].ToString();
+        if (!string.IsNullOrWhiteSpace(id)) await mp.AvisoAsync(empresa, id);
+    }
+    catch (Exception ex)
+    {
+        log.LogWarning(ex, "No se pudo procesar el aviso de Mercado Pago de {Codigo}", codigo);
+    }
+    return Results.Ok();
+}).DisableAntiforgery();
+
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();

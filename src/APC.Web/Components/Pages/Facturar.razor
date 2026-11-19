@@ -10,6 +10,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject APC.Core.Tenants.TenantRegistry Tenants
+@inject MercadoPagoService MpSrv
 
 <PageTitle>Facturar · APC Web</PageTitle>
 
@@ -214,6 +215,11 @@ else
 
             <AjusteTotal Datos="factura" OnCambio="Recalcular" />
 
+            @if (formaPago?.EsMercadoPago == true)
+            {
+                <p class="sub">Se va a mostrar un QR para que el cliente pague. La factura se emite cuando el pago se acredita.</p>
+            }
+
             @if (MostrarPagaCon && formaPago?.EsEfectivo == true)
             {
                 <div class="campo">
@@ -271,6 +277,49 @@ else
         }
     </aside>
 </div>
+
+@* Cobro con el QR de Mercado Pago: la factura se emite cuando el pago se acredita. *@
+@if (pagoQr != null || qrOcupado || qrError != null)
+{
+    <div class="modal-fondo">
+        <section class="panel modal-qr" role="dialog" aria-modal="true" aria-label="Cobro con QR">
+            <header class="modal-cab">
+                <div>
+                    <h2>Cobrar con QR</h2>
+                    <span class="sub">@formaPago?.Nombre · @Pesos(totales.Total)</span>
+                </div>
+                <button type="button" class="modal-cerrar" aria-label="Cerrar" disabled="@qrOcupado" @onclick="CerrarQr">×</button>
+            </header>
+
+            @if (qrOcupado && qrImagen == null)
+            {
+                <p>Generando el QR…</p>
+            }
+            else if (qrError != null)
+            {
+                <p class="alerta alerta-error" role="alert">@qrError</p>
+            }
+            else if (qrImagen != null)
+            {
+                <div class="qr-caja">
+                    <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
+                    <p class="qr-monto mono">@Pesos(totales.Total)</p>
+                    <p class="sub">El cliente lo escanea con Mercado Pago, MODO o la app de su banco.</p>
+                    @if (pagoQr?.Estado == EstadoPagoQr.Creada)
+                    {
+                        <p class="qr-estado">Esperando el pago…</p>
+                    }
+                </div>
+            }
+
+            <div class="fila-btns">
+                <button type="button" class="btn" disabled="@qrOcupado" @onclick="VerificarQr">Ya pagó, verificar</button>
+                <div class="crece"></div>
+                <button type="button" class="btn btn-rojo" disabled="@qrOcupado" @onclick="CerrarQr">Cancelar el cobro</button>
+            </div>
+        </section>
+    </div>
+}
 }
 
 @code {
@@ -329,6 +378,15 @@ else
     private decimal vuelto => pagaCon - totales.Total;
     /// <summary>"Paga con" y vuelto ocultos por ahora; poner en true para volver a mostrarlos.</summary>
     private const bool MostrarPagaCon = false;
+
+    // ---- cobro con QR de Mercado Pago ----
+    private PagoQr pagoQr;
+    private string qrImagen;
+    private string qrError;
+    private bool qrOcupado;
+    private string qrFormato;
+    private bool qrFiscal = true;
+    private CancellationTokenSource qrCts;
     /// <summary>Botones de nota de pedido ocultos: funcionan solo con las teclas.</summary>
     private const bool MostrarBotonesPedido = false;
     /// <summary>Sucursales donde el dueño factura solo: no se les pide abrir la caja (script 16).</summary>
@@ -386,6 +444,7 @@ else
 
     private async Task AtajoEmitirFormato(string formato, bool fiscal = true)
     {
+        if (pagoQr != null || qrOcupado) return;
         if (resultado?.Ok == true) Nueva();
         else if (PuedeEmitir) await Emitir(formato, fiscal);
         StateHasChanged();
@@ -514,6 +573,17 @@ else
     private async Task Emitir(string formato, bool fiscal = true)
     {
         if (!PuedeEmitir) return;
+        // Con QR primero se cobra: la factura se emite recién cuando Mercado Pago acredita el pago.
+        if (formaPago?.EsMercadoPago == true && pagoQr?.Pagado != true)
+        {
+            await IniciarCobroQr(formato, fiscal);
+            return;
+        }
+        await EmitirAhora(formato, fiscal);
+    }
+
+    private async Task EmitirAhora(string formato, bool fiscal)
+    {
         emitiendo = true;
         resultado = null;
         StateHasChanged();
@@ -537,6 +607,143 @@ else
         finally
         {
             emitiendo = false;
+        }
+    }
+
+    // ------------------------------------------------------------------ cobro con QR
+
+    private async Task IniciarCobroQr(string formato, bool fiscal)
+    {
+        qrFormato = formato;
+        qrFiscal = fiscal;
+        qrError = null;
+        qrImagen = null;
+        pagoQr = null;
+        qrOcupado = true;
+        StateHasChanged();
+        try
+        {
+            var (orden, pago) = await MpSrv.CobrarAsync(
+                sesion.Tenant, sesion.Sucursal, sesion.UsuarioId, totales.Total, DescripcionCobro());
+            pagoQr = pago;
+            if (!orden.Ok) { qrError = orden.Mensaje; return; }
+            qrImagen = FacturacionService.QrDataUri(orden.QrData);
+            EsperarPago();
+        }
+        catch (Exception ex)
+        {
+            qrError = "No se pudo generar el QR: " + ex.Message;
+        }
+        finally
+        {
+            qrOcupado = false;
+        }
+    }
+
+    private string DescripcionCobro()
+    {
+        var primero = factura.Renglones.FirstOrDefault()?.Descripcion ?? "Venta";
+        return factura.Renglones.Count > 1 ? $"{primero} y {factura.Renglones.Count - 1} más" : primero;
+    }
+
+    /// <summary>Le pregunta a Mercado Pago cada 3 segundos hasta que el pago se acredita o se vence.</summary>
+    private void EsperarPago()
+    {
+        DetenerEspera();
+        qrCts = new CancellationTokenSource();
+        var ct = qrCts.Token;
+        var id = pagoQr.Id;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(3000, ct);
+                    var p = await MpSrv.RefrescarAsync(sesion.Tenant, id);
+                    if (ct.IsCancellationRequested) return;
+                    var listo = p != null && p.Estado != EstadoPagoQr.Creada;
+                    await InvokeAsync(async () =>
+                    {
+                        if (pagoQr?.Id != id) return;
+                        pagoQr = p;
+                        if (!listo) { StateHasChanged(); return; }
+                        if (p.Pagado) await EmitirConQr();
+                        else { qrError = MensajeEstado(p); StateHasChanged(); }
+                    });
+                    if (listo) return;
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                try { await InvokeAsync(() => { qrError = ex.Message; StateHasChanged(); }); } catch { }
+            }
+        });
+    }
+
+    private void DetenerEspera()
+    {
+        try { qrCts?.Cancel(); } catch { }
+        qrCts?.Dispose();
+        qrCts = null;
+    }
+
+    private static string MensajeEstado(PagoQr p) => p.Estado switch
+    {
+        EstadoPagoQr.Vencida => "El QR se venció. Volvé a generarlo.",
+        EstadoPagoQr.Cancelada => "El cobro se canceló.",
+        _ => "Mercado Pago rechazó el pago. " + (p.Detalle ?? "")
+    };
+
+    private async Task VerificarQr()
+    {
+        if (pagoQr == null) return;
+        qrOcupado = true;
+        StateHasChanged();
+        try
+        {
+            var p = await MpSrv.RefrescarAsync(sesion.Tenant, pagoQr.Id);
+            if (p == null) return;
+            pagoQr = p;
+            if (p.Pagado) { qrOcupado = false; await EmitirConQr(); return; }
+            if (p.Estado != EstadoPagoQr.Creada) qrError = MensajeEstado(p);
+            else qrError = null;
+        }
+        catch (Exception ex) { qrError = ex.Message; }
+        finally { qrOcupado = false; }
+    }
+
+    /// <summary>El pago se acreditó: se cierra el QR, se emite la factura y se la asocia al cobro.</summary>
+    private async Task EmitirConQr()
+    {
+        var formato = qrFormato;
+        var fiscal = qrFiscal;
+        var pagoId = pagoQr?.Id;
+        DetenerEspera();
+        pagoQr = null;
+        qrImagen = null;
+        qrError = null;
+        await EmitirAhora(formato, fiscal);
+        if (pagoId != null && resultado?.FacturaId != null)
+        {
+            try { await MpSrv.AsociarFacturaAsync(sesion.Cs, pagoId.Value, resultado.FacturaId.Value); } catch { }
+        }
+        StateHasChanged();
+    }
+
+    private async Task CerrarQr()
+    {
+        var id = pagoQr?.Id;
+        var pendiente = pagoQr != null && pagoQr.Estado == EstadoPagoQr.Creada;
+        DetenerEspera();
+        pagoQr = null;
+        qrImagen = null;
+        qrError = null;
+        qrOcupado = false;
+        if (pendiente && id != null)
+        {
+            try { await MpSrv.CancelarAsync(sesion.Tenant, id.Value); } catch { }
         }
     }
 
@@ -577,6 +784,10 @@ else
         pagaCon = 0;
         verCliente = false;
         ultimoAgregado = null;
+        DetenerEspera();
+        pagoQr = null;
+        qrImagen = null;
+        qrError = null;
         AplicarFormaPago(formasPago.FirstOrDefault(f => f.EsEfectivo) ?? formasPago.FirstOrDefault());
         Recalcular();
         _ = JS.InvokeVoidAsync("apc.enfocar", "buscar");
@@ -591,6 +802,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        DetenerEspera();
         try { await JS.InvokeVoidAsync("apc.quitarAtajos"); } catch { }
         refJs?.Dispose();
     }

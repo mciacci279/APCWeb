@@ -291,6 +291,26 @@ public class MercadoPagoService
         return null;
     }
 
+    /// <summary>
+    /// Aviso de Mercado Pago (webhook). Sólo se toma el id del aviso: el estado real
+    /// se consulta contra la API, así un aviso falso no puede marcar un cobro como pagado.
+    /// </summary>
+    public async Task<bool> AvisoAsync(TenantConfig empresa, string orderId)
+    {
+        if (string.IsNullOrWhiteSpace(orderId)) return false;
+        var pago = await PagoPorOrderAsync(empresa.ConnectionString, orderId.Trim());
+        if (pago == null) return false;
+        await RefrescarAsync(empresa, pago.Id);
+        return true;
+    }
+
+    public async Task<PagoQr> PagoPorOrderAsync(string cs, string orderId)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return await cn.QueryFirstOrDefaultAsync<PagoQr>(
+            "SELECT * FROM dbo.PagoQr WHERE OrderId = @orderId", new { orderId });
+    }
+
     /// <summary>Marca el cobro con la factura que se emitió después de cobrarlo.</summary>
     public async Task AsociarFacturaAsync(string cs, Guid pagoId, Guid facturaId)
     {

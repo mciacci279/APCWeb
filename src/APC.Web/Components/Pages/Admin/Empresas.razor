@@ -317,6 +317,16 @@
                         </table>
                         <p class="sub">Se crea una caja por sucursal: el QR sale siempre de la caja del punto de venta donde se factura.</p>
                     }
+
+                    @if (mpCuenta != null)
+                    {
+                        <h3 class="sub-titulo">Aviso de pagos (webhook)</h3>
+                        <p class="sub">Pegá esta dirección en «Tus integraciones» → la aplicación → Webhooks, con el evento <strong>Órdenes comerciales</strong>. Sin esto el cobro igual funciona: la pantalla pregunta cada 3 segundos si el pago llegó.</p>
+                        <div class="link-empresa">
+                            <a class="mono" href="@LinkAviso" target="_blank" rel="noopener">@LinkAviso</a>
+                            <button type="button" class="btn btn-chico" @onclick="CopiarAviso">Copiar</button>
+                        </div>
+                    }
                 }
                 else if (pestania == 5)
                 {
@@ -564,11 +574,18 @@
     private bool CertOk => certInfo?.Existe == true && certInfo.ClaveCoincide && !certInfo.Vencido && !AmbienteNoCoincide;
 
     private string LinkIngreso => Nav.BaseUri + "ingresar?e=" + edit?.Codigo;
+    private string LinkAviso => Nav.BaseUri + "mp/aviso/" + edit?.Codigo;
 
     private async Task CopiarLink()
     {
         await JS.InvokeVoidAsync("apc.copiar", LinkIngreso);
         Aviso(true, "Link copiado: ya se lo podés pasar al cliente.");
+    }
+
+    private async Task CopiarAviso()
+    {
+        await JS.InvokeVoidAsync("apc.copiar", LinkAviso);
+        Aviso(true, "Dirección del aviso copiada.");
     }
 
     /// <summary>Estado del certificado de ARCA de cada empresa, para avisar antes de que venza.</summary>

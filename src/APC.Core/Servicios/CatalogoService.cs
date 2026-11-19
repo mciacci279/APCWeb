@@ -72,12 +72,15 @@ public class CatalogoService
             var filtroSimple = id.HasValue ? " WHERE Id = @id" : "";
             var conTipo = await cn.ExecuteScalarAsync<int>(
                 "SELECT CASE WHEN COL_LENGTH('dbo.FormaPago', 'TipoPrecioId') IS NULL THEN 0 ELSE 1 END") == 1;
+            var conMp = await cn.ExecuteScalarAsync<int>(
+                "SELECT CASE WHEN COL_LENGTH('dbo.FormaPago', 'EsMercadoPago') IS NULL THEN 0 ELSE 1 END") == 1;
+            var columnaMp = conMp ? "f.EsMercadoPago" : "CAST(0 AS BIT) AS EsMercadoPago";
             try
             {
                 lista = conTipo
                     ? (await cn.QueryAsync<FormaPagoItem>(
                         $@"SELECT {ColumnasFormaPagoF}, ISNULL(f.Precio, 1) AS ListaPrecio,
-                                  f.TipoPrecioId, tp.Nombre AS TipoPrecio
+                                  f.TipoPrecioId, tp.Nombre AS TipoPrecio, {columnaMp}
                            FROM dbo.FormaPago f LEFT JOIN dbo.TipoPrecio tp ON tp.Id = f.TipoPrecioId{filtro}",
                         new { id })).ToList()
                     : (await cn.QueryAsync<FormaPagoItem>(

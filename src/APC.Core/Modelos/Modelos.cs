@@ -99,6 +99,8 @@ public class FormaPagoItem
     /// <summary>Tipo de precio asociado (script 18). Null = precio de lista, sin ajuste.</summary>
     public Guid? TipoPrecioId { get; set; }
     public string TipoPrecio { get; set; }
+    /// <summary>Cobra con el QR de Mercado Pago (script 22).</summary>
+    public bool EsMercadoPago { get; set; }
     public bool EsEfectivo => EsNombreEfectivo(Nombre);
 
     /// <summary>Formas de pago que cuentan como efectivo en caja (vuelto y arqueo).</summary>
