@@ -129,7 +129,7 @@ public class CatalogoService
         using var cn = await Db.AbrirAsync(cs);
         return await cn.QueryFirstOrDefaultAsync<EmpresaDatos>(
             @"SELECT TOP 1 e.Id, e.Nombre, e.Descripcion, e.Cuit, e.IngresosBrutos, e.FechaInicioActividades,
-                     e.Domicilio, e.Telefono1, e.CP, e.Email, i.Nombre AS CondicionIva,
+                     e.Domicilio, e.Telefono1, e.CP, e.Email, e.IvaId, i.Nombre AS CondicionIva,
                      ISNULL(i.EsMonotributo, 0) AS EsMonotributo
               FROM dbo.Empresa e LEFT JOIN dbo.Iva i ON i.Id = e.IvaId");
     }
@@ -154,9 +154,21 @@ public class CatalogoService
         var filas = await cn.ExecuteAsync(
             @"UPDATE dbo.Empresa SET Cuit = @Cuit, IngresosBrutos = @IngresosBrutos,
                      FechaInicioActividades = @FechaInicioActividades, Domicilio = @Domicilio,
-                     CP = @CP, Telefono1 = @Telefono1, Email = @Email
+                     CP = @CP, Telefono1 = @Telefono1, Email = @Email,
+                     IvaId = ISNULL(@IvaId, IvaId)
               WHERE Id = @Id", e);
         return filas == 0 ? "No se encontró la empresa en su base de datos." : null;
+    }
+
+    /// <summary>
+    /// Condiciones frente al IVA del emisor (tabla Iva de la empresa). Define la letra de
+    /// los comprobantes: un monotributista emite C y un responsable inscripto A o B.
+    /// </summary>
+    public async Task<List<CondicionIvaItem>> CondicionesIvaAsync(string cs)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return (await cn.QueryAsync<CondicionIvaItem>(
+            "SELECT Id, Nombre, LetraComprobante FROM dbo.Iva ORDER BY Nombre")).ToList();
     }
 
     /// <summary>CUIT: 11 dígitos y dígito verificador (el mismo control que hace ARCA).</summary>

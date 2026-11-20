@@ -71,8 +71,18 @@ public class EmpresaDatos
     public string CP { get; set; }
     public string Email { get; set; }
     public string CondicionIva { get; set; }
+    /// <summary>Fila de dbo.Iva que define la condición frente al IVA del emisor.</summary>
+    public Guid? IvaId { get; set; }
     public bool EsMonotributo { get; set; }
     public long CuitNumero => long.TryParse((Cuit ?? "").Replace("-", "").Trim(), out var c) ? c : 0;
+}
+
+/// <summary>Una condición frente al IVA del emisor, como está en dbo.Iva.</summary>
+public class CondicionIvaItem
+{
+    public Guid Id { get; set; }
+    public string Nombre { get; set; }
+    public string LetraComprobante { get; set; }
 }
 
 public class ProductoItem

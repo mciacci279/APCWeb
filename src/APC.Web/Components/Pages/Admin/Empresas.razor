@@ -426,7 +426,26 @@
                             </div>
                         </div>
 
-                        <p class="sub">Condición frente al IVA: <strong>@(negocio.CondicionIva ?? "sin definir")</strong>. Se cambia desde el sistema de escritorio.</p>
+                        <div class="fila-campos">
+                            <div class="campo crece">
+                                <label for="n-iva">Condición frente al IVA</label>
+                                @if (condicionesIva.Count > 0)
+                                {
+                                    <select id="n-iva" class="input" value="@(negocio.IvaId?.ToString() ?? "")" @onchange="ElegirIva">
+                                        <option value="">Sin definir</option>
+                                        @foreach (var c in condicionesIva)
+                                        {
+                                            <option value="@c.Id">@c.Nombre@(string.IsNullOrWhiteSpace(c.LetraComprobante) ? "" : $" · emite {c.LetraComprobante}")</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <p class="sub"><strong>@(negocio.CondicionIva ?? "sin definir")</strong> · no se pudo leer la tabla de condiciones.</p>
+                                }
+                                <span class="sub">Define la letra de los comprobantes: monotributo emite C, responsable inscripto A o B.</span>
+                            </div>
+                        </div>
                         @if (certInfo?.Cuit != null && SoloNumeros(certInfo.Cuit) != SoloNumeros(negocio.Cuit))
                         {
                             <p class="alerta alerta-aviso">El CUIT no coincide con el del certificado de ARCA (@certInfo.Cuit). Así no se van a poder emitir facturas.</p>
@@ -561,6 +580,7 @@
     private int pestania;
     /// <summary>Módulos tildados de la empresa que se está editando (vacío = todos).</summary>
     private EmpresaDatos negocio;
+    private List<CondicionIvaItem> condicionesIva = new();
     private MercadoPagoCuenta mpCuenta;
     private List<MercadoPagoCaja> mpCajas = new();
     private string mpToken = "";
@@ -855,8 +875,20 @@
         pestania = 5;
         mensaje = null;
         negocio = null;
-        try { negocio = await Catalogo.EmpresaAsync(edit.ConnectionString); }
-        catch (Exception) { negocio = null; }
+        condicionesIva = new();
+        try
+        {
+            negocio = await Catalogo.EmpresaAsync(edit.ConnectionString);
+            condicionesIva = await Catalogo.CondicionesIvaAsync(edit.ConnectionString);
+        }
+        catch (Exception) { }
+    }
+
+    private void ElegirIva(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString();
+        negocio.IvaId = Guid.TryParse(valor, out var g) ? g : null;
+        negocio.CondicionIva = condicionesIva.FirstOrDefault(c => c.Id == negocio.IvaId)?.Nombre;
     }
 
     private async Task GuardarNegocio()
