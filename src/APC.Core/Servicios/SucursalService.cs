@@ -170,8 +170,10 @@ public class SucursalService
         if (s.EsNueva)
         {
             s.Id = Guid.NewGuid();
-            using var tx = cn.BeginTransaction();
+            // Se averigua antes de abrir la transacción: con una transacción abierta,
+            // una consulta sin transacción revienta la conexión.
             var conExigeCaja = await ColumnaExigeCajaAsync(cn) == "ExigeCaja";
+            using var tx = cn.BeginTransaction();
             await cn.ExecuteAsync(
                 $@"INSERT INTO dbo.Sucursal (Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta
                            {(conExigeCaja ? ", ExigeCaja" : "")})

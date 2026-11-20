@@ -178,7 +178,10 @@
         ocupado = true;
         try
         {
-            var error = await SucursalSrv.GuardarAsync(Tenant.ConnectionString, edit);
+            string error;
+            // Si la base devuelve un error, se muestra: una excepción sin atrapar corta la sesión.
+            try { error = await SucursalSrv.GuardarAsync(Tenant.ConnectionString, edit); }
+            catch (Exception ex) { Aviso(false, "No se pudo guardar: " + ex.GetBaseException().Message); return; }
             if (error != null) { Aviso(false, error); return; }
             var id = edit.Id;
             var nueva = edit.EsNueva;
