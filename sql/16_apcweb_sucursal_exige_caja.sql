@@ -1,3 +1,5 @@
+-- apcweb:titulo=Apertura de caja opcional por sucursal
+-- apcweb:destino=empresa
 /* ============================================================
    APC Web - 16 - Apertura de caja configurable por sucursal
    Base: la de CADA EMPRESA (no la central)

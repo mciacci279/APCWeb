@@ -1,3 +1,5 @@
+-- apcweb:titulo=Mercado Pago: cuentas y cajas
+-- apcweb:destino=central
 /* ============================================================
    APC Web - 21 - Mercado Pago: cuentas y cajas (QR)
    Base: APCWeb_Central

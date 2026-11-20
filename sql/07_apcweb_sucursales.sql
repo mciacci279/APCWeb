@@ -1,3 +1,5 @@
+-- apcweb:titulo=Sucursales
+-- apcweb:destino=empresa
 /* APC Web — sucursales y stock por sucursal.
    Ejecutar UNA vez en la base de CADA empresa (SuperMarketDB_…).
    No modifica ninguna tabla existente: APC.WinForms sigue funcionando igual,

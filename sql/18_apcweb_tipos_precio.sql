@@ -1,3 +1,5 @@
+-- apcweb:titulo=Tipos de precio y formas de pago
+-- apcweb:destino=empresa
 /* ============================================================
    APC Web - 18 - Tipos de precio y su forma de pago
    Base: la de CADA EMPRESA (no la central)

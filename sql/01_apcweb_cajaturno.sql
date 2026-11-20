@@ -1,3 +1,5 @@
+-- apcweb:titulo=Turnos de caja
+-- apcweb:destino=empresa
 /* APC Web — tabla nueva para apertura/cierre de caja.
    Ejecutar una vez en la base de cada cliente (compatible con SQL Server 2014).
    No modifica ninguna tabla existente: APC.WinForms sigue funcionando igual. */

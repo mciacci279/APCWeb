@@ -103,6 +103,12 @@ builder.Services.AddSingleton<PadronService>();
 builder.Services.AddSingleton<SucursalService>();
 builder.Services.AddSingleton<TipoPrecioService>();
 builder.Services.AddSingleton<MercadoPagoService>();
+// Los scripts viajan con la app (carpeta sql); se puede mover con APC:CarpetaScripts.
+builder.Services.AddSingleton(sp => new MigracionService(
+    sp.GetRequiredService<TenantRegistry>(),
+    builder.Configuration["APC:CarpetaScripts"] is { Length: > 0 } c
+        ? c
+        : Path.Combine(builder.Environment.ContentRootPath, "sql")));
 builder.Services.AddSingleton<TableroService>();
 builder.Services.AddSingleton<CobranzaService>();
 builder.Services.AddSingleton<FacturaAbonoService>();

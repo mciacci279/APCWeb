@@ -1,3 +1,5 @@
+-- apcweb:titulo=Módulos por rol
+-- apcweb:destino=central
 /* ============================================================
    APC Web - 19 - Modulos por rol dentro de cada empresa
    Base: APCWeb_Central

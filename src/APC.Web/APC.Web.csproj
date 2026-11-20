@@ -13,6 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Los scripts viajan con la app: el panel de base de datos los lee de ahí -->
+    <Content Include="..\..\sql\*.sql" Link="sql\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Los secretos no se versionan ni se publican: en la VPS se crean a mano -->
     <Content Update="appsettings.Secretos.json" CopyToPublishDirectory="Never" />
   </ItemGroup>

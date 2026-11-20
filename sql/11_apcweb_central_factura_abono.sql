@@ -1,3 +1,5 @@
+-- apcweb:titulo=Factura del abono
+-- apcweb:destino=central
 /* APC Web — facturación propia de CM Tech: cada facturador monotributista emite su Factura C
    por el abono, con CAE de ARCA. Ejecutar UNA vez en APCWeb_Central, después del script 10. */
 USE APCWeb_Central;

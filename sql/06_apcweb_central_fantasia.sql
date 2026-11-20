@@ -1,3 +1,5 @@
+-- apcweb:titulo=Nombre de fantasía
+-- apcweb:destino=central
 /* APC Web — nombre de fantasía del negocio (la columna Nombre pasa a mostrarse como "Razón social").
    Ejecutar UNA vez en APCWeb_Central. */
 USE APCWeb_Central;

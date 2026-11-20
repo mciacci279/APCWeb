@@ -1,3 +1,5 @@
+-- apcweb:titulo=Rol supervisor
+-- apcweb:destino=central
 /* APC Web — rol Supervisor: ve las cajas de su sucursal, pero no administra la empresa.
    Ejecutar UNA vez en APCWeb_Central. Solo documenta el valor nuevo de Usuario.Rol
    ('Supervisor'), que convive con 'Admin' y 'Empleado'. Si la columna tiene una regla

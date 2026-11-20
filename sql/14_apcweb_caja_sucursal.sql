@@ -1,3 +1,5 @@
+-- apcweb:titulo=Caja por sucursal
+-- apcweb:destino=empresa
 /* APC Web — la caja queda asociada a la sucursal donde se abrió,
    para que el supervisor vea las cajas de su sucursal.
    Ejecutar UNA vez en la base de CADA empresa. */

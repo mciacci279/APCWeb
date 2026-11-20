@@ -1,3 +1,5 @@
+-- apcweb:titulo=Sucursal por usuario
+-- apcweb:destino=central
 /* APC Web — cada usuario trabaja en una sucursal.
    Ejecutar UNA vez en APCWeb_Central.
    Los usuarios que queden sin sucursal usan la casa central. */

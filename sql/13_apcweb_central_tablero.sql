@@ -1,3 +1,5 @@
+-- apcweb:titulo=Tablero de ideas
+-- apcweb:destino=central
 /* APC Web — tablero de trabajo de CM Tech (tipo Trello).
    Ejecutar UNA vez en APCWeb_Central. Se puede correr más de una vez sin problema. */
 USE APCWeb_Central;

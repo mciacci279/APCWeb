@@ -1,3 +1,5 @@
+-- apcweb:titulo=Leyenda del ticket
+-- apcweb:destino=central
 /* APC Web — leyenda al pie del ticket, configurable por empresa.
    Ejecutar UNA vez en APCWeb_Central. Las empresas existentes quedan con la leyenda de siempre. */
 USE APCWeb_Central;

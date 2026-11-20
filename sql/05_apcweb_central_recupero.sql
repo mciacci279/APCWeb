@@ -1,3 +1,5 @@
+-- apcweb:titulo=Recupero de clave
+-- apcweb:destino=central
 /* APC Web — recupero de clave por email.
    Ejecutar UNA vez en APCWeb_Central. Solo se guarda el hash del token, nunca el link. */
 USE APCWeb_Central;

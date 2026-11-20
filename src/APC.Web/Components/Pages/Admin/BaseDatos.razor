@@ -1,0 +1,304 @@
+@page "/admin/base-datos"
+@attribute [Authorize(Roles = SesionService.RolSuperAdmin)]
+@using APC.Core.Tenants
+@inject EmpresaCentralService EmpresaSrv
+@inject MigracionService Migraciones
+@inject SesionService SesionSrv
+
+<PageTitle>Base de datos · APC Web</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Base de datos</h1>
+            <span class="sub">Panel de CM Tech · @scripts.Count scripts en la carpeta</span>
+        </div>
+        <div class="fila-btns">
+            <button type="button" class="btn" disabled="@ocupado" @onclick="Cargar">Actualizar</button>
+            @if (Atrasadas.Count > 0)
+            {
+                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="CorrerTodas">
+                    Poner al día las @Atrasadas.Count que faltan
+                </button>
+            }
+        </div>
+    </header>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    @if (cargando)
+    {
+        <p>Revisando las bases…</p>
+    }
+    else if (scripts.Count == 0)
+    {
+        <p class="alerta alerta-aviso">
+            No se encontró ningún script en <span class="mono">@Migraciones.Carpeta</span>.
+            Revisá que la carpeta <span class="mono">sql</span> se haya publicado junto con la app,
+            o apuntá <span class="mono">APC:CarpetaScripts</span> a donde estén.
+        </p>
+    }
+    else
+    {
+        <div class="kpis kpis-chicos">
+            <div class="kpi"><span class="sub">Bases</span><span class="kpi-num">@bases.Count</span></div>
+            <div class="kpi @(Atrasadas.Count > 0 ? "falta" : "")">
+                <span class="sub">Con scripts pendientes</span><span class="kpi-num">@Atrasadas.Count</span>
+            </div>
+            <div class="kpi @(SinAcceso.Count > 0 ? "falta" : "")">
+                <span class="sub">Sin conexión</span><span class="kpi-num">@SinAcceso.Count</span>
+            </div>
+            <div class="kpi"><span class="sub">Último script</span><span class="kpi-num mono">@UltimoNumero</span></div>
+        </div>
+
+        <div class="tabla-scroll">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th>Base</th>
+                        <th>Servidor</th>
+                        <th class="der">Al día</th>
+                        <th>Último corrido</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in bases)
+                    {
+                        <tr class="@(b.Accesible ? "" : "fila-mal")">
+                            <td>
+                                <button type="button" class="link-fila" @onclick="() => Abrir(b)">@b.Nombre</button>
+                                @if (b.EsCentral) { <span class="sub"> · central</span> }
+                                else if (b.EsPlantilla) { <span class="sub"> · plantilla</span> }
+                                else if (b.Codigo != null) { <span class="sub mono"> · @b.Codigo</span> }
+                            </td>
+                            <td class="mono sub">@(b.Base ?? "—")</td>
+                            <td class="der">
+                                @if (!b.Accesible)
+                                {
+                                    <span class="texto-error">sin conexión</span>
+                                }
+                                else if (b.AlDia)
+                                {
+                                    <span class="texto-ok">@b.Total de @b.Total</span>
+                                }
+                                else
+                                {
+                                    <span class="texto-error">faltan @b.Pendientes</span>
+                                }
+                            </td>
+                            <td class="sub">
+                                @if (b.Ultimo != null)
+                                {
+                                    <span class="mono">@b.Ultimo.Script.Numero.ToString("00")</span>
+                                    <span> · @b.Ultimo.Fecha?.ToString("dd/MM/yyyy HH:mm")</span>
+                                }
+                                else if (b.Accesible)
+                                {
+                                    <span>sin registro</span>
+                                }
+                            </td>
+                            <td class="der">
+                                @if (b.Accesible && !b.AlDia)
+                                {
+                                    <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado"
+                                            @onclick="() => CorrerPendientes(b)">Correr los @b.Pendientes</button>
+                                }
+                            </td>
+                        </tr>
+
+                        @if (abierta == b.Nombre)
+                        {
+                            <tr class="fila-detalle">
+                                <td colspan="5">
+                                    @if (!b.Accesible)
+                                    {
+                                        <p class="alerta alerta-error">@b.Error</p>
+                                    }
+                                    else
+                                    {
+                                        <table class="tabla tabla-chica">
+                                            <thead>
+                                                <tr><th class="der">Nº</th><th>Script</th><th>Estado</th><th></th></tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var s in b.Scripts)
+                                                {
+                                                    <tr>
+                                                        <td class="der mono">@s.Script.Numero.ToString("00")</td>
+                                                        <td>
+                                                            @s.Script.Titulo
+                                                            <span class="sub mono"> · @s.Script.Nombre</span>
+                                                        </td>
+                                                        <td>
+                                                            @if (s.Corrido)
+                                                            {
+                                                                <span class="texto-ok">@s.Fecha?.ToString("dd/MM/yyyy HH:mm")</span>
+                                                                @if (s.Quien != null) { <span class="sub"> · @s.Quien</span> }
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="texto-error">pendiente</span>
+                                                            }
+                                                        </td>
+                                                        <td class="der">
+                                                            @if (s.Corrido)
+                                                            {
+                                                                <button type="button" class="btn btn-chico" disabled="@ocupado"
+                                                                        @onclick="() => Olvidar(b, s)">Marcar pendiente</button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado"
+                                                                        @onclick="() => Correr(b, s)">Correr</button>
+                                                                <button type="button" class="btn btn-chico" disabled="@ocupado"
+                                                                        @onclick="() => Marcar(b, s)" title="Ya estaba corrido de antes: solo anotarlo">Ya estaba</button>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                        <p class="sub">Los scripts son idempotentes: correr uno que ya estaba no rompe nada. «Ya estaba» solo lo anota, sin ejecutarlo.</p>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="sub">Carpeta de scripts: <span class="mono">@Migraciones.Carpeta</span>. Cada base anota lo suyo en su tabla <span class="mono">ApcWebScript</span>.</p>
+    }
+</div>
+
+@code {
+    private List<ScriptSql> scripts = new();
+    private List<EstadoBase> bases = new();
+    private string abierta;
+    private bool cargando = true;
+    private bool ocupado;
+    private string mensaje;
+    private bool mensajeOk;
+    private string quien = "CM Tech";
+
+    private List<EstadoBase> Atrasadas => bases.Where(x => x.Accesible && !x.AlDia).ToList();
+    private List<EstadoBase> SinAcceso => bases.Where(x => !x.Accesible).ToList();
+    private string UltimoNumero => scripts.Count == 0 ? "—" : scripts.Max(x => x.Numero).ToString("00");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var sesion = await SesionSrv.ObtenerAsync();
+        if (!string.IsNullOrWhiteSpace(sesion?.Nombre)) quien = sesion.Nombre;
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        mensaje = null;
+        StateHasChanged();
+        try
+        {
+            scripts = Migraciones.Scripts();
+            var empresas = await EmpresaSrv.ListarAsync();
+            bases = await Migraciones.EstadoDeTodasAsync(empresas);
+        }
+        catch (Exception ex)
+        {
+            Aviso(false, "No se pudo leer el estado de las bases: " + ex.Message);
+        }
+        finally { cargando = false; }
+    }
+
+    private void Abrir(EstadoBase b) => abierta = abierta == b.Nombre ? null : b.Nombre;
+
+    private async Task Correr(EstadoBase b, ScriptEnBase s)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await Migraciones.CorrerAsync(b.ConnectionString, s.Script, quien);
+            if (error != null) { Aviso(false, $"{s.Script.Nombre} en {b.Nombre}: {error}"); return; }
+            Aviso(true, $"{s.Script.Nombre} corrido en {b.Nombre}.");
+            await Refrescar(b);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Marcar(EstadoBase b, ScriptEnBase s)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await Migraciones.MarcarAsync(b.ConnectionString, s.Script, quien, "Ya estaba corrido");
+            Aviso(error == null, error ?? $"{s.Script.Nombre} anotado como ya corrido en {b.Nombre}.");
+            await Refrescar(b);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Olvidar(EstadoBase b, ScriptEnBase s)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await Migraciones.OlvidarAsync(b.ConnectionString, s.Script.Nombre);
+            Aviso(error == null, error ?? $"{s.Script.Nombre} vuelve a figurar como pendiente en {b.Nombre}.");
+            await Refrescar(b);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CorrerPendientes(EstadoBase b)
+    {
+        ocupado = true;
+        try
+        {
+            var (corridos, error) = await Migraciones.CorrerPendientesAsync(b, quien);
+            if (error != null) { Aviso(false, $"{b.Nombre}: se corrieron {corridos} y se cortó en {error}"); }
+            else Aviso(true, $"{b.Nombre}: {corridos} script(s) corridos.");
+            await Refrescar(b);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task CorrerTodas()
+    {
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            int bien = 0;
+            var fallaron = new List<string>();
+            foreach (var b in Atrasadas)
+            {
+                var (_, error) = await Migraciones.CorrerPendientesAsync(b, quien);
+                if (error != null) fallaron.Add($"{b.Nombre} ({error})");
+                else bien++;
+            }
+            await Cargar();
+            Aviso(fallaron.Count == 0,
+                fallaron.Count == 0
+                    ? $"Listo: {bien} base(s) al día."
+                    : $"{bien} base(s) al día. No se pudo con: {string.Join(" · ", fallaron)}");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Refrescar(EstadoBase b)
+    {
+        var nuevo = await Migraciones.EstadoAsync(b.Nombre, b.ConnectionString, b.EsCentral);
+        nuevo.EmpresaId = b.EmpresaId;
+        nuevo.Codigo = b.Codigo;
+        nuevo.EsPlantilla = b.EsPlantilla;
+        var i = bases.FindIndex(x => x.Nombre == b.Nombre);
+        if (i >= 0) bases[i] = nuevo;
+    }
+
+    private void Aviso(bool ok, string texto) { mensajeOk = ok; mensaje = texto; }
+}

@@ -1,3 +1,5 @@
+-- apcweb:titulo=Cobranzas
+-- apcweb:destino=central
 /* APC Web — cobranzas de CM Tech: el abono mensual que se le cobra a cada empresa.
    Ejecutar UNA vez en APCWeb_Central. Se puede correr más de una vez sin problema.
    No tiene nada que ver con la facturación de los clientes: es el control de cobro propio. */

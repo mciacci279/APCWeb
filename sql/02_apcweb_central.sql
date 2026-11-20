@@ -1,3 +1,5 @@
+-- apcweb:titulo=Base central: empresas y usuarios web
+-- apcweb:destino=central
 /* APC Web — base central de CM Tech (empresas + usuarios web + registro de ingresos).
    Ejecutar UNA vez en el SQL Server de la VPS, conectado como sa. Compatible con SQL Server 2014.
    Las bases de cada cliente no se modifican con este script. */

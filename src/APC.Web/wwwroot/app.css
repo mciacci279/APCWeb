@@ -552,6 +552,10 @@ input.input-ajuste { width: 72px; text-align: right; }
 .qr-tecnico { font-size: 11px; opacity: .6; margin-top: 6px; }
 .fila-cancelar { align-items: center; gap: 10px; margin: 8px 0 0; }
 
+/* ---- Panel de base de datos ---- */
+.fila-mal td { background: var(--error-fondo); }
+.fila-detalle td { background: #F6F8FB; padding: 10px 12px; }
+
 /* ---- Consulta de precio ---- */
 .buscador-fila { display: flex; gap: 8px; align-items: stretch; }
 .buscador-fila .input-buscar { flex: 1; min-width: 0; }

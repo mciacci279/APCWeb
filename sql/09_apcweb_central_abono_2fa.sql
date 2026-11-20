@@ -1,3 +1,5 @@
+-- apcweb:titulo=Abono y doble factor
+-- apcweb:destino=central
 /* APC Web — control de abono por empresa y doble factor para los usuarios.
    Ejecutar UNA vez en APCWeb_Central. Se puede correr más de una vez sin problema. */
 USE APCWeb_Central;

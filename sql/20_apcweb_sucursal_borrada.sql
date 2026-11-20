@@ -1,3 +1,5 @@
+-- apcweb:titulo=Borrado lógico de sucursales
+-- apcweb:destino=empresa
 /* ============================================================
    APC Web - 20 - Borrado logico de sucursales
    Base: la de CADA EMPRESA (no la central)

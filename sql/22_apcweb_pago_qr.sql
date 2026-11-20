@@ -1,3 +1,5 @@
+-- apcweb:titulo=Cobros con QR
+-- apcweb:destino=empresa
 /* ============================================================
    APC Web - 22 - Cobros con QR de Mercado Pago
    Base: la de CADA EMPRESA (no la central)
