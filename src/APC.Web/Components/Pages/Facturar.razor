@@ -478,7 +478,9 @@ else
                     }
                     @if (qrImagen != null)
                     {
-                        <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
+                        <span class="qr-marco @(Esperando ? "qr-latido" : "")">
+                            <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
+                        </span>
                     }
                     <p class="qr-monto mono">@Pesos(totales.Total)</p>
                     <p class="sub">@(qrFijo
@@ -486,9 +488,9 @@ else
                         : pagoQr?.Interoperable == false
                             ? "Este QR sólo lo lee la app de Mercado Pago."
                             : "El cliente lo escanea con Mercado Pago, MODO o la app de su banco.")</p>
-                    @if (pagoQr?.Estado == EstadoPagoQr.Creada)
+                    @if (Esperando)
                     {
-                        <p class="qr-estado">Esperando el pago…</p>
+                        <p class="qr-estado"><span class="qr-punto" aria-hidden="true"></span>Esperando el pago…</p>
                     }
                     @if (pagoQr != null)
                     {
@@ -589,6 +591,9 @@ else
     private string qrImagen;
     /// <summary>La venta va contra el QR impreso del mostrador: no hay QR nuevo en pantalla.</summary>
     private bool qrFijo;
+    /// <summary>Mientras el cobro sigue abierto: es cuando late el QR.</summary>
+    private bool Esperando => qrPaso == null && pagoQr?.Estado == EstadoPagoQr.Creada;
+
     /// <summary>En qué parte del cierre está la ventana: null mientras se espera el pago.</summary>
     private string qrPaso;
     private const string PasoPagado = "pagado";
