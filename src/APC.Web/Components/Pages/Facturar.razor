@@ -304,7 +304,9 @@ else
                 <div class="qr-caja">
                     <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
                     <p class="qr-monto mono">@Pesos(totales.Total)</p>
-                    <p class="sub">El cliente lo escanea con Mercado Pago, MODO o la app de su banco.</p>
+                    <p class="sub">@(pagoQr?.Interoperable == false
+                        ? "Este QR sólo lo lee la app de Mercado Pago."
+                        : "El cliente lo escanea con Mercado Pago, MODO o la app de su banco.")</p>
                     @if (pagoQr?.Estado == EstadoPagoQr.Creada)
                     {
                         <p class="qr-estado">Esperando el pago…</p>

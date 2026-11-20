@@ -101,6 +101,12 @@ public class PagoQr
     public DateTime? FechaPago { get; set; }
 
     public bool Pagado => Estado == EstadoPagoQr.Pagada;
+
+    /// <summary>
+    /// Los QR interoperables (los que puede pagar MODO o la app del banco) son EMVCo y
+    /// arrancan con «0002». Si Mercado Pago devuelve un link, sólo lo lee su propia app.
+    /// </summary>
+    public bool Interoperable => QrData != null && QrData.StartsWith("0002");
 }
 
 public static class EstadoPagoQr
