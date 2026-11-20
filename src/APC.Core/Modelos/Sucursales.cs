@@ -17,6 +17,10 @@ public class Sucursal
     public bool ExigeCaja { get; set; } = true;
     /// <summary>Borrado lógico (script 20): la fila queda, pero la sucursal no se usa más.</summary>
     public bool Borrada { get; set; }
+    /// <summary>Alias o CVU que se muestra junto al QR del comercio (script 23).</summary>
+    public string QrPagoAlias { get; set; }
+    /// <summary>Si la sucursal tiene cargado el QR interoperable del comercio (script 23).</summary>
+    public bool TieneQrPago { get; set; }
     public DateTime FechaAlta { get; set; }
 
     /// <summary>Cantidad de usuarios asignados (solo se completa en el listado).</summary>

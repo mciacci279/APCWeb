@@ -104,6 +104,7 @@
                             <button type="button" class="link-fila" @onclick="() => SeleccionarForma(f)">@f.Nombre</button>
                             @if (f.EsCtaCte) { <span class="sub"> · cuenta corriente</span> }
                             @if (f.EsMercadoPago) { <span class="sub"> · QR Mercado Pago</span> }
+                            @if (f.EsQrPropio) { <span class="sub"> · QR del comercio</span> }
                         </label>
                         <select id="fp-@f.Id" class="input" value="@(f.TipoPrecioId?.ToString() ?? "")"
                                 @onchange="e => Asignar(f, e.Value?.ToString())">
@@ -143,6 +144,9 @@
 
                         <label class="check"><input type="checkbox" @bind="editF.EsMercadoPago" /> Cobra con el QR de Mercado Pago</label>
                         <p class="sub">Al facturar con esta forma de pago se muestra un QR y la factura se emite recién cuando el pago se acredita.</p>
+
+                        <label class="check"><input type="checkbox" @bind="editF.EsQrPropio" /> Cobra con el QR del comercio</label>
+                        <p class="sub">Muestra el QR interoperable de la sucursal (el del banco o MODO). La plata va directo a la cuenta del comercio y el cajero confirma el pago.</p>
 
                         <div class="fila-btns">
                             <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarForma">@(editF.Id == Guid.Empty ? "Crear" : "Guardar cambios")</button>
@@ -233,7 +237,7 @@
         editF = new FormaPagoItem
         {
             Id = f.Id, Nombre = f.Nombre, EsCtaCte = f.EsCtaCte,
-            TipoPrecioId = f.TipoPrecioId, EsMercadoPago = f.EsMercadoPago
+            TipoPrecioId = f.TipoPrecioId, EsMercadoPago = f.EsMercadoPago, EsQrPropio = f.EsQrPropio
         };
         editFTipo = f.TipoPrecioId?.ToString() ?? "";
         mensaje = null;

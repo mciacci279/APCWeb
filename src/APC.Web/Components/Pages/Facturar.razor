@@ -11,6 +11,7 @@
 @inject NavigationManager Nav
 @inject APC.Core.Tenants.TenantRegistry Tenants
 @inject MercadoPagoService MpSrv
+@inject SucursalService SucursalSrv
 
 <PageTitle>Facturar · APC Web</PageTitle>
 
@@ -236,6 +237,10 @@ else
             {
                 <p class="sub">Se va a mostrar un QR para que el cliente pague. La factura se emite cuando el pago se acredita.</p>
             }
+            else if (formaPago?.EsQrPropio == true)
+            {
+                <p class="sub">Se va a mostrar el QR del comercio. Cuando el cliente pague, confirmás vos y sale la factura.</p>
+            }
 
             @if (MostrarPagaCon && formaPago?.EsEfectivo == true)
             {
@@ -368,6 +373,50 @@ else
     </div>
 }
 
+@* Cobro con el QR del comercio: la plata va directo a su cuenta, el cajero confirma. *@
+@if (mostrandoQrPropio)
+{
+    <div class="modal-fondo">
+        <section class="panel modal-qr" role="dialog" aria-modal="true" aria-label="Cobro con el QR del comercio">
+            <header class="modal-cab">
+                <div>
+                    <h2>Cobrar con QR</h2>
+                    <span class="sub">@formaPago?.Nombre</span>
+                </div>
+                <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarQrPropio">×</button>
+            </header>
+
+            @if (qrPropioUri == null)
+            {
+                <p class="alerta alerta-error" role="alert">
+                    Esta sucursal todavía no tiene cargado el QR del comercio. Se carga en Sucursales.
+                </p>
+            }
+            else
+            {
+                <div class="qr-caja">
+                    <img class="qr-img" src="@qrPropioUri" alt="QR para pagar" />
+                    <p class="qr-monto mono">@Pesos(totales.Total)</p>
+                    @if (!string.IsNullOrWhiteSpace(sesion.Sucursal?.QrPagoAlias))
+                    {
+                        <p class="sub mono">@sesion.Sucursal.QrPagoAlias</p>
+                    }
+                    <p class="sub">El cliente escanea, escribe el importe y paga. Pedile el comprobante antes de confirmar.</p>
+                </div>
+            }
+
+            <div class="fila-btns">
+                @if (qrPropioUri != null)
+                {
+                    <button type="button" class="btn btn-primario" disabled="@emitiendo" @onclick="ConfirmarQrPropio">El cliente pagó, emitir</button>
+                }
+                <div class="crece"></div>
+                <button type="button" class="btn btn-rojo" disabled="@emitiendo" @onclick="CerrarQrPropio">Cancelar</button>
+            </div>
+        </section>
+    </div>
+}
+
 @* Cobro con el QR de Mercado Pago: la factura se emite cuando el pago se acredita. *@
 @if (pagoQr != null || qrOcupado || qrError != null)
 {
@@ -485,6 +534,12 @@ else
     private ProductoItem consultaElegido;
     private bool consultaSinResultados;
 
+    // ---- cobro con el QR del comercio ----
+    private bool mostrandoQrPropio;
+    private string qrPropioUri;
+    private string qrPropioFormato;
+    private bool qrPropioFiscal = true;
+
     // ---- cobro con QR de Mercado Pago ----
     private PagoQr pagoQr;
     private string qrImagen;
@@ -550,7 +605,7 @@ else
 
     private async Task AtajoEmitirFormato(string formato, bool fiscal = true)
     {
-        if (pagoQr != null || qrOcupado) return;
+        if (pagoQr != null || qrOcupado || mostrandoQrPropio) return;
         if (resultado?.Ok == true) Nueva();
         else if (PuedeEmitir) await Emitir(formato, fiscal);
         StateHasChanged();
@@ -700,6 +755,12 @@ else
             await IniciarCobroQr(formato, fiscal);
             return;
         }
+        // Con el QR del comercio el pago no se puede consultar: lo confirma el cajero.
+        if (formaPago?.EsQrPropio == true && !mostrandoQrPropio)
+        {
+            await MostrarQrPropio(formato, fiscal);
+            return;
+        }
         await EmitirAhora(formato, fiscal);
     }
 
@@ -735,7 +796,7 @@ else
 
     [JSInvokable] public async Task AtajoConsulta()
     {
-        if (pagoQr != null || qrOcupado) return;
+        if (pagoQr != null || qrOcupado || mostrandoQrPropio) return;
         await AbrirConsulta();
     }
 
@@ -780,6 +841,30 @@ else
         consultando = false;
         await Agregar(p, 1);
     }
+
+    // ------------------------------------------------------------------ cobro con el QR del comercio
+
+    private async Task MostrarQrPropio(string formato, bool fiscal)
+    {
+        qrPropioFormato = formato;
+        qrPropioFiscal = fiscal;
+        mostrandoQrPropio = true;
+        StateHasChanged();
+        try
+        {
+            if (qrPropioUri == null && sesion.Sucursal != null)
+                qrPropioUri = await SucursalSrv.QrDataUriAsync(sesion.Cs, sesion.Sucursal.Id);
+        }
+        catch { qrPropioUri = null; }
+    }
+
+    private async Task ConfirmarQrPropio()
+    {
+        mostrandoQrPropio = false;
+        await EmitirAhora(qrPropioFormato, qrPropioFiscal);
+    }
+
+    private void CerrarQrPropio() => mostrandoQrPropio = false;
 
     // ------------------------------------------------------------------ cobro con QR
 
@@ -956,6 +1041,7 @@ else
         verCliente = false;
         ultimoAgregado = null;
         confirmarCancelar = false;
+        mostrandoQrPropio = false;
         DetenerEspera();
         pagoQr = null;
         qrImagen = null;

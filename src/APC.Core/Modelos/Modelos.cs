@@ -111,6 +111,8 @@ public class FormaPagoItem
     public string TipoPrecio { get; set; }
     /// <summary>Cobra con el QR de Mercado Pago (script 22).</summary>
     public bool EsMercadoPago { get; set; }
+    /// <summary>Cobra con el QR interoperable del propio comercio (script 23).</summary>
+    public bool EsQrPropio { get; set; }
     public bool EsEfectivo => EsNombreEfectivo(Nombre);
 
     /// <summary>Formas de pago que cuentan como efectivo en caja (vuelto y arqueo).</summary>

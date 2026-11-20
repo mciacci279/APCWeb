@@ -31,7 +31,7 @@
     {
         <div class="panel tabla-scroll">
             <table class="tabla">
-                <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Apertura de caja</th><th>Estado</th></tr></thead>
+                <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Domicilio</th><th>Teléfono</th><th>Apertura de caja</th><th>QR del comercio</th><th>Estado</th></tr></thead>
                 <tbody>
                     @if (lista.Count == 0)
                     {
@@ -56,6 +56,12 @@
                             <td>
                                 @if (s.ExigeCaja) { <span class="cert-chip cert-bien">Sí</span> }
                                 else { <span class="etiqueta etiqueta-empleado">No</span> }
+                            </td>
+                            <td>
+                                <button type="button" class="link-fila" @onclick="() => AbrirQr(s)">
+                                    @(s.TieneQrPago ? "Cargado" : "Cargar")
+                                </button>
+                                @if (!string.IsNullOrWhiteSpace(s.QrPagoAlias)) { <span class="sub mono"> · @s.QrPagoAlias</span> }
                             </td>
                             <td>
                                 @if (s.Activa) { <span>Activa</span> }
@@ -90,6 +96,50 @@
                 <div class="fila-btns">
                     <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarCaja">Guardar</button>
                     <button type="button" class="btn" @onclick="() => verCaja = null">Cancelar</button>
+                </div>
+            </section>
+        }
+
+        @if (verQr != null)
+        {
+            <section class="panel cierre panel-ancho" aria-label="QR del comercio">
+                <h2>QR del comercio · @verQr.Nombre</h2>
+                <p class="sub">
+                    Es el QR interoperable que el comercio saca de su app del banco o de MODO. La plata va directo a
+                    su cuenta: APC Web lo muestra en pantalla con el importe y el cajero confirma cuando el cliente pagó.
+                </p>
+
+                <div class="fila-campos">
+                    <div class="campo">
+                        @if (qrUri != null)
+                        {
+                            <img class="qr-img" src="@qrUri" alt="QR de @verQr.Nombre" />
+                        }
+                        else
+                        {
+                            <p class="sub">Todavía no hay ningún QR cargado.</p>
+                        }
+                    </div>
+                    <div class="campo crece">
+                        <label for="qr-archivo">Imagen del QR</label>
+                        <InputFile id="qr-archivo" class="input input-file" accept=".png,.jpg,.jpeg" disabled="@ocupado"
+                                   OnChange="@((InputFileChangeEventArgs a) => SubirQr(a))" />
+                        <span class="sub">PNG o JPG, hasta 500 KB. Sacale una captura al QR desde la app del banco.</span>
+
+                        <label for="qr-alias">Alias o CVU</label>
+                        <input id="qr-alias" class="input mono" maxlength="100" @bind="qrAlias" placeholder="ej. super.mena.caja" />
+                        <span class="sub">Se muestra abajo del QR, por si el cliente prefiere transferir escribiéndolo.</span>
+                    </div>
+                </div>
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarAlias">Guardar alias</button>
+                    <button type="button" class="btn" @onclick="() => verQr = null">Cerrar</button>
+                    @if (qrUri != null)
+                    {
+                        <div class="crece"></div>
+                        <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="QuitarQr">Quitar el QR</button>
+                    }
                 </div>
             </section>
         }
@@ -279,6 +329,67 @@
     private void ElegirCaja(ChangeEventArgs e) => exigeCaja = e.Value?.ToString() == "si";
 
     private void ElegirTipoMovimiento(ChangeEventArgs e) => esTransferencia = e.Value?.ToString() == "transf";
+
+    // ---- QR propio del comercio ----
+    private Sucursal verQr;
+    private string qrUri;
+    private string qrAlias = "";
+
+    private async Task AbrirQr(Sucursal s)
+    {
+        verQr = s;
+        qrAlias = s.QrPagoAlias ?? "";
+        mensaje = null;
+        qrUri = await SucursalSrv.QrDataUriAsync(sesion.Cs, s.Id);
+    }
+
+    private async Task SubirQr(InputFileChangeEventArgs a)
+    {
+        ocupado = true;
+        try
+        {
+            if (a.File.Size > SucursalService.QrMaximoBytes) { Aviso(false, "La imagen no puede superar los 500 KB."); return; }
+
+            using var ms = new MemoryStream();
+            await using (var st = a.File.OpenReadStream(SucursalService.QrMaximoBytes)) await st.CopyToAsync(ms);
+
+            var tipo = a.File.ContentType is { Length: > 0 } ct ? ct : "image/png";
+            var error = await SucursalSrv.GuardarQrAsync(sesion.Cs, verQr.Id, ms.ToArray(), tipo, qrAlias);
+            if (error != null) { Aviso(false, error); return; }
+
+            qrUri = await SucursalSrv.QrDataUriAsync(sesion.Cs, verQr.Id);
+            await Recargar();
+            Aviso(true, "QR guardado. Ya se puede cobrar con él en esta sucursal.");
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo subir la imagen: " + ex.Message); }
+        finally { ocupado = false; }
+    }
+
+    private async Task GuardarAlias()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await SucursalSrv.GuardarQrAsync(sesion.Cs, verQr.Id, null, null, qrAlias);
+            if (error != null) { Aviso(false, error); return; }
+            await Recargar();
+            Aviso(true, "Alias guardado.");
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task QuitarQr()
+    {
+        ocupado = true;
+        try
+        {
+            await SucursalSrv.QuitarQrAsync(sesion.Cs, verQr.Id);
+            qrUri = null;
+            await Recargar();
+            Aviso(true, "Se quitó el QR de esta sucursal.");
+        }
+        finally { ocupado = false; }
+    }
 
     private void AbrirCaja(Sucursal s)
     {

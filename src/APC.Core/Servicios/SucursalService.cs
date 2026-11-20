@@ -19,6 +19,11 @@ public class SucursalService
             ? "ExigeCaja"
             : "CAST(1 AS BIT) AS ExigeCaja";
 
+    /// <summary>Columnas agregadas por el script 23: pueden no existir todavía.</summary>
+    private static async Task<bool> ExisteQrPagoAsync(IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.Sucursal', 'QrPago') IS NULL THEN 0 ELSE 1 END") == 1;
+
     /// <summary>Columna agregada por el script 20: puede no existir todavía.</summary>
     private static async Task<bool> ExisteBorradaAsync(IDbConnection cn) =>
         await cn.ExecuteScalarAsync<int>(
@@ -35,9 +40,14 @@ public class SucursalService
         if (conBorrada && !incluirBorradas) condiciones.Add("Borrada = 0");
         var donde = condiciones.Count == 0 ? "" : "WHERE " + string.Join(" AND ", condiciones);
 
+        var conQr = await ExisteQrPagoAsync(cn);
+        var columnasQr = conQr
+            ? "QrPagoAlias, CAST(CASE WHEN QrPago IS NULL THEN 0 ELSE 1 END AS BIT) AS TieneQrPago"
+            : "CAST(NULL AS NVARCHAR(100)) AS QrPagoAlias, CAST(0 AS BIT) AS TieneQrPago";
+
         return (await cn.QueryAsync<Sucursal>(
             $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta,
-                      {await ColumnaExigeCajaAsync(cn)}, {columnaBorrada}
+                      {await ColumnaExigeCajaAsync(cn)}, {columnaBorrada}, {columnasQr}
                FROM dbo.Sucursal
                {donde}
                ORDER BY PuntoVenta")).ToList();
@@ -46,10 +56,69 @@ public class SucursalService
     public async Task<Sucursal> ObtenerAsync(string cs, Guid id)
     {
         using var cn = await Db.AbrirAsync(cs);
+        var columnasQr = await ExisteQrPagoAsync(cn)
+            ? "QrPagoAlias, CAST(CASE WHEN QrPago IS NULL THEN 0 ELSE 1 END AS BIT) AS TieneQrPago"
+            : "CAST(NULL AS NVARCHAR(100)) AS QrPagoAlias, CAST(0 AS BIT) AS TieneQrPago";
+
         return await cn.QueryFirstOrDefaultAsync<Sucursal>(
             $@"SELECT Id, Nombre, PuntoVenta, Domicilio, Localidad, Telefono, LeyendaTicket, Activa, FechaAlta,
-                      {await ColumnaExigeCajaAsync(cn)}
+                      {await ColumnaExigeCajaAsync(cn)}, {columnasQr}
                FROM dbo.Sucursal WHERE Id = @id", new { id });
+    }
+
+    // ------------------------------------------------------------------ QR propio del comercio
+
+    /// <summary>Tamaño máximo de la imagen del QR: con 500 KB sobra para una captura.</summary>
+    public const long QrMaximoBytes = 500 * 1024;
+
+    /// <summary>
+    /// Guarda el QR interoperable que el comercio sacó de su banco o de MODO.
+    /// Con imagen en null solo cambia el alias; para sacarlo está QuitarQrAsync.
+    /// </summary>
+    public async Task<string> GuardarQrAsync(string cs, Guid id, byte[] imagen, string tipo, string alias)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        if (!await ExisteQrPagoAsync(cn))
+            return "Falta correr el script 23 en esta base. Lo podés hacer desde el panel de base de datos.";
+
+        alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
+        if (alias != null && alias.Length > 100) return "El alias no puede pasar de 100 caracteres.";
+
+        if (imagen == null)
+            await cn.ExecuteAsync("UPDATE dbo.Sucursal SET QrPagoAlias = @alias WHERE Id = @id", new { id, alias });
+        else
+            await cn.ExecuteAsync(
+                "UPDATE dbo.Sucursal SET QrPago = @imagen, QrPagoTipo = @tipo, QrPagoAlias = @alias WHERE Id = @id",
+                new { id, imagen, tipo, alias });
+        return null;
+    }
+
+    public async Task<string> QuitarQrAsync(string cs, Guid id)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        if (!await ExisteQrPagoAsync(cn)) return null;
+        await cn.ExecuteAsync("UPDATE dbo.Sucursal SET QrPago = NULL, QrPagoTipo = NULL WHERE Id = @id", new { id });
+        return null;
+    }
+
+    /// <summary>El QR listo para mostrar en pantalla. Null si la sucursal no tiene ninguno.</summary>
+    public async Task<string> QrDataUriAsync(string cs, Guid id)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        if (!await ExisteQrPagoAsync(cn)) return null;
+
+        var fila = await cn.QueryFirstOrDefaultAsync<QrGuardado>(
+            "SELECT QrPago, QrPagoTipo FROM dbo.Sucursal WHERE Id = @id", new { id });
+        if (fila?.QrPago == null || fila.QrPago.Length == 0) return null;
+
+        var tipo = string.IsNullOrWhiteSpace(fila.QrPagoTipo) ? "image/png" : fila.QrPagoTipo;
+        return $"data:{tipo};base64," + Convert.ToBase64String(fila.QrPago);
+    }
+
+    private class QrGuardado
+    {
+        public byte[] QrPago { get; set; }
+        public string QrPagoTipo { get; set; }
     }
 
     /// <summary>

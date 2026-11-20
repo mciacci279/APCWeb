@@ -75,12 +75,15 @@ public class CatalogoService
             var conMp = await cn.ExecuteScalarAsync<int>(
                 "SELECT CASE WHEN COL_LENGTH('dbo.FormaPago', 'EsMercadoPago') IS NULL THEN 0 ELSE 1 END") == 1;
             var columnaMp = conMp ? "f.EsMercadoPago" : "CAST(0 AS BIT) AS EsMercadoPago";
+            var conQr = await cn.ExecuteScalarAsync<int>(
+                "SELECT CASE WHEN COL_LENGTH('dbo.FormaPago', 'EsQrPropio') IS NULL THEN 0 ELSE 1 END") == 1;
+            var columnaQr = conQr ? "f.EsQrPropio" : "CAST(0 AS BIT) AS EsQrPropio";
             try
             {
                 lista = conTipo
                     ? (await cn.QueryAsync<FormaPagoItem>(
                         $@"SELECT {ColumnasFormaPagoF}, ISNULL(f.Precio, 1) AS ListaPrecio,
-                                  f.TipoPrecioId, tp.Nombre AS TipoPrecio, {columnaMp}
+                                  f.TipoPrecioId, tp.Nombre AS TipoPrecio, {columnaMp}, {columnaQr}
                            FROM dbo.FormaPago f LEFT JOIN dbo.TipoPrecio tp ON tp.Id = f.TipoPrecioId{filtro}",
                         new { id })).ToList()
                     : (await cn.QueryAsync<FormaPagoItem>(

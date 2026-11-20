@@ -100,6 +100,7 @@ public class TipoPrecioService
         p.Add("EsCtaCte", f.EsCtaCte);
         p.Add("TipoPrecioId", f.TipoPrecioId);
         p.Add("EsMercadoPago", f.EsMercadoPago);
+        p.Add("EsQrPropio", f.EsQrPropio);
 
         if (f.Id == Guid.Empty)
         {
@@ -111,6 +112,7 @@ public class TipoPrecioService
             if (Existe("EsCtaCte")) { campos.Add("EsCtaCte"); valores.Add("@EsCtaCte"); }
             if (Existe("TipoPrecioId")) { campos.Add("TipoPrecioId"); valores.Add("@TipoPrecioId"); }
             if (Existe("EsMercadoPago")) { campos.Add("EsMercadoPago"); valores.Add("@EsMercadoPago"); }
+            if (Existe("EsQrPropio")) { campos.Add("EsQrPropio"); valores.Add("@EsQrPropio"); }
             if (Existe("PorcentajeRecargo")) { campos.Add("PorcentajeRecargo"); valores.Add("0"); }
             if (Existe("PorcentajeDescuento")) { campos.Add("PorcentajeDescuento"); valores.Add("0"); }
             if (Existe("Precio")) { campos.Add("Precio"); valores.Add("1"); }
@@ -142,6 +144,7 @@ public class TipoPrecioService
             if (Existe("EsCtaCte")) sets.Add("EsCtaCte = @EsCtaCte");
             if (Existe("TipoPrecioId")) sets.Add("TipoPrecioId = @TipoPrecioId");
             if (Existe("EsMercadoPago")) sets.Add("EsMercadoPago = @EsMercadoPago");
+            if (Existe("EsQrPropio")) sets.Add("EsQrPropio = @EsQrPropio");
             await cn.ExecuteAsync($"UPDATE dbo.FormaPago SET {string.Join(", ", sets)} WHERE Id = @Id", p);
         }
         return null;
