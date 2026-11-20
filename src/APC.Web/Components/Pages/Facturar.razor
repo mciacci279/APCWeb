@@ -386,7 +386,15 @@ else
                 <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarQrPropio">×</button>
             </header>
 
-            @if (qrPropioUri == null)
+            @if (qrPropioFacturando)
+            {
+                <div class="qr-caja qr-exito">
+                    <div class="qr-reloj" aria-hidden="true"></div>
+                    <p class="qr-exito-tit">Generando la factura…</p>
+                    <p class="sub">Pidiendo el CAE a ARCA. No cierres esta ventana.</p>
+                </div>
+            }
+            else if (qrPropioUri == null)
             {
                 <p class="alerta alerta-error" role="alert">
                     Esta sucursal todavía no tiene cargado el QR del comercio. Se carga en Sucursales.
@@ -405,14 +413,17 @@ else
                 </div>
             }
 
-            <div class="fila-btns">
-                @if (qrPropioUri != null)
-                {
-                    <button type="button" class="btn btn-primario" disabled="@emitiendo" @onclick="ConfirmarQrPropio">El cliente pagó, emitir</button>
-                }
-                <div class="crece"></div>
-                <button type="button" class="btn btn-rojo" disabled="@emitiendo" @onclick="CerrarQrPropio">Cancelar</button>
-            </div>
+            @if (!qrPropioFacturando)
+            {
+                <div class="fila-btns">
+                    @if (qrPropioUri != null)
+                    {
+                        <button type="button" class="btn btn-primario" disabled="@emitiendo" @onclick="ConfirmarQrPropio">El cliente pagó, emitir</button>
+                    }
+                    <div class="crece"></div>
+                    <button type="button" class="btn btn-rojo" disabled="@emitiendo" @onclick="CerrarQrPropio">Cancelar</button>
+                </div>
+            }
         </section>
     </div>
 }
@@ -427,10 +438,30 @@ else
                     <h2>Cobrar con QR</h2>
                     <span class="sub">@formaPago?.Nombre · @Pesos(totales.Total)</span>
                 </div>
-                <button type="button" class="modal-cerrar" aria-label="Cerrar" disabled="@qrOcupado" @onclick="CerrarQr">×</button>
+                @if (qrPaso == null)
+                {
+                    <button type="button" class="modal-cerrar" aria-label="Cerrar" disabled="@qrOcupado" @onclick="CerrarQr">×</button>
+                }
             </header>
 
-            @if (qrOcupado && qrImagen == null && !qrFijo)
+            @if (qrPaso == PasoPagado)
+            {
+                <div class="qr-caja qr-exito">
+                    <div class="qr-tilde" aria-hidden="true">✓</div>
+                    <p class="qr-exito-tit">Pago acreditado</p>
+                    <p class="qr-monto mono">@Pesos(pagoQr?.Importe ?? totales.Total)</p>
+                    <p class="sub">Mercado Pago confirmó el cobro.</p>
+                </div>
+            }
+            else if (qrPaso == PasoFacturando)
+            {
+                <div class="qr-caja qr-exito">
+                    <div class="qr-reloj" aria-hidden="true"></div>
+                    <p class="qr-exito-tit">Generando la factura…</p>
+                    <p class="sub">Pidiendo el CAE a ARCA. No cierres esta ventana.</p>
+                </div>
+            }
+            else if (qrOcupado && qrImagen == null && !qrFijo)
             {
                 <p>Generando el QR…</p>
             }
@@ -466,11 +497,14 @@ else
                 </div>
             }
 
-            <div class="fila-btns">
-                <button type="button" class="btn" disabled="@qrOcupado" @onclick="VerificarQr">Ya pagó, verificar</button>
-                <div class="crece"></div>
-                <button type="button" class="btn btn-rojo" disabled="@qrOcupado" @onclick="CerrarQr">Cancelar el cobro</button>
-            </div>
+            @if (qrPaso == null)
+            {
+                <div class="fila-btns">
+                    <button type="button" class="btn" disabled="@qrOcupado" @onclick="VerificarQr">Ya pagó, verificar</button>
+                    <div class="crece"></div>
+                    <button type="button" class="btn btn-rojo" disabled="@qrOcupado" @onclick="CerrarQr">Cancelar el cobro</button>
+                </div>
+            }
         </section>
     </div>
 }
@@ -545,6 +579,7 @@ else
 
     // ---- cobro con el QR del comercio ----
     private bool mostrandoQrPropio;
+    private bool qrPropioFacturando;
     private string qrPropioUri;
     private string qrPropioFormato;
     private bool qrPropioFiscal = true;
@@ -554,6 +589,10 @@ else
     private string qrImagen;
     /// <summary>La venta va contra el QR impreso del mostrador: no hay QR nuevo en pantalla.</summary>
     private bool qrFijo;
+    /// <summary>En qué parte del cierre está la ventana: null mientras se espera el pago.</summary>
+    private string qrPaso;
+    private const string PasoPagado = "pagado";
+    private const string PasoFacturando = "facturando";
     private string qrError;
     private bool qrOcupado;
     private string qrFormato;
@@ -871,8 +910,14 @@ else
 
     private async Task ConfirmarQrPropio()
     {
-        mostrandoQrPropio = false;
-        await EmitirAhora(qrPropioFormato, qrPropioFiscal);
+        qrPropioFacturando = true;
+        StateHasChanged();
+        try { await EmitirAhora(qrPropioFormato, qrPropioFiscal); }
+        finally
+        {
+            qrPropioFacturando = false;
+            mostrandoQrPropio = false;
+        }
     }
 
     private void CerrarQrPropio() => mostrandoQrPropio = false;
@@ -886,6 +931,7 @@ else
         qrError = null;
         qrImagen = null;
         qrFijo = false;
+        qrPaso = null;
         pagoQr = null;
         qrOcupado = true;
         StateHasChanged();
@@ -993,14 +1039,25 @@ else
         var fiscal = qrFiscal;
         var pagoId = pagoQr?.Id;
         DetenerEspera();
-        pagoQr = null;
-        qrImagen = null;
-        qrError = null;
+
+        // Primero se ve que la plata entró; recién después se pide el CAE.
+        qrPaso = PasoPagado;
+        StateHasChanged();
+        await Task.Delay(1600);
+
+        qrPaso = PasoFacturando;
+        StateHasChanged();
         await EmitirAhora(formato, fiscal);
+
         if (pagoId != null && resultado?.FacturaId != null)
         {
             try { await MpSrv.AsociarFacturaAsync(sesion.Cs, pagoId.Value, resultado.FacturaId.Value); } catch { }
         }
+
+        qrPaso = null;
+        pagoQr = null;
+        qrImagen = null;
+        qrError = null;
         StateHasChanged();
     }
 
@@ -1012,6 +1069,7 @@ else
         pagoQr = null;
         qrImagen = null;
         qrError = null;
+        qrPaso = null;
         qrOcupado = false;
         if (pendiente && id != null)
         {
@@ -1058,6 +1116,7 @@ else
         ultimoAgregado = null;
         confirmarCancelar = false;
         mostrandoQrPropio = false;
+        qrPaso = null;
         DetenerEspera();
         pagoQr = null;
         qrImagen = null;

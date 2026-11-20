@@ -551,6 +551,13 @@ input.input-ajuste { width: 72px; text-align: right; }
 .qr-estado { color: var(--muted); font-size: 14px; margin-top: 10px; }
 .qr-tecnico { font-size: 11px; opacity: .6; margin-top: 6px; }
 .qr-fijo { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.qr-exito { padding: 24px 0 18px; }
+.qr-exito-tit { font-size: 20px; font-weight: 600; margin: 14px 0 0; }
+.qr-tilde { width: 84px; height: 84px; margin: 0 auto; border-radius: 50%; background: var(--ok-fondo); color: var(--ok-texto); font-size: 46px; line-height: 84px; animation: qr-pop .35s ease-out; }
+.qr-reloj { width: 44px; height: 44px; margin: 0 auto; border-radius: 50%; border: 4px solid var(--borde-input); border-top-color: var(--accion); animation: qr-gira .9s linear infinite; }
+@keyframes qr-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes qr-gira { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .qr-tilde, .qr-reloj { animation: none; } }
 .fila-cancelar { align-items: center; gap: 10px; margin: 8px 0 0; }
 
 /* ---- Panel de base de datos ---- */
