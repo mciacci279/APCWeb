@@ -371,9 +371,16 @@
                                                 <option value="pantalla">Un QR por venta, en pantalla</option>
                                                 <option value="fijo">El QR pegado en el mostrador</option>
                                             </select>
-                                            @if (c.UsaQrFijo && !string.IsNullOrWhiteSpace(c.QrEstatico))
+                                            @if (c.UsaQrFijo)
                                             {
-                                                <a class="sub" href="@c.QrEstatico" target="_blank" rel="noopener">ver el QR para imprimir</a>
+                                                @if (!string.IsNullOrWhiteSpace(c.QrEstatico))
+                                                {
+                                                    <a class="sub" href="@c.QrEstatico" target="_blank" rel="noopener">ver el QR para imprimir</a>
+                                                }
+                                                else
+                                                {
+                                                    <span class="sub">Mercado Pago no dio la imagen: bajala del panel de la cuenta, en «Pagos con QR».</span>
+                                                }
                                             }
                                         </td>
                                         <td>@(c.Creada ? "Lista" : "Falta crearla")</td>
@@ -866,6 +873,7 @@
             var error = await MpSrv.CambiarQrFijoAsync(c.Id, fijo);
             if (error != null) { Aviso(false, error); return; }
             c.UsaQrFijo = fijo;
+            await CargarMpAsync();   // trae la imagen del QR impreso si Mercado Pago la acaba de dar
             Aviso(true, fijo
                 ? $"{c.Sucursal}: ahora cobra con el QR pegado en el mostrador."
                 : $"{c.Sucursal}: ahora cobra con un QR nuevo en pantalla por cada venta.");

@@ -229,7 +229,31 @@ public class MercadoPagoService
         if (!existe) return "Falta correr el script 24 en la base central. Lo podés hacer desde el panel de base de datos.";
 
         await cn.ExecuteAsync("UPDATE dbo.MercadoPagoCaja SET UsaQrFijo = @fijo WHERE Id = @cajaId", new { cajaId, fijo });
+        if (fijo) await AsegurarQrImpresoAsync(cn, cajaId);
         return null;
+    }
+
+    /// <summary>
+    /// Trae de Mercado Pago la imagen del QR impreso de la caja, si al crearla no vino.
+    /// Es la que el comercio imprime y pega en el mostrador.
+    /// </summary>
+    private async Task AsegurarQrImpresoAsync(System.Data.IDbConnection cn, Guid cajaId)
+    {
+        var caja = await cn.QueryFirstOrDefaultAsync<MercadoPagoCaja>(
+            "SELECT * FROM dbo.MercadoPagoCaja WHERE Id = @cajaId", new { cajaId });
+        if (caja?.PosId == null || !string.IsNullOrWhiteSpace(caja.QrEstatico)) return;
+
+        var cuenta = await CuentaAsync(caja.EmpresaId);
+        if (cuenta == null) return;
+
+        var (ok, datos, _) = await GetAsync(cuenta.AccessToken, $"/pos/{caja.PosId}");
+        if (!ok) return;
+
+        var imagen = TextoAnidado(datos, "qr", "image");
+        if (string.IsNullOrWhiteSpace(imagen)) return;
+
+        await cn.ExecuteAsync("UPDATE dbo.MercadoPagoCaja SET QrEstatico = @imagen WHERE Id = @cajaId",
+            new { imagen, cajaId });
     }
 
     private async Task ActualizarCajaAsync(Guid id, Guid sucursalId, string posId, string qr)
