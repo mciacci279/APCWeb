@@ -2,21 +2,27 @@
 window.apc = (function () {
   let ref = null;
 
+  // Si una pantalla no implementa un atajo, se ignora en vez de romper la consola.
+  function llamar(metodo) {
+    try { return ref.invokeMethodAsync(metodo).catch(function () { }); } catch (err) { }
+  }
+
   function onKey(e) {
     if (!ref) return;
     if (e.key === 'F2') { e.preventDefault(); enfocar('buscar'); }
-    else if (e.key === 'F3') { e.preventDefault(); ref.invokeMethodAsync('AtajoCliente'); }
+    else if (e.key === 'F3') { e.preventDefault(); llamar('AtajoCliente'); }
+    else if (e.key === 'F4') { e.preventDefault(); llamar('AtajoCancelar'); }
     // Teclas de emisión, iguales a APC.WinForms
-    else if (e.key === 'F8' && !e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoFacturaTicket'); }
-    else if (e.key === 'F9' && !e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoFacturaA4'); }
-    else if (e.key === 'F9' && e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoPedidoA4'); }
-    else if (e.key === 'F10' && e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoPedidoTicket'); }
-    else if (e.key === 'F11' && e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoPedidoSinImprimir'); }
-    else if (e.key === 'F12' && e.ctrlKey) { e.preventDefault(); ref.invokeMethodAsync('AtajoPresupuesto'); }
+    else if (e.key === 'F8' && !e.ctrlKey) { e.preventDefault(); llamar('AtajoFacturaTicket'); }
+    else if (e.key === 'F9' && !e.ctrlKey) { e.preventDefault(); llamar('AtajoFacturaA4'); }
+    else if (e.key === 'F9' && e.ctrlKey) { e.preventDefault(); llamar('AtajoPedidoA4'); }
+    else if (e.key === 'F10' && e.ctrlKey) { e.preventDefault(); llamar('AtajoPedidoTicket'); }
+    else if (e.key === 'F11' && e.ctrlKey) { e.preventDefault(); llamar('AtajoPedidoSinImprimir'); }
+    else if (e.key === 'F12' && e.ctrlKey) { e.preventDefault(); llamar('AtajoPresupuesto'); }
     else if (e.key === 'Enter') {
       const t = e.target;
       const enCampo = t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON');
-      if (!enCampo) ref.invokeMethodAsync('AtajoNueva');
+      if (!enCampo) llamar('AtajoNueva');
     }
   }
 

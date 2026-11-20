@@ -133,6 +133,19 @@ else
 
         @if (factura.Renglones.Count > 0 && resultado == null)
         {
+            <div class="fila-btns fila-cancelar">
+                @if (confirmarCancelar)
+                {
+                    <span class="sub">¿Borrar la venta y empezar de nuevo?</span>
+                    <button type="button" class="btn btn-rojo btn-chico" @onclick="CancelarVenta">Sí, borrar</button>
+                    <button type="button" class="btn btn-chico" @onclick="() => confirmarCancelar = false">No</button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-chico" @onclick="() => confirmarCancelar = true">Cancelar la venta · F4</button>
+                }
+            </div>
+
             <div class="campo campo-obs">
                 <label for="obs">Observaciones</label>
                 <textarea id="obs" class="input input-area" rows="2" maxlength="500" @bind="factura.Observaciones"
@@ -385,6 +398,9 @@ else
     /// <summary>"Paga con" y vuelto ocultos por ahora; poner en true para volver a mostrarlos.</summary>
     private const bool MostrarPagaCon = false;
 
+    /// <summary>Pide confirmación antes de borrar una venta a medio cargar.</summary>
+    private bool confirmarCancelar;
+
     // ---- cobro con QR de Mercado Pago ----
     private PagoQr pagoQr;
     private string qrImagen;
@@ -457,6 +473,21 @@ else
     }
     [JSInvokable] public void AtajoCliente() { ToggleCliente(); StateHasChanged(); }
     [JSInvokable] public void AtajoNueva() { if (resultado?.Ok == true) { Nueva(); StateHasChanged(); } }
+
+    /// <summary>F4: el cliente se arrepintió. Primero pide confirmación, con F4 de nuevo borra.</summary>
+    [JSInvokable] public void AtajoCancelar()
+    {
+        if (resultado != null || pagoQr != null || qrOcupado || factura.Renglones.Count == 0) return;
+        if (confirmarCancelar) CancelarVenta();
+        else confirmarCancelar = true;
+        StateHasChanged();
+    }
+
+    private void CancelarVenta()
+    {
+        confirmarCancelar = false;
+        Nueva();
+    }
 
     private async Task BuscarKey(KeyboardEventArgs e)
     {
@@ -790,6 +821,7 @@ else
         pagaCon = 0;
         verCliente = false;
         ultimoAgregado = null;
+        confirmarCancelar = false;
         DetenerEspera();
         pagoQr = null;
         qrImagen = null;
