@@ -289,6 +289,7 @@ else
     [JSInvokable] public void AtajoCliente() { ToggleCliente(); StateHasChanged(); }
     [JSInvokable] public void AtajoNueva() { if (guardado != null) NuevoPresupuesto(); }
     [JSInvokable] public void AtajoCancelar() { }
+    [JSInvokable] public void AtajoConsulta() { }
 
     private async Task AtajoGuardar(bool imprimir)
     {

@@ -552,6 +552,17 @@ input.input-ajuste { width: 72px; text-align: right; }
 .qr-tecnico { font-size: 11px; opacity: .6; margin-top: 6px; }
 .fila-cancelar { align-items: center; gap: 10px; margin: 8px 0 0; }
 
+/* ---- Consulta de precio ---- */
+.buscador-fila { display: flex; gap: 8px; align-items: stretch; }
+.buscador-fila .input-buscar { flex: 1; min-width: 0; }
+.btn-consulta { flex: none; white-space: nowrap; }
+@media (max-width: 720px) { .buscador-fila { flex-wrap: wrap; } .btn-consulta { width: 100%; } }
+.modal-consulta { width: 100%; max-width: 560px; max-height: calc(100vh - 64px); overflow-y: auto; box-shadow: 0 20px 60px rgba(10, 25, 45, .35); }
+.resultados-consulta { position: static; margin-top: 8px; max-height: 320px; overflow-y: auto; }
+.consulta-ficha { padding: 14px 0 6px; }
+.consulta-nombre { display: block; font-size: 18px; font-weight: 600; }
+.consulta-precio { font-size: 34px; font-weight: 700; margin: 8px 0 2px; }
+
 /* ---- Barra lateral ---- */
 .rail-marca { display: flex; align-items: center; gap: 10px; padding: 2px 2px 10px; }
 .rail-plegar { flex: none; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--azul-linea); background: var(--azul-2); color: #CBD5E1; display: flex; align-items: center; justify-content: center; cursor: pointer; }

@@ -63,9 +63,13 @@ else
 
         <div class="buscador">
             <label class="sr-only" for="buscar">Buscar producto</label>
-            <input id="buscar" class="input input-buscar" placeholder="Código de barras o descripción  (F2) · 3*código para cantidad"
-                   autocomplete="off" disabled="@((turno == null && ExigeCaja) || resultado != null)"
-                   @bind="textoBusqueda" @bind:event="oninput" @onkeydown="BuscarKey" />
+            <div class="buscador-fila">
+                <input id="buscar" class="input input-buscar" placeholder="Código de barras o descripción  (F2) · 3*código para cantidad"
+                       autocomplete="off" disabled="@((turno == null && ExigeCaja) || resultado != null)"
+                       @bind="textoBusqueda" @bind:event="oninput" @onkeydown="BuscarKey" />
+                <button type="button" class="btn btn-consulta" @onclick="AbrirConsulta"
+                        title="Consultar un precio sin cargarlo a la venta">Consultar precio · F7</button>
+            </div>
             @if (resultados.Count > 0)
             {
                 <ul class="resultados" role="listbox" aria-label="Resultados">
@@ -291,6 +295,79 @@ else
     </aside>
 </div>
 
+@* Consulta de precio: no toca la venta que se está cargando. *@
+@if (consultando)
+{
+    <div class="modal-fondo" @onclick="CerrarConsulta">
+        <section class="panel modal-consulta" role="dialog" aria-modal="true" aria-label="Consultar precio"
+                 @onclick:stopPropagation="true">
+            <header class="modal-cab">
+                <div>
+                    <h2>Consultar precio</h2>
+                    <span class="sub">No se agrega nada a la venta</span>
+                </div>
+                <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarConsulta">×</button>
+            </header>
+
+            <input id="buscar-consulta" class="input input-buscar" placeholder="Código de barras o descripción"
+                   autocomplete="off" @bind="textoConsulta" @bind:event="oninput" @onkeydown="ConsultaKey" />
+
+            @if (consultaElegido != null)
+            {
+                <div class="consulta-ficha">
+                    <span class="consulta-nombre">@consultaElegido.Nombre</span>
+                    <span class="sub mono">@consultaElegido.Codigo</span>
+                    <p class="consulta-precio mono">@Pesos(consultaElegido.PrecioVenta1)</p>
+                    @if (!consultaElegido.OmitirControlStock)
+                    {
+                        <p class="sub">Stock: @consultaElegido.Stock.ToString("0.##", Ar)</p>
+                    }
+                </div>
+
+                @if (FormasConAjuste.Count > 0)
+                {
+                    <table class="tabla tabla-chica">
+                        <tbody>
+                            @foreach (var fp in FormasConAjuste)
+                            {
+                                <tr>
+                                    <td>@fp.Nombre</td>
+                                    <td class="der mono">@Pesos(PrecioCon(consultaElegido, fp))</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-primario" @onclick="() => AgregarDesdeConsulta(consultaElegido)">Agregarlo a la venta</button>
+                    <div class="crece"></div>
+                    <button type="button" class="btn" @onclick="() => consultaElegido = null">Buscar otro</button>
+                </div>
+            }
+            else if (consultaResultados.Count > 0)
+            {
+                <ul class="resultados resultados-consulta" role="listbox" aria-label="Resultados">
+                    @foreach (var p in consultaResultados)
+                    {
+                        <li>
+                            <button type="button" class="resultado" @onclick="() => consultaElegido = p">
+                                <span class="r-nombre">@p.Nombre</span>
+                                <span class="r-cod">@p.Codigo</span>
+                                <span class="r-precio">@Pesos(p.PrecioVenta1)</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+            else if (consultaSinResultados)
+            {
+                <p class="sub">No se encontró «@textoConsulta».</p>
+            }
+        </section>
+    </div>
+}
+
 @* Cobro con el QR de Mercado Pago: la factura se emite cuando el pago se acredita. *@
 @if (pagoQr != null || qrOcupado || qrError != null)
 {
@@ -400,6 +477,13 @@ else
 
     /// <summary>Pide confirmación antes de borrar una venta a medio cargar.</summary>
     private bool confirmarCancelar;
+
+    // ---- consulta de precio («¿cuánto sale esto?») ----
+    private bool consultando;
+    private string textoConsulta = "";
+    private List<ProductoItem> consultaResultados = new();
+    private ProductoItem consultaElegido;
+    private bool consultaSinResultados;
 
     // ---- cobro con QR de Mercado Pago ----
     private PagoQr pagoQr;
@@ -645,6 +729,56 @@ else
         {
             emitiendo = false;
         }
+    }
+
+    // ------------------------------------------------------------------ consulta de precio
+
+    [JSInvokable] public async Task AtajoConsulta()
+    {
+        if (pagoQr != null || qrOcupado) return;
+        await AbrirConsulta();
+    }
+
+    private async Task AbrirConsulta()
+    {
+        consultando = true;
+        textoConsulta = "";
+        consultaResultados.Clear();
+        consultaElegido = null;
+        consultaSinResultados = false;
+        StateHasChanged();
+        await Task.Yield();
+        await JS.InvokeVoidAsync("apc.enfocar", "buscar-consulta");
+    }
+
+    private async Task CerrarConsulta()
+    {
+        consultando = false;
+        await JS.InvokeVoidAsync("apc.enfocar", "buscar");
+    }
+
+    private async Task ConsultaKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { await CerrarConsulta(); return; }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(textoConsulta)) return;
+
+        consultaElegido = null;
+        consultaResultados = await Catalogo.BuscarProductosAsync(sesion.Cs, textoConsulta.Trim());
+        consultaSinResultados = consultaResultados.Count == 0;
+        if (consultaResultados.Count == 1) consultaElegido = consultaResultados[0];
+    }
+
+    /// <summary>Formas de pago que cambian el precio: son las que el cliente quiere comparar.</summary>
+    private List<FormaPagoItem> FormasConAjuste =>
+        formasPago.Where(f => !f.EsCtaCte && (f.PorcentajeRecargo != 0 || f.PorcentajeDescuento != 0)).ToList();
+
+    private static decimal PrecioCon(ProductoItem p, FormaPagoItem fp) =>
+        Math.Round(p.PrecioVenta1 * (1 + fp.PorcentajeRecargo / 100m - fp.PorcentajeDescuento / 100m), 2);
+
+    private async Task AgregarDesdeConsulta(ProductoItem p)
+    {
+        consultando = false;
+        await Agregar(p, 1);
     }
 
     // ------------------------------------------------------------------ cobro con QR

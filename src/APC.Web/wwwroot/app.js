@@ -12,6 +12,7 @@ window.apc = (function () {
     if (e.key === 'F2') { e.preventDefault(); enfocar('buscar'); }
     else if (e.key === 'F3') { e.preventDefault(); llamar('AtajoCliente'); }
     else if (e.key === 'F4') { e.preventDefault(); llamar('AtajoCancelar'); }
+    else if (e.key === 'F7') { e.preventDefault(); llamar('AtajoConsulta'); }
     // Teclas de emisión, iguales a APC.WinForms
     else if (e.key === 'F8' && !e.ctrlKey) { e.preventDefault(); llamar('AtajoFacturaTicket'); }
     else if (e.key === 'F9' && !e.ctrlKey) { e.preventDefault(); llamar('AtajoFacturaA4'); }
