@@ -614,10 +614,13 @@
         {
             var nombre = string.IsNullOrWhiteSpace(nombreBase) ? "SuperMarketDB_" + edit.Codigo.Trim().ToUpperInvariant().Replace("-", "_") : nombreBase.Trim();
             var (cs, err) = await EmpresaSrv.CrearBaseDesdePlantillaAsync(nombre);
-            if (err != null) { Aviso(false, err); return; }
+            if (cs == null) { Aviso(false, err); return; }
+
             edit.ConnectionString = cs;
             nombreBase = nombre;
-            Aviso(true, $"Base «{nombre}» creada desde la plantilla. Cargá los datos fiscales de la empresa en su tabla Empresa, subí el certificado y tocá «Crear empresa».");
+            // La base pudo crearse y aun así quedar algo sin limpiar: se avisa, pero no se pierde.
+            if (err != null) { Aviso(false, $"Base «{nombre}» creada. {err}"); return; }
+            Aviso(true, $"Base «{nombre}» creada y sin datos: comprobantes, cajas, productos y clientes en cero. Ahora tocá «Crear empresa» y después cargá los datos fiscales y el certificado.");
         }
         finally { ocupado = false; creandoBase = false; }
     }

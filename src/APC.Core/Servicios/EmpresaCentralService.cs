@@ -163,7 +163,9 @@ public class EmpresaCentralService
 
     /// <summary>
     /// Crea la base de una empresa nueva copiando la base plantilla (backup + restore en el mismo
-    /// SQL Server de la base central). Devuelve la cadena de conexión de la base creada.
+    /// SQL Server de la base central) y la deja sin datos. Devuelve la cadena de conexión de la
+    /// base creada; si viene con texto en el segundo campo pero con cadena, la base quedó creada
+    /// y lo que falló fue la limpieza.
     /// El usuario SQL de la conexión central necesita permiso para crear bases (dbcreator o sysadmin).
     /// </summary>
     public async Task<(string ConnectionString, string Error)> CrearBaseDesdePlantillaAsync(string nombreBase)
@@ -213,11 +215,76 @@ public class EmpresaCentralService
                 new { respaldo }, commandTimeout: 600);
 
             var csb = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(Central) { InitialCatalog = nombreBase };
-            return (csb.ConnectionString, null);
+            var cs = csb.ConnectionString;
+
+            // La plantilla puede venir de una base real: la base nueva arranca sin datos de nadie.
+            var aviso = await LimpiarBaseNuevaAsync(cs);
+            return (cs, aviso);
         }
         catch (Exception ex)
         {
             return (null, "No se pudo crear la base: " + ex.GetBaseException().Message);
+        }
+    }
+
+    /// <summary>
+    /// Deja la base de una empresa nueva sin datos: borra comprobantes, cajas, movimientos,
+    /// productos, clientes y los datos fiscales que venían en la plantilla, y vuelve los
+    /// contadores internos a cero. No toca las tablas de configuración (Iva, FormaPago,
+    /// TipoPrecio, Configuracion) ni las sucursales, que son el punto de partida.
+    /// Devuelve null si salió bien, o el motivo si algo quedó sin limpiar.
+    /// </summary>
+    public static async Task<string> LimpiarBaseNuevaAsync(string cs)
+    {
+        // En orden: primero lo que depende de otras tablas.
+        var tablas = new[]
+        {
+            "Detalle", "DetalleNotaCredito", "NotaCredito", "Factura",
+            "DetallePresupuesto", "Presupuesto",
+            "CajaIngreso", "EgresoCaja", "CajaTurno",
+            "MovimientoStock", "ProductoCambioStock", "PagoQr",
+            "StockSucursal", "Producto", "Cliente"
+        };
+
+        try
+        {
+            using var cn = await Db.AbrirAsync(cs);
+            using var tx = cn.BeginTransaction();
+            try
+            {
+                foreach (var t in tablas)
+                    await cn.ExecuteAsync(
+                        $"IF OBJECT_ID(N'dbo.{t}', N'U') IS NOT NULL DELETE FROM dbo.{t};",
+                        transaction: tx, commandTimeout: 300);
+
+                // Los datos fiscales de la plantilla no son los del cliente nuevo.
+                foreach (var c in new[] { "Cuit", "IngresosBrutos", "Domicilio", "CP", "Telefono1", "Email" })
+                    await cn.ExecuteAsync(
+                        $@"IF COL_LENGTH('dbo.Empresa', '{c}') IS NOT NULL
+                               EXEC sp_executesql N'UPDATE dbo.Empresa SET {c} = NULL';",
+                        transaction: tx);
+
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
+
+            // Los contadores internos arrancan de cero (el número de factura lo da ARCA).
+            foreach (var t in new[] { "Factura", "Presupuesto", "NotaCredito" })
+                await cn.ExecuteAsync(
+                    $@"IF OBJECT_ID(N'dbo.{t}', N'U') IS NOT NULL
+                          AND EXISTS (SELECT 1 FROM sys.identity_columns WHERE object_id = OBJECT_ID(N'dbo.{t}'))
+                           DBCC CHECKIDENT ('dbo.{t}', RESEED, 0) WITH NO_INFOMSGS;");
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return "La base se creó, pero no se pudo dejar sin datos: " + ex.GetBaseException().Message
+                 + " · Corré sql/limpiar_base_para_entrega.sql sobre esa base antes de entregarla.";
         }
     }
 
