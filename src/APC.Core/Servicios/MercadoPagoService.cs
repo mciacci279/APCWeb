@@ -220,6 +220,18 @@ public class MercadoPagoService
         return null;
     }
 
+    /// <summary>Elige si esa caja cobra con el QR impreso del mostrador o con uno nuevo por venta.</summary>
+    public async Task<string> CambiarQrFijoAsync(Guid cajaId, bool fijo)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        var existe = await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.MercadoPagoCaja', 'UsaQrFijo') IS NULL THEN 0 ELSE 1 END") == 1;
+        if (!existe) return "Falta correr el script 24 en la base central. Lo podés hacer desde el panel de base de datos.";
+
+        await cn.ExecuteAsync("UPDATE dbo.MercadoPagoCaja SET UsaQrFijo = @fijo WHERE Id = @cajaId", new { cajaId, fijo });
+        return null;
+    }
+
     private async Task ActualizarCajaAsync(Guid id, Guid sucursalId, string posId, string qr)
     {
         using var cn = await Db.AbrirAsync(Central);
@@ -257,6 +269,10 @@ public class MercadoPagoService
         if (caja?.PosId == null)
             return (Falla($"No hay una caja de Mercado Pago para el punto de venta {puntoVenta:0000}. Pedile a CM Tech que la cree."), pago);
 
+        // Con el QR fijo el cliente escanea el sticker del mostrador y la billetera le muestra
+        // el importe de esta order; con el dinámico, cada venta genera su propio QR en pantalla.
+        var modo = caja.UsaQrFijo ? "static" : "dynamic";
+
         var cuerpo = new
         {
             type = "qr",
@@ -264,7 +280,7 @@ public class MercadoPagoService
             description = Recortar(descripcion, 60),
             external_reference = pago.Referencia,
             expiration_time = "PT10M",
-            config = new { qr = new { external_pos_id = caja.ExternalPosId, mode = "dynamic" } },
+            config = new { qr = new { external_pos_id = caja.ExternalPosId, mode = modo } },
             transactions = new
             {
                 payments = new[]
@@ -287,8 +303,18 @@ public class MercadoPagoService
         pago.QrData = TextoAnidado(datos, "type_response", "qr_data") ?? Texto(datos, "qr_data");
         await GuardarPagoAsync(empresa.ConnectionString, pago);
 
+        if (caja.UsaQrFijo)
+            return (new OrdenQr
+            {
+                Ok = true,
+                OrderId = pago.OrderId,
+                Fijo = true,
+                QrImagen = caja.QrEstatico,
+                QrData = pago.QrData
+            }, pago);
+
         if (string.IsNullOrWhiteSpace(pago.QrData))
-            return (Falla("Mercado Pago creó la order pero no devolvió el QR. Revisá que la caja esté en modo dinámico."), pago);
+            return (Falla("Mercado Pago creó la order pero no devolvió el QR. Revisá la configuración de la caja."), pago);
 
         return (new OrdenQr { Ok = true, OrderId = pago.OrderId, QrData = pago.QrData }, pago);
     }

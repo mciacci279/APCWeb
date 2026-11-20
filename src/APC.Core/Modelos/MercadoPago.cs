@@ -29,7 +29,13 @@ public class MercadoPagoCaja
     public int PuntoVenta { get; set; }
     public string ExternalPosId { get; set; }
     public string PosId { get; set; }
+    /// <summary>Imagen del QR impreso de la caja, como la devuelve Mercado Pago al crearla.</summary>
     public string QrEstatico { get; set; }
+    /// <summary>
+    /// true = el cliente escanea el QR pegado en el mostrador y la billetera le muestra el
+    /// importe de la venta recién cargada (script 24). false = un QR nuevo en pantalla por venta.
+    /// </summary>
+    public bool UsaQrFijo { get; set; }
     public DateTime FechaAlta { get; set; }
 
     /// <summary>Se completa al listar, para mostrar el nombre junto al punto de venta.</summary>
@@ -126,4 +132,8 @@ public class OrdenQr
     /// <summary>El texto que se convierte en el código QR.</summary>
     public string QrData { get; set; }
     public string Mensaje { get; set; }
+    /// <summary>La venta va contra el QR impreso de la caja: no hay QR nuevo que mostrar.</summary>
+    public bool Fijo { get; set; }
+    /// <summary>Imagen del QR impreso, para mostrarla igual en pantalla si el cliente no lo ve.</summary>
+    public string QrImagen { get; set; }
 }

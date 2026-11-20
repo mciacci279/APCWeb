@@ -550,6 +550,7 @@ input.input-ajuste { width: 72px; text-align: right; }
 .qr-monto { font-size: 26px; font-weight: 700; margin: 12px 0 2px; }
 .qr-estado { color: var(--muted); font-size: 14px; margin-top: 10px; }
 .qr-tecnico { font-size: 11px; opacity: .6; margin-top: 6px; }
+.qr-fijo { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
 .fila-cancelar { align-items: center; gap: 10px; margin: 8px 0 0; }
 
 /* ---- Panel de base de datos ---- */

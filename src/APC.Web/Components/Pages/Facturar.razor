@@ -430,7 +430,7 @@ else
                 <button type="button" class="modal-cerrar" aria-label="Cerrar" disabled="@qrOcupado" @onclick="CerrarQr">×</button>
             </header>
 
-            @if (qrOcupado && qrImagen == null)
+            @if (qrOcupado && qrImagen == null && !qrFijo)
             {
                 <p>Generando el QR…</p>
             }
@@ -438,14 +438,23 @@ else
             {
                 <p class="alerta alerta-error" role="alert">@qrError</p>
             }
-            else if (qrImagen != null)
+            else if (qrImagen != null || qrFijo)
             {
                 <div class="qr-caja">
-                    <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
+                    @if (qrFijo)
+                    {
+                        <p class="qr-fijo">Escaneá el QR del mostrador</p>
+                    }
+                    @if (qrImagen != null)
+                    {
+                        <img class="qr-img" src="@qrImagen" alt="QR para pagar" />
+                    }
                     <p class="qr-monto mono">@Pesos(totales.Total)</p>
-                    <p class="sub">@(pagoQr?.Interoperable == false
-                        ? "Este QR sólo lo lee la app de Mercado Pago."
-                        : "El cliente lo escanea con Mercado Pago, MODO o la app de su banco.")</p>
+                    <p class="sub">@(qrFijo
+                        ? "La billetera del cliente le va a mostrar este importe al escanear."
+                        : pagoQr?.Interoperable == false
+                            ? "Este QR sólo lo lee la app de Mercado Pago."
+                            : "El cliente lo escanea con Mercado Pago, MODO o la app de su banco.")</p>
                     @if (pagoQr?.Estado == EstadoPagoQr.Creada)
                     {
                         <p class="qr-estado">Esperando el pago…</p>
@@ -543,6 +552,8 @@ else
     // ---- cobro con QR de Mercado Pago ----
     private PagoQr pagoQr;
     private string qrImagen;
+    /// <summary>La venta va contra el QR impreso del mostrador: no hay QR nuevo en pantalla.</summary>
+    private bool qrFijo;
     private string qrError;
     private bool qrOcupado;
     private string qrFormato;
@@ -874,6 +885,7 @@ else
         qrFiscal = fiscal;
         qrError = null;
         qrImagen = null;
+        qrFijo = false;
         pagoQr = null;
         qrOcupado = true;
         StateHasChanged();
@@ -883,7 +895,11 @@ else
                 sesion.Tenant, sesion.Sucursal, sesion.UsuarioId, totales.Total, DescripcionCobro());
             pagoQr = pago;
             if (!orden.Ok) { qrError = orden.Mensaje; return; }
-            qrImagen = FacturacionService.QrDataUri(orden.QrData);
+
+            qrFijo = orden.Fijo;
+            qrImagen = orden.Fijo
+                ? orden.QrImagen
+                : FacturacionService.QrDataUri(orden.QrData);
             EsperarPago();
         }
         catch (Exception ex)

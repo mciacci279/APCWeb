@@ -356,7 +356,7 @@
                     {
                         <h3 class="sub-titulo">Cajas</h3>
                         <table class="tabla tabla-chica">
-                            <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Id en Mercado Pago</th><th>Estado</th></tr></thead>
+                            <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Id en Mercado Pago</th><th>Cómo cobra</th><th>Estado</th></tr></thead>
                             <tbody>
                                 @foreach (var c in mpCajas)
                                 {
@@ -364,12 +364,28 @@
                                         <td class="der mono">@c.PuntoVenta.ToString("0000")</td>
                                         <td>@c.Sucursal</td>
                                         <td class="mono">@c.ExternalPosId</td>
+                                        <td>
+                                            <select class="input" value="@(c.UsaQrFijo ? "fijo" : "pantalla")"
+                                                    disabled="@(ocupado || !c.Creada)"
+                                                    @onchange="@(e => CambiarQrFijo(c, EsQrFijo(e)))">
+                                                <option value="pantalla">Un QR por venta, en pantalla</option>
+                                                <option value="fijo">El QR pegado en el mostrador</option>
+                                            </select>
+                                            @if (c.UsaQrFijo && !string.IsNullOrWhiteSpace(c.QrEstatico))
+                                            {
+                                                <a class="sub" href="@c.QrEstatico" target="_blank" rel="noopener">ver el QR para imprimir</a>
+                                            }
+                                        </td>
                                         <td>@(c.Creada ? "Lista" : "Falta crearla")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
-                        <p class="sub">Se crea una caja por sucursal: el QR sale siempre de la caja del punto de venta donde se factura.</p>
+                        <p class="sub">
+                            Se crea una caja por sucursal: el QR sale siempre de la caja del punto de venta donde se factura.
+                            Con <strong>el QR pegado en el mostrador</strong> el cliente escanea siempre el mismo sticker y la
+                            billetera le muestra el importe de la venta recién cargada, como en el surtidor de una estación de servicio.
+                        </p>
                     }
 
                     @if (mpCuenta != null)
@@ -835,6 +851,24 @@
             mpToken = "";
             await CargarMpAsync();
             Aviso(true, $"Conectado a la cuenta {mpCuenta?.Apodo}. Ahora creá la tienda y las cajas.");
+        }
+        finally { ocupado = false; }
+    }
+
+    /// <summary>Los bool de Blazor se escriben "True"/"False": el select va con texto propio.</summary>
+    private static bool EsQrFijo(ChangeEventArgs e) => e.Value?.ToString() == "fijo";
+
+    private async Task CambiarQrFijo(MercadoPagoCaja c, bool fijo)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await MpSrv.CambiarQrFijoAsync(c.Id, fijo);
+            if (error != null) { Aviso(false, error); return; }
+            c.UsaQrFijo = fijo;
+            Aviso(true, fijo
+                ? $"{c.Sucursal}: ahora cobra con el QR pegado en el mostrador."
+                : $"{c.Sucursal}: ahora cobra con un QR nuevo en pantalla por cada venta.");
         }
         finally { ocupado = false; }
     }
