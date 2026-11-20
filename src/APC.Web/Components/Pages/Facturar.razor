@@ -593,6 +593,10 @@ else
     private string qrPaso;
     private const string PasoPagado = "pagado";
     private const string PasoFacturando = "facturando";
+    /// <summary>Lo que se queda en pantalla el cartel de pago acreditado, para que el cajero lo vea.</summary>
+    private const int EsperaPagadoMs = 3000;
+    /// <summary>Si ARCA contesta enseguida, el cartel de «generando la factura» igual se ve.</summary>
+    private const int EsperaMinimaFacturaMs = 1500;
     private string qrError;
     private bool qrOcupado;
     private string qrFormato;
@@ -908,11 +912,23 @@ else
         catch { qrPropioUri = null; }
     }
 
+    /// <summary>Completa el tiempo mínimo para que un cartel no aparezca y desaparezca de golpe.</summary>
+    private static async Task EsperarLoQueFalte(System.Diagnostics.Stopwatch reloj)
+    {
+        var falta = EsperaMinimaFacturaMs - (int)reloj.ElapsedMilliseconds;
+        if (falta > 0) await Task.Delay(falta);
+    }
+
     private async Task ConfirmarQrPropio()
     {
         qrPropioFacturando = true;
         StateHasChanged();
-        try { await EmitirAhora(qrPropioFormato, qrPropioFiscal); }
+        var reloj = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await EmitirAhora(qrPropioFormato, qrPropioFiscal);
+            await EsperarLoQueFalte(reloj);
+        }
         finally
         {
             qrPropioFacturando = false;
@@ -1043,11 +1059,13 @@ else
         // Primero se ve que la plata entró; recién después se pide el CAE.
         qrPaso = PasoPagado;
         StateHasChanged();
-        await Task.Delay(1600);
+        await Task.Delay(EsperaPagadoMs);
 
         qrPaso = PasoFacturando;
         StateHasChanged();
+        var reloj = System.Diagnostics.Stopwatch.StartNew();
         await EmitirAhora(formato, fiscal);
+        await EsperarLoQueFalte(reloj);
 
         if (pagoId != null && resultado?.FacturaId != null)
         {
