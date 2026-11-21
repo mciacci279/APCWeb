@@ -51,6 +51,9 @@
             <div class="kpi @(SinAcceso.Count > 0 ? "falta" : "")">
                 <span class="sub">Sin conexión</span><span class="kpi-num">@SinAcceso.Count</span>
             </div>
+            <div class="kpi">
+                <span class="sub">Suspendidas con pendientes</span><span class="kpi-num">@Suspendidas.Count</span>
+            </div>
             <div class="kpi"><span class="sub">Último script</span><span class="kpi-num mono">@UltimoNumero</span></div>
         </div>
 
@@ -74,6 +77,7 @@
                                 @if (b.EsCentral) { <span class="sub"> · central</span> }
                                 else if (b.EsPlantilla) { <span class="sub"> · plantilla</span> }
                                 else if (b.Codigo != null) { <span class="sub mono"> · @b.Codigo</span> }
+                                @if (b.Estado != null) { <span class="etiqueta etiqueta-falta">@b.Estado</span> }
                             </td>
                             <td class="mono sub">@(b.Base ?? "—")</td>
                             <td class="der">
@@ -104,8 +108,9 @@
                             <td class="der">
                                 @if (b.Accesible && !b.AlDia)
                                 {
-                                    <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado"
-                                            @onclick="() => CorrerPendientes(b)">Correr los @b.Pendientes</button>
+                                    <button type="button" class="btn btn-chico @(b.Habilitada ? "btn-primario" : "")" disabled="@ocupado"
+                                            @onclick="() => CorrerPendientes(b)"
+                                            title="@(b.Habilitada ? "" : "La empresa está suspendida: sólo se corre si lo pedís vos")">Correr los @b.Pendientes</button>
                                 }
                             </td>
                         </tr>
@@ -172,7 +177,10 @@
             </table>
         </div>
 
-        <p class="sub">Carpeta de scripts: <span class="mono">@Migraciones.Carpeta</span>. Cada base anota lo suyo en su tabla <span class="mono">ApcWebScript</span>.</p>
+        <p class="sub">
+            Carpeta de scripts: <span class="mono">@Migraciones.Carpeta</span>. Cada base anota lo suyo en su tabla <span class="mono">ApcWebScript</span>.
+            «Poner al día» saltea las empresas suspendidas; si igual querés correrle los scripts a una, usá el botón de su fila.
+        </p>
     }
 </div>
 
@@ -186,7 +194,9 @@
     private bool mensajeOk;
     private string quien = "CM Tech";
 
-    private List<EstadoBase> Atrasadas => bases.Where(x => x.Accesible && !x.AlDia).ToList();
+    /// <summary>Sólo las que están en uso: a una empresa suspendida no se le corre nada.</summary>
+    private List<EstadoBase> Atrasadas => bases.Where(x => x.Atrasada).ToList();
+    private List<EstadoBase> Suspendidas => bases.Where(x => !x.Habilitada && !x.AlDia).ToList();
     private List<EstadoBase> SinAcceso => bases.Where(x => !x.Accesible).ToList();
     private string UltimoNumero => scripts.Count == 0 ? "—" : scripts.Max(x => x.Numero).ToString("00");
 

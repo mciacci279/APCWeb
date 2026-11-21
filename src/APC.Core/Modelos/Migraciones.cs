@@ -43,10 +43,16 @@ public class EstadoBase
     public bool EsPlantilla { get; set; }
     public bool Accesible { get; set; }
     public string Error { get; set; }
+    /// <summary>La empresa está en uso. Una suspendida no se pone al día sola.</summary>
+    public bool Habilitada { get; set; } = true;
+    /// <summary>Por qué no está habilitada, para mostrarlo al lado del nombre.</summary>
+    public string Estado { get; set; }
     public List<ScriptEnBase> Scripts { get; set; } = new();
 
     public int Pendientes => Scripts.Count(x => !x.Corrido);
     public int Total => Scripts.Count;
     public bool AlDia => Accesible && Pendientes == 0;
+    /// <summary>Hay que correrle scripts y además está en uso.</summary>
+    public bool Atrasada => Accesible && Pendientes > 0 && Habilitada;
     public ScriptEnBase Ultimo => Scripts.Where(x => x.Corrido).OrderByDescending(x => x.Script.Numero).FirstOrDefault();
 }

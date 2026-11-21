@@ -134,6 +134,10 @@ public class MigracionService
             var e = await EstadoAsync(emp.Nombre, emp.ConnectionString, false);
             e.EmpresaId = emp.Id;
             e.Codigo = emp.Codigo;
+            e.Habilitada = emp.Habilitada;
+            e.Estado = !emp.Activa ? "suspendida"
+                     : emp.SuspendidaPorAbono ? "suspendida por abono"
+                     : null;
             lista.Add(e);
         }
         return lista;
