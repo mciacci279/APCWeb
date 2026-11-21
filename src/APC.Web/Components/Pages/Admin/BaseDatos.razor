@@ -71,11 +71,20 @@
                 <tbody>
                     @foreach (var b in bases)
                     {
-                        <tr class="@(b.Accesible ? "" : "fila-mal")">
+                        @if (b == bases.FirstOrDefault())
+                        {
+                            <tr class="fila-grupo"><td colspan="5">Del sistema</td></tr>
+                        }
+                        else if (b == PrimeraEmpresa)
+                        {
+                            <tr class="fila-grupo"><td colspan="5">Empresas</td></tr>
+                        }
+
+                        <tr class="@(EsSistema(b) ? "fila-sistema" : "") @(b.Accesible ? "" : "fila-mal")">
                             <td>
                                 <button type="button" class="link-fila" @onclick="() => Abrir(b)">@b.Nombre</button>
-                                @if (b.EsCentral) { <span class="sub"> · central</span> }
-                                else if (b.EsPlantilla) { <span class="sub"> · plantilla</span> }
+                                @if (b.EsCentral) { <span class="sub"> · empresas, usuarios y abonos</span> }
+                                else if (b.EsPlantilla) { <span class="sub"> · de acá se copian las bases nuevas</span> }
                                 else if (b.Codigo != null) { <span class="sub mono"> · @b.Codigo</span> }
                                 @if (b.Estado != null) { <span class="etiqueta etiqueta-falta">@b.Estado</span> }
                             </td>
@@ -197,6 +206,10 @@
     /// <summary>Sólo las que están en uso: a una empresa suspendida no se le corre nada.</summary>
     private List<EstadoBase> Atrasadas => bases.Where(x => x.Atrasada).ToList();
     private List<EstadoBase> Suspendidas => bases.Where(x => !x.Habilitada && !x.AlDia).ToList();
+
+    /// <summary>La central y la plantilla no son de ningún cliente: van aparte.</summary>
+    private static bool EsSistema(EstadoBase b) => b.EsCentral || b.EsPlantilla;
+    private EstadoBase PrimeraEmpresa => bases.FirstOrDefault(x => !EsSistema(x));
     private List<EstadoBase> SinAcceso => bases.Where(x => !x.Accesible).ToList();
     private string UltimoNumero => scripts.Count == 0 ? "—" : scripts.Max(x => x.Numero).ToString("00");
 
