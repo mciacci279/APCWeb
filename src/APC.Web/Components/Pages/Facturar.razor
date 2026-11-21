@@ -4,6 +4,7 @@
 @using APC.Core.Tenants
 @inject SesionService SesionSrv
 @inject CatalogoService Catalogo
+@inject BalanzaService BalanzaSrv
 @inject FacturacionService Facturacion
 @inject CajaService Caja
 @inject PresupuestoService Presupuestos
@@ -85,6 +86,10 @@ else
                         </li>
                     }
                 </ul>
+            }
+            else if (errorBalanza != null)
+            {
+                <p class="alerta alerta-error" role="alert">@errorBalanza</p>
             }
             else if (sinResultados)
             {
@@ -529,6 +534,8 @@ else
     private RenglonCarrito ultimoAgregado;
 
     private string textoBusqueda;
+    private ConfigBalanza balanza = new();
+    private string errorBalanza;
     private string ultimaBusqueda;
     private decimal cantidadBusqueda = 1;
     private List<ProductoItem> resultados = new();
@@ -624,6 +631,7 @@ else
         try
         {
             sesion = await SesionSrv.ObtenerAsync();
+            balanza = await BalanzaSrv.ConfigAsync(sesion.Cs);
             // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
             if (!sesion.TieneModulo(Modulo.Facturar)) { Nav.NavigateTo("/sin-permiso"); return; }
             empresa = await Catalogo.EmpresaAsync(sesion.Cs);
@@ -702,9 +710,49 @@ else
         }
 
         ultimaBusqueda = texto;
+
+        // Código de balanza: trae el PLU y el peso, así que se carga solo.
+        var deBalanza = await BalanzaSrv.ResolverAsync(sesion.Cs, texto, balanza);
+        if (deBalanza != null)
+        {
+            textoBusqueda = "";
+            resultados.Clear();
+            sinResultados = false;
+            cantidadBusqueda = 1;
+            if (!deBalanza.Ok) { errorBalanza = deBalanza.Error; return; }
+
+            errorBalanza = null;
+            await AgregarDeBalanza(deBalanza);
+            return;
+        }
+        errorBalanza = null;
+
         resultados = await Catalogo.BuscarProductosAsync(sesion.Cs, texto);
         sinResultados = resultados.Count == 0;
         if (resultados.Count == 1) await Agregar(resultados[0], cantidadBusqueda);
+    }
+
+    /// <summary>
+    /// Carga lo que vino de la balanza. El total de un ticket (código 22) entra siempre como
+    /// un renglón nuevo, porque dos tickets distintos pueden dar el mismo importe.
+    /// </summary>
+    private async Task AgregarDeBalanza(RenglonBalanza r)
+    {
+        if (r.EsTotal || r.Precio != null)
+        {
+            var renglon = new RenglonCarrito
+            {
+                Producto = r.Producto,
+                Cantidad = r.Cantidad,
+                PrecioUnitario = r.Precio ?? r.Producto.PrecioVenta1
+            };
+            factura.Renglones.Add(renglon);
+            ultimoAgregado = renglon;
+            Recalcular();
+            await JS.InvokeVoidAsync("apc.enfocar", "buscar");
+            return;
+        }
+        await Agregar(r.Producto, r.Cantidad);
     }
 
     private async Task Agregar(ProductoItem p, decimal cantidad)

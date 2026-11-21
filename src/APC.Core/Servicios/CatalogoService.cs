@@ -12,6 +12,16 @@ public class CatalogoService
           ISNULL(OmitirControlStock, 0) AS OmitirControlStock";
 
     /// <summary>Busca primero por código exacto (lector de barras); si no hay, por descripción.</summary>
+    /// <summary>Un producto por su código exacto. Es lo que necesita el PLU de la balanza.</summary>
+    public async Task<ProductoItem> ProductoPorCodigoAsync(string cs, string codigo)
+    {
+        if (string.IsNullOrWhiteSpace(codigo)) return null;
+        using var cn = await Db.AbrirAsync(cs);
+        return await cn.QueryFirstOrDefaultAsync<ProductoItem>(
+            $"SELECT TOP 1 {ColumnasProducto} FROM dbo.Producto WHERE Codigo = @codigo AND ISNULL(Activo, 1) = 1",
+            new { codigo = codigo.Trim() });
+    }
+
     public async Task<List<ProductoItem>> BuscarProductosAsync(string cs, string texto, int max = 15)
     {
         if (string.IsNullOrWhiteSpace(texto)) return new();

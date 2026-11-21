@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject TipoPrecioService TiposSrv
 @inject CatalogoService Catalogo
+@inject BalanzaService BalanzaSrv
 
 <PageTitle>Precios y formas de pago · APC Web</PageTitle>
 
@@ -161,6 +162,45 @@
                 }
             </aside>
         </div>
+
+        <section class="panel">
+            <h2>Balanza</h2>
+            <p class="sub">
+                Para leer los códigos de barra que imprime la balanza Systel. El código trae el PLU del
+                producto y el peso o las unidades, y se carga solo al escanearlo en Facturar o en Presupuestos.
+            </p>
+
+            <label class="check"><input type="checkbox" @bind="balanza.Activa" /> Leer los códigos de la balanza</label>
+
+            @if (balanza.Activa)
+            {
+                <div class="fila-campos">
+                    <div class="campo crece">
+                        <label for="bal-modo">Qué trae el código</label>
+                        <select id="bal-modo" class="input" value="@(balanza.PorCantidad ? "Q" : "P")" @onchange="ElegirModo">
+                            <option value="Q">El peso o las unidades · el precio sale del producto</option>
+                            <option value="P">El importe ya calculado por la balanza</option>
+                        </select>
+                    </div>
+                    <div class="campo crece">
+                        <label for="bal-dec">Decimales del importe</label>
+                        <select id="bal-dec" class="input" value="@(balanza.Decimales ? "si" : "no")" @onchange="ElegirDecimales">
+                            <option value="no">Sin decimales · 5200 son $5.200</option>
+                            <option value="si">Con dos decimales · 5200 son $52,00</option>
+                        </select>
+                    </div>
+                    <div class="campo crece">
+                        <label for="bal-suma">Código del producto para el total del ticket</label>
+                        <input id="bal-suma" class="input mono" maxlength="30" @bind="balanza.CodigoSuma" placeholder="1234567890" />
+                        <span class="sub">Cuando se escanea el código del total (empieza con 22), se carga este producto con el importe del ticket.</span>
+                    </div>
+                </div>
+            }
+
+            <div class="fila-btns">
+                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="GuardarBalanza">Guardar</button>
+            </div>
+        </section>
     }
 </div>
 
@@ -175,6 +215,7 @@
     private TipoPrecio edit;
     private FormaPagoItem editF;
     private string editFTipo = "";
+    private ConfigBalanza balanza = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,6 +230,26 @@
     {
         tipos = await TiposSrv.ListarAsync(sesion.Cs);
         formas = await Catalogo.FormasPagoAsync(sesion.Cs);
+        balanza = await BalanzaSrv.ConfigAsync(sesion.Cs);
+    }
+
+    /// <summary>Los bool de Blazor se escriben "True"/"False": estos combos van con texto propio.</summary>
+    private void ElegirModo(ChangeEventArgs e) => balanza.Modo = e.Value?.ToString() == "P" ? "P" : "Q";
+    private void ElegirDecimales(ChangeEventArgs e) => balanza.Decimales = e.Value?.ToString() == "si";
+
+    private async Task GuardarBalanza()
+    {
+        ocupado = true;
+        try
+        {
+            var error = await BalanzaSrv.GuardarAsync(sesion.Cs, balanza);
+            if (error != null) { Aviso(false, error); return; }
+            balanza = await BalanzaSrv.ConfigAsync(sesion.Cs);
+            Aviso(true, balanza.Activa
+                ? "Listo: ya se pueden escanear los códigos de la balanza."
+                : "Lectura de balanza desactivada.");
+        }
+        finally { ocupado = false; }
     }
 
     private void Nuevo() { edit = new TipoPrecio(); mensaje = null; }
