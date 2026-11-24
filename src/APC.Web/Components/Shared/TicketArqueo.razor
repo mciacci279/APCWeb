@@ -1,0 +1,54 @@
+@* Un ticket de arqueo de caja (80 mm). Lo usan la impresión de una caja y la de todas las cajas. *@
+<div class="impresion ticket-80 @(Corte ? "ticket-corte" : "")">
+    <header class="imp-emisor">
+        <strong class="imp-razon">ARQUEO DE CAJA</strong>
+        @if (!string.IsNullOrEmpty(Titulo)) { <strong>@Titulo</strong> }
+        <span>@Comercio · Pto. Vta. @PuntoVenta.ToString("0000")</span>
+        <span>Apertura @A.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm")</span>
+        <span>@(A.Turno.FechaCierre != null ? "Cierre " + A.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm") : "PARCIAL — turno abierto")</span>
+    </header>
+    <table class="imp-renglones">
+        <thead><tr><th>Tipo / forma de pago</th><th class="der">Cant.</th><th class="der">Total</th></tr></thead>
+        <tbody>
+            @if (A.Grupos.Count == 0)
+            {
+                <tr><td colspan="3">Sin movimientos.</td></tr>
+            }
+            @foreach (var g in A.Grupos)
+            {
+                <tr><td><strong>@g.Titulo</strong></td><td class="der"><strong>@g.Comprobantes</strong></td><td class="der"><strong>@g.Total.ToString("N2", Ar)</strong></td></tr>
+                @foreach (var f in g.Formas)
+                {
+                    <tr><td>&nbsp;&nbsp;@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@f.Total.ToString("N2", Ar)</td></tr>
+                }
+            }
+        </tbody>
+    </table>
+    <section class="imp-totales">
+        <div><span>Monto inicial</span><span>$ @A.Turno.MontoInicial.ToString("N2", Ar)</span></div>
+        <div><span>Facturas</span><span>$ @A.VentasFiscales.ToString("N2", Ar)</span></div>
+        <div><span>Notas de pedido</span><span>$ @A.VentasNoFiscales.ToString("N2", Ar)</span></div>
+        <div><span>Notas de crédito</span><span>$ @A.NotasCredito.ToString("N2", Ar)</span></div>
+        <div><span>Ingresos / retiros</span><span>$ @A.IngresosEgresos.ToString("N2", Ar)</span></div>
+        <div class="imp-total"><span>Efectivo esperado</span><span>$ @A.EfectivoEsperado.ToString("N2", Ar)</span></div>
+        @if (A.Turno.EfectivoContado != null)
+        {
+            <div><span>Efectivo contado</span><span>$ @A.Turno.EfectivoContado.Value.ToString("N2", Ar)</span></div>
+            <div class="imp-total"><span>Diferencia</span><span>$ @((A.Turno.Diferencia ?? 0).ToString("N2", Ar))</span></div>
+        }
+        @if (!string.IsNullOrWhiteSpace(A.Turno.Observaciones)) { <p>Obs.: @A.Turno.Observaciones</p> }
+    </section>
+    <p class="imp-chico">@Pie</p>
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    [Parameter, EditorRequired] public ArqueoResumen A { get; set; }
+    /// <summary>Nombre de la caja (o del cajero) que va debajo del título.</summary>
+    [Parameter] public string Titulo { get; set; }
+    [Parameter] public string Comercio { get; set; }
+    [Parameter] public int PuntoVenta { get; set; }
+    [Parameter] public string Pie { get; set; }
+    /// <summary>Corta la hoja después de este ticket (al imprimir varias cajas juntas).</summary>
+    [Parameter] public bool Corte { get; set; }
+}

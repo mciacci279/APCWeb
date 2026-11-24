@@ -12,55 +12,16 @@
 }
 else
 {
-    <div class="impresion ticket-80" data-autoprint="true">
-        <header class="imp-emisor">
-            <strong class="imp-razon">ARQUEO DE CAJA</strong>
-            @if (a.Turno.EsDeCaja) { <strong>@a.Turno.Puesto</strong> }
-            <span>@sesion.Tenant.Nombre · Pto. Vta. @sesion.Tenant.PuntoVenta.ToString("0000")</span>
-            <span>Apertura @a.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm")</span>
-            <span>@(a.Turno.FechaCierre != null ? "Cierre " + a.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm") : "PARCIAL — turno abierto")</span>
-        </header>
-        <table class="imp-renglones">
-            <thead><tr><th>Tipo / forma de pago</th><th class="der">Cant.</th><th class="der">Total</th></tr></thead>
-            <tbody>
-                @foreach (var g in a.Grupos)
-                {
-                    <tr><td><strong>@g.Titulo</strong></td><td class="der"><strong>@g.Comprobantes</strong></td><td class="der"><strong>@g.Total.ToString("N2", Ar)</strong></td></tr>
-                    @foreach (var f in g.Formas)
-                    {
-                        <tr><td>&nbsp;&nbsp;@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@f.Total.ToString("N2", Ar)</td></tr>
-                    }
-                }
-            </tbody>
-        </table>
-        <section class="imp-totales">
-            <div><span>Monto inicial</span><span>$ @a.Turno.MontoInicial.ToString("N2", Ar)</span></div>
-            <div><span>Facturas</span><span>$ @a.VentasFiscales.ToString("N2", Ar)</span></div>
-            <div><span>Notas de pedido</span><span>$ @a.VentasNoFiscales.ToString("N2", Ar)</span></div>
-            <div><span>Notas de crédito</span><span>$ @a.NotasCredito.ToString("N2", Ar)</span></div>
-            <div><span>Ingresos / retiros</span><span>$ @a.IngresosEgresos.ToString("N2", Ar)</span></div>
-            <div class="imp-total"><span>Efectivo esperado</span><span>$ @a.EfectivoEsperado.ToString("N2", Ar)</span></div>
-            @if (a.Turno.EfectivoContado != null)
-            {
-                <div><span>Efectivo contado</span><span>$ @a.Turno.EfectivoContado.Value.ToString("N2", Ar)</span></div>
-                <div class="imp-total"><span>Diferencia</span><span>$ @((a.Turno.Diferencia ?? 0).ToString("N2", Ar))</span></div>
-            }
-            @if (!string.IsNullOrWhiteSpace(a.Turno.Observaciones)) { <p>Obs.: @a.Turno.Observaciones</p> }
-        </section>
-        @if (a.Turno.EsDeCaja)
-        {
-            <p class="imp-chico">Abrió: @a.Turno.Usuario@(a.Turno.UsuarioCierre != null ? " · Cerró: " + a.Turno.UsuarioCierre : "") · Imprimió: @sesion.Nombre</p>
-        }
-        else
-        {
-            <p class="imp-chico">Cajero: @sesion.Nombre</p>
-        }
+    <div data-autoprint="true">
+        <TicketArqueo A="a" Titulo="@(a.Turno.EsDeCaja ? a.Turno.Puesto : null)" Comercio="@sesion.Tenant.Nombre" PuntoVenta="sesion.Tenant.PuntoVenta"
+                      Pie="@(a.Turno.EsDeCaja
+                          ? $"Abrió: {a.Turno.Usuario}{(a.Turno.UsuarioCierre != null ? " · Cerró: " + a.Turno.UsuarioCierre : "")} · Imprimió: {sesion.Nombre}"
+                          : $"Cajero: {sesion.Nombre}")" />
         <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
     </div>
 }
 
 @code {
-    private static readonly CultureInfo Ar = new("es-AR");
     [Parameter] public Guid Id { get; set; }
     private SesionActual sesion;
     private ArqueoResumen a;

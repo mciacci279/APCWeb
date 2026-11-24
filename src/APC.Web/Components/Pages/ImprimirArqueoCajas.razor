@@ -1,0 +1,134 @@
+@page "/imprimir/arqueo-cajas"
+@layout VacioLayout
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@inject SesionService SesionSrv
+@inject CajaService Caja
+@inject SucursalService SucursalSrv
+@inject PuestoCajaService Puestos
+
+@* Arqueo de todas las cajas, un ticket por caja (con corte entre cada una) y al final el total.
+   Solo supervisores y administradores; el cajero imprime la suya desde /imprimir/arqueo/{id}. *@
+
+<PageTitle>Arqueo de todas las cajas</PageTitle>
+
+@if (error != null)
+{
+    <p class="page-pad">@error</p>
+}
+else if (tickets == null)
+{
+    <p class="page-pad">Cargando…</p>
+}
+else if (tickets.Count == 0)
+{
+    <p class="page-pad">@(Abiertas ? "No hay cajas abiertas." : "No hay cajas para ese día.")</p>
+}
+else
+{
+    <div data-autoprint="true">
+        @for (var i = 0; i < tickets.Count; i++)
+        {
+            var t = tickets[i];
+            <TicketArqueo A="t.A" Titulo="@t.Titulo" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
+                          Pie="@t.Pie" Corte="@(i < tickets.Count - 1 || total != null)" />
+        }
+        @if (total != null)
+        {
+            <TicketArqueo A="total" Titulo="@($"TOTAL DE {tickets.Count} CAJAS")" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
+                          Pie="@($"{NombreSucursal} · Imprimió: {sesion.Nombre} · {DateTime.Now:dd/MM/yyyy HH:mm}")" />
+        }
+        <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
+    </div>
+}
+
+@code {
+    /// <summary>Día (yyyy-MM-dd). Si no viene, hoy.</summary>
+    [SupplyParameterFromQuery(Name = "dia")] public string Dia { get; set; }
+    /// <summary>Sucursal. El supervisor siempre ve la suya; el administrador sin sucursal ve todas.</summary>
+    [SupplyParameterFromQuery(Name = "sucursal")] public Guid? SucursalId { get; set; }
+    /// <summary>Solo una caja de la sucursal (filtro de Arqueo).</summary>
+    [SupplyParameterFromQuery(Name = "caja")] public Guid? PuestoId { get; set; }
+    /// <summary>Solo las cajas abiertas ahora ("Imprimir parcial").</summary>
+    [SupplyParameterFromQuery(Name = "abiertas")] public bool Abiertas { get; set; }
+
+    private record Ticket(ArqueoResumen A, string Titulo, string Pie);
+
+    private SesionActual sesion;
+    private List<Ticket> tickets;
+    private ArqueoResumen total;
+    private string error;
+    private Sucursal sucursal;
+
+    private int PuntoVenta => sucursal?.PuntoVenta ?? sesion.Tenant.PuntoVenta;
+    private string NombreSucursal => sucursal != null ? "Sucursal " + sucursal.Nombre : "Todas las sucursales";
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (!(sesion.EsSupervisor || sesion.EsAdmin)) { error = "Solo un supervisor o administrador puede imprimir todas las cajas."; return; }
+
+        var dia = DateTime.TryParse(Dia, out var d) ? d.Date : DateTime.Today;
+        // El supervisor, solo su sucursal.
+        Guid? sucId = sesion.EsSupervisor && !sesion.EsAdmin
+            ? (sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId)
+            : SucursalId;
+
+        if (sucId != null)
+        {
+            try { sucursal = (await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: true)).FirstOrDefault(s => s.Id == sucId); }
+            catch (Exception) { sucursal = null; }
+        }
+
+        // Cajas de la sucursal (si tiene varias), para saber en cuál estuvo cada turno.
+        var puestos = new List<PuestoCaja>();
+        if (sucursal != null)
+        {
+            try { if (await Puestos.ExisteAsync(sesion.Cs)) puestos = await Puestos.ListarAsync(sesion.Cs, sucursal.Id, incluirInactivas: true); }
+            catch (Exception) { puestos = new(); }
+        }
+        var varias = puestos.Count > 1;
+
+        List<CajaTurno> filas;
+        if (sucursal != null && !sucursal.ExigeCaja)
+        {
+            // Sucursal sin apertura de caja: lo vendido por ingreso a cada caja (o por usuario si tiene una sola).
+            filas = varias
+                ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sucursal.Id, sucursal.PuntoVenta)
+                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sucursal.PuntoVenta);
+            if (Abiertas) filas = filas.Where(f => f.EnUso || f.PuestoCajaId == null).ToList();
+        }
+        else
+        {
+            filas = await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sucId, soloAbiertos: Abiertas);
+            if (varias) await Puestos.AsignarPuestoAsync(sesion.Cs, filas, dia, sucursal.Id);
+        }
+        if (PuestoId != null) filas = filas.Where(f => f.PuestoCajaId == PuestoId).ToList();
+
+        var orden = puestos.Select((p, i) => (p.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        tickets = new();
+        foreach (var f in filas
+                     .OrderBy(f => f.PuestoCajaId != null && orden.TryGetValue(f.PuestoCajaId.Value, out var i) ? i : int.MaxValue)
+                     .ThenBy(f => f.Usuario)
+                     .ThenBy(f => f.FechaApertura))
+        {
+            var a = await Caja.ArqueoAsync(sesion.Cs, f);
+            var titulo = f.Puesto ?? ("Cajero " + f.Usuario);
+            if (sucursal == null && !string.IsNullOrEmpty(f.Sucursal)) titulo += " · " + f.Sucursal;
+            var pie = f.EsDeCaja
+                ? $"Abrió: {f.Usuario}{(f.UsuarioCierre != null ? " · Cerró: " + f.UsuarioCierre : "")}"
+                : $"Cajero: {f.Usuario}";
+            tickets.Add(new Ticket(a, titulo, pie));
+        }
+
+        if (tickets.Count > 1)
+        {
+            total = CajaService.Sumar(tickets.Select(t => t.A));
+            total.Turno = new CajaTurno
+            {
+                FechaApertura = filas.Min(f => f.FechaApertura),
+                FechaCierre = filas.Any(f => f.FechaCierre == null || f.EnUso) ? null : filas.Max(f => f.FechaCierre),
+                MontoInicial = filas.Sum(f => f.MontoInicial)
+            };
+        }
+    }
+}

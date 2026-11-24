@@ -62,7 +62,16 @@ else
         </div>
         <div class="fila-btns">
             <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
-            <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
+            @if (PuedeSupervisar)
+            {
+                @* Supervisor y administrador: su caja o todas las abiertas de la sucursal, un ticket por caja *@
+                <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
+                <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: true)" target="_blank">Imprimir todas las cajas</a>
+            }
+            else
+            {
+                <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
+            }
         </div>
     </header>
 
@@ -176,6 +185,11 @@ else
                     </div>
                 }
                 <div class="campo"><label for="dia">Día</label><input id="dia" class="input" type="date" @bind="dia" @bind:after="CargarCajas" /></div>
+                @if (PuedeSupervisar && (cajas.Count + sinCaja.Count) > 0)
+                {
+                    <a class="btn" href="@UrlImprimirTodas(abiertas: false)" target="_blank"
+                       title="Un ticket por caja, con el total al final">@(filtroPuesto == null ? "Imprimir todas" : "Imprimir esta caja")</a>
+                }
             </div>
         </header>
 
@@ -433,7 +447,7 @@ else
 
     private string FiltroTitulo => filtroPuesto == null ? "" : "· " + (puestos.FirstOrDefault(p => p.Id == filtroPuesto)?.Titulo ?? "");
 
-    private ArqueoResumen ResumenVisible => Sumar(CajasVisibles.Concat(SinCajaVisibles)
+    private ArqueoResumen ResumenVisible => CajaService.Sumar(CajasVisibles.Concat(SinCajaVisibles)
         .Select(c => resumen != null && resumen.TryGetValue(c, out var a) ? a : null).Where(a => a != null));
 
     private async Task CargarResumenAsync()
@@ -449,34 +463,6 @@ else
         resumen = d;
     }
 
-    /// <summary>Junta varios arqueos en uno: mismas formas de pago se suman.</summary>
-    private static ArqueoResumen Sumar(IEnumerable<ArqueoResumen> partes)
-    {
-        var lista = partes.ToList();
-        const string orden = "FSPNC";
-        return new ArqueoResumen
-        {
-            VentasFiscales = lista.Sum(a => a.VentasFiscales),
-            CantidadFiscales = lista.Sum(a => a.CantidadFiscales),
-            VentasNoFiscales = lista.Sum(a => a.VentasNoFiscales),
-            CantidadNoFiscales = lista.Sum(a => a.CantidadNoFiscales),
-            NotasCredito = lista.Sum(a => a.NotasCredito),
-            IngresosEgresos = lista.Sum(a => a.IngresosEgresos),
-            EfectivoEsperado = lista.Sum(a => a.EfectivoEsperado),
-            Grupos = lista.SelectMany(a => a.Grupos)
-                .GroupBy(g => g.Codigo)
-                .OrderBy(g => { var i = orden.IndexOf(g.Key ?? "?", StringComparison.Ordinal); return i < 0 ? 99 : i; })
-                .Select(g => new ArqueoGrupo
-                {
-                    Codigo = g.Key,
-                    Titulo = g.First().Titulo,
-                    Formas = g.SelectMany(x => x.Formas)
-                        .GroupBy(x => x.FormaPago)
-                        .Select(x => new ArqueoFormaPago { FormaPago = x.Key, Comprobantes = x.Sum(y => y.Comprobantes), Total = x.Sum(y => y.Total) })
-                        .OrderBy(x => x.FormaPago).ToList()
-                }).ToList()
-        };
-    }
 
     /// <summary>Las cajas de la sucursal que se está mirando. Sin el script 27 o sin sucursal elegida, ninguna.</summary>
     private async Task CargarPuestosAsync()
@@ -491,6 +477,19 @@ else
         }
         catch (Exception) { puestos = new(); }
         if (filtroPuesto != null && !puestos.Any(p => p.Id == filtroPuesto)) filtroPuesto = null;
+    }
+
+    /// <summary>Impresión de todas las cajas (un ticket por caja): la sucursal y caja que se están mirando.</summary>
+    private string UrlImprimirTodas(bool abiertas)
+    {
+        var suc = sesion.EsAdmin
+            ? (Guid.TryParse(sucursalFiltro, out var elegida) ? elegida : (Guid?)null)
+            : (sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
+        if (abiertas && suc == null && sesion.SucursalId != Guid.Empty) suc = sesion.SucursalId;
+        var url = "/imprimir/arqueo-cajas?" + (abiertas ? "abiertas=true" : "dia=" + dia.ToString("yyyy-MM-dd"));
+        if (suc != null) url += "&sucursal=" + suc;
+        if (!abiertas && filtroPuesto != null) url += "&caja=" + filtroPuesto;
+        return url;
     }
 
     private string TituloCajas

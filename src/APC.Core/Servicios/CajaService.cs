@@ -114,7 +114,7 @@ public class CajaService
     /// Cajas de un día para la supervisión. Con sucursalId se limita a esa sucursal
     /// (lo que ve un supervisor); sin sucursalId se ven todas (el administrador).
     /// </summary>
-    public async Task<List<CajaTurno>> TurnosDelDiaAsync(string cs, DateTime dia, Guid? sucursalId)
+    public async Task<List<CajaTurno>> TurnosDelDiaAsync(string cs, DateTime dia, Guid? sucursalId, bool soloAbiertos = false)
     {
         using var cn = await Db.AbrirAsync(cs);
         var columnaSucursal = "NULL AS SucursalId, '' AS Sucursal";
@@ -158,7 +158,7 @@ public class CajaService
                LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
                {(columnaSucursal.StartsWith("NULL") ? "" : "LEFT JOIN dbo.Sucursal s ON s.Id = t.SucursalId")}
                {joinsCaja}
-               WHERE t.FechaApertura >= @desde AND t.FechaApertura < @hasta {filtroSucursal}
+               WHERE {(soloAbiertos ? "t.FechaCierre IS NULL" : "t.FechaApertura >= @desde AND t.FechaApertura < @hasta")} {filtroSucursal}
                ORDER BY t.FechaApertura DESC",
             new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId })).ToList();
     }
@@ -337,5 +337,34 @@ public class CajaService
               WHERE t.Id = @id", new { id });
         if (t != null) t.EsDeCaja = t.PuestoCajaId != null;
         return t;
+    }
+
+    /// <summary>Junta varios arqueos en uno: mismas formas de pago se suman.</summary>
+    public static ArqueoResumen Sumar(IEnumerable<ArqueoResumen> partes)
+    {
+        var lista = partes.ToList();
+        const string orden = "FSPNC";
+        return new ArqueoResumen
+        {
+            VentasFiscales = lista.Sum(a => a.VentasFiscales),
+            CantidadFiscales = lista.Sum(a => a.CantidadFiscales),
+            VentasNoFiscales = lista.Sum(a => a.VentasNoFiscales),
+            CantidadNoFiscales = lista.Sum(a => a.CantidadNoFiscales),
+            NotasCredito = lista.Sum(a => a.NotasCredito),
+            IngresosEgresos = lista.Sum(a => a.IngresosEgresos),
+            EfectivoEsperado = lista.Sum(a => a.EfectivoEsperado),
+            Grupos = lista.SelectMany(a => a.Grupos)
+                .GroupBy(g => g.Codigo)
+                .OrderBy(g => { var i = orden.IndexOf(g.Key ?? "?", StringComparison.Ordinal); return i < 0 ? 99 : i; })
+                .Select(g => new ArqueoGrupo
+                {
+                    Codigo = g.Key,
+                    Titulo = g.First().Titulo,
+                    Formas = g.SelectMany(x => x.Formas)
+                        .GroupBy(x => x.FormaPago)
+                        .Select(x => new ArqueoFormaPago { FormaPago = x.Key, Comprobantes = x.Sum(y => y.Comprobantes), Total = x.Sum(y => y.Total) })
+                        .OrderBy(x => x.FormaPago).ToList()
+                }).ToList()
+        };
     }
 }
