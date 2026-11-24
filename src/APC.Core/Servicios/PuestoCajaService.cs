@@ -209,57 +209,70 @@ public class PuestoCajaService
     }
 
     /// <summary>
-    /// Para el arqueo de una sucursal que no exige abrir caja pero tiene varias: una fila por cada ingreso
-    /// de un usuario a una caja en el día, con lo que vendió mientras estuvo en ella. Cada fila sirve
-    /// como "caja" para <see cref="CajaService.ArqueoAsync"/> (Id vacío, de la hora de entrada a la de salida).
+    /// Arqueo de una sucursal que no exige abrir caja pero tiene varias: UNA fila por caja con todo lo del día
+    /// (desde las 00:00, lo haya hecho el cajero que sea mientras estuvo en ella), más una fila "Sin caja" por
+    /// usuario con lo que facturó sin estar en ninguna. Cada fila sirve para <see cref="CajaService.ArqueoAsync"/>.
     /// </summary>
-    public async Task<List<CajaTurno>> MovimientosPorIngresoAsync(string cs, DateTime dia, Guid sucursalId, int puntoVenta, Guid? usuarioId = null)
+    /// <param name="puestoCajaId">Solo esa caja (y ninguna fila "Sin caja").</param>
+    /// <param name="usuarioSinCaja">Solo la fila "Sin caja" de ese usuario (y ninguna caja).</param>
+    public async Task<List<CajaTurno>> MovimientosPorCajaAsync(string cs, DateTime dia, Guid sucursalId, int puntoVenta,
+        Guid? puestoCajaId = null, Guid? usuarioSinCaja = null)
     {
+        var desde = dia.Date;
+        var hasta = dia.Date.AddDays(1);
         using var cn = await Db.AbrirAsync(cs);
-        var filas = (await cn.QueryAsync<CajaTurno>(
-            @"WITH t AS (
-                  SELECT s.Id, s.UsuarioId, s.CajaId,
-                         CASE WHEN s.FechaIngreso < @desde THEN @desde ELSE s.FechaIngreso END AS Ini,
-                         CASE WHEN s.FechaSalida IS NOT NULL THEN s.FechaSalida
-                              WHEN s.UltimoLatido < DATEADD(MINUTE, -10, GETDATE()) THEN s.UltimoLatido
-                              ELSE GETDATE() END AS Fin,
-                         CASE WHEN s.FechaSalida IS NULL AND s.UltimoLatido >= DATEADD(MINUTE, -10, GETDATE()) THEN 1 ELSE 0 END AS EnUso
-                  FROM dbo.PuestoCajaSesion s
-                  JOIN dbo.PuestoCaja c ON c.Id = s.CajaId
-                  WHERE c.SucursalId = @sucursalId AND s.FechaIngreso < @hasta
-                    AND ISNULL(s.FechaSalida, GETDATE()) >= @desde
-                    AND (@usuarioId IS NULL OR s.UsuarioId = @usuarioId))
-              SELECT t.UsuarioId, u.NombreUsuario AS Usuario, t.CajaId AS PuestoCajaId,
-                     ISNULL(c.Nombre, 'Caja ' + CAST(c.Numero AS VARCHAR(10))) AS Puesto,
-                     t.Ini AS FechaApertura, CASE WHEN t.Fin > @hasta THEN @hasta ELSE t.Fin END AS FechaCierre,
-                     CAST(t.EnUso AS BIT) AS EnUso,
-                     (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
-                      WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.Ini AND f.Fecha < t.Fin AND f.Terminal = @puntoVenta
-                        AND ISNULL(f.Anulada, 0) = 0) AS Ventas   -- con y sin CAE (como el arqueo)
-              FROM t
-              JOIN dbo.PuestoCaja c ON c.Id = t.CajaId
-              LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
-              ORDER BY t.Ini",
-            new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId, puntoVenta, usuarioId })).ToList();
-        // Lo facturado sin estar en ninguna caja (p. ej. un administrador que entró "sin caja"):
-        // una fila "Sin caja" por usuario, para que no quede ningún comprobante afuera del arqueo.
-        var fuera = (await cn.QueryAsync<CajaTurno>(
-            $@"SELECT f.UsuarioId, u.NombreUsuario AS Usuario, SUM(f.MontoTotal) AS Ventas
-               FROM dbo.Factura f
-               LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
-               WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND f.Terminal = @puntoVenta AND ISNULL(f.Anulada, 0) = 0
-                 AND (@usuarioId IS NULL OR f.UsuarioId = @usuarioId)
-                 AND NOT {CajaService.EnAlgunaCaja("f")}
-               GROUP BY f.UsuarioId, u.NombreUsuario",
-            new { desde = dia.Date, hasta = dia.Date.AddDays(1), puntoVenta, usuarioId })).ToList();
-        foreach (var f in fuera)
+        var filas = new List<CajaTurno>();
+
+        if (usuarioSinCaja == null)
         {
-            f.FueraDeCaja = true;
-            f.Puesto = "Sin caja";
-            f.FechaApertura = dia.Date;
-            f.FechaCierre = dia.Date.AddDays(1);
+            var ventas = CajaService.EnLaCajaSql("f").Replace("@p", "c.Id");
+            filas = (await cn.QueryAsync<CajaTurno>(
+                $@"SELECT c.Id AS PuestoCajaId,
+                          ISNULL(NULLIF(c.Nombre, ''), 'Caja ' + CAST(c.Numero AS VARCHAR(10))) AS Puesto,
+                          STUFF((SELECT DISTINCT ', ' + u.NombreUsuario
+                                 FROM dbo.PuestoCajaSesion s JOIN dbo.Usuario u ON u.Id = s.UsuarioId
+                                 WHERE s.CajaId = c.Id AND s.FechaIngreso < @hasta AND ISNULL(s.FechaSalida, GETDATE()) >= @desde
+                                 FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 2, '') AS Usuario,
+                          CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion s WHERE s.CajaId = c.Id AND s.FechaSalida IS NULL
+                                                 AND s.UltimoLatido >= DATEADD(MINUTE, -{MinutosInactividad}, GETDATE()))
+                                    THEN 1 ELSE 0 END AS BIT) AS EnUso,
+                          (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                           WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND ISNULL(f.Anulada, 0) = 0 AND {ventas}) AS Ventas
+                   FROM dbo.PuestoCaja c
+                   WHERE c.SucursalId = @sucursalId AND (@puestoCajaId IS NULL OR c.Id = @puestoCajaId)
+                     AND EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion s WHERE s.CajaId = c.Id
+                                 AND s.FechaIngreso < @hasta AND ISNULL(s.FechaSalida, GETDATE()) >= @desde)
+                   ORDER BY c.Numero",
+                new { desde, hasta, sucursalId, puestoCajaId })).ToList();
+            foreach (var f in filas)
+            {
+                f.EsDeCaja = true;   // el arqueo suma lo hecho en la caja, por cualquier cajero
+                f.FechaApertura = desde;
+                f.FechaCierre = hasta <= DateTime.Now ? hasta : (DateTime?)null;
+            }
         }
-        filas.AddRange(fuera);
+
+        if (puestoCajaId == null)
+        {
+            // Lo facturado sin estar en ninguna caja (p. ej. un administrador que entró "sin caja").
+            var fuera = (await cn.QueryAsync<CajaTurno>(
+                $@"SELECT f.UsuarioId, u.NombreUsuario AS Usuario, SUM(f.MontoTotal) AS Ventas
+                   FROM dbo.Factura f
+                   LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
+                   WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND f.Terminal = @puntoVenta AND ISNULL(f.Anulada, 0) = 0
+                     AND (@usuarioSinCaja IS NULL OR f.UsuarioId = @usuarioSinCaja)
+                     AND NOT {CajaService.EnAlgunaCaja("f")}
+                   GROUP BY f.UsuarioId, u.NombreUsuario",
+                new { desde, hasta, puntoVenta, usuarioSinCaja })).ToList();
+            foreach (var f in fuera)
+            {
+                f.FueraDeCaja = true;
+                f.Puesto = "Sin caja";
+                f.FechaApertura = desde;
+                f.FechaCierre = hasta;
+            }
+            filas.AddRange(fuera);
+        }
 
         foreach (var f in filas)
         {

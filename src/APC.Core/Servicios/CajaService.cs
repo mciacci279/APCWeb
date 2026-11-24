@@ -111,6 +111,8 @@ public class CajaService
         $@"EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion pcs WHERE pcs.UsuarioId = {x}.UsuarioId
                    AND {x}.Fecha >= pcs.FechaIngreso AND (pcs.FechaSalida IS NULL OR {x}.Fecha < pcs.FechaSalida))";
 
+    internal static string EnLaCajaSql(string x) => EnLaCaja(x);
+
     private static string EnLaCaja(string x) =>
         $@"EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion pcs WHERE pcs.CajaId = @p AND pcs.UsuarioId = {x}.UsuarioId
                    AND {x}.Fecha >= pcs.FechaIngreso AND (pcs.FechaSalida IS NULL OR {x}.Fecha < pcs.FechaSalida))";
@@ -373,4 +375,46 @@ public class CajaService
                 }).ToList()
         };
     }
+
+    // ------------------------------------------------------------------ cortes (arqueos parciales, script 29)
+
+    /// <summary>
+    /// Registra el corte de un arqueo parcial (una vez por lote: reimprimir la misma página no agrega otro) y
+    /// devuelve desde cuándo va este parcial (el corte anterior, si hubo) y la hora de este corte.
+    /// Null si el turno ya está cerrado o todavía no se corrió el script 29.
+    /// </summary>
+    public async Task<(DateTime? Desde, DateTime Hasta)?> RegistrarCorteAsync(string cs, CajaTurno t, Guid lote, Guid impresoPor)
+    {
+        if (t.FechaCierre != null && t.FechaCierre <= DateTime.Now) return null;
+        using var cn = await Db.AbrirAsync(cs);
+        if (await cn.ExecuteScalarAsync<int>("SELECT CASE WHEN OBJECT_ID('dbo.CajaCorte', 'U') IS NULL THEN 0 ELSE 1 END") == 0)
+            return null;
+        // El corte es de la caja (si el turno es de una caja) o del usuario.
+        Guid? puesto = t.EsDeCaja ? t.PuestoCajaId : null;
+        Guid? usuario = t.EsDeCaja ? null : t.UsuarioId;
+        var p = new { lote, puesto, usuario, impresoPor, apertura = t.FechaApertura };
+        var hasta = await cn.ExecuteScalarAsync<DateTime>(
+            @"IF NOT EXISTS (SELECT 1 FROM dbo.CajaCorte WHERE Lote = @lote
+                             AND (PuestoCajaId = @puesto OR (PuestoCajaId IS NULL AND @puesto IS NULL))
+                             AND (UsuarioId = @usuario OR (UsuarioId IS NULL AND @usuario IS NULL)))
+                  INSERT INTO dbo.CajaCorte (Lote, PuestoCajaId, UsuarioId, ImpresoPor) VALUES (@lote, @puesto, @usuario, @impresoPor);
+              SELECT TOP 1 Fecha FROM dbo.CajaCorte WHERE Lote = @lote
+                  AND (PuestoCajaId = @puesto OR (PuestoCajaId IS NULL AND @puesto IS NULL))
+                  AND (UsuarioId = @usuario OR (UsuarioId IS NULL AND @usuario IS NULL));", p);
+        var desde = await cn.ExecuteScalarAsync<DateTime?>(
+            @"SELECT MAX(Fecha) FROM dbo.CajaCorte
+              WHERE Lote <> @lote AND Fecha >= @apertura AND Fecha < @hasta
+                AND (PuestoCajaId = @puesto OR (PuestoCajaId IS NULL AND @puesto IS NULL))
+                AND (UsuarioId = @usuario OR (UsuarioId IS NULL AND @usuario IS NULL))",
+            new { lote, puesto, usuario, apertura = t.FechaApertura, hasta });
+        return (desde, hasta);
+    }
+
+    /// <summary>El mismo turno/caja, pero solo entre dos horas (para el arqueo de un parcial).</summary>
+    public static CajaTurno Tramo(CajaTurno t, DateTime desde, DateTime hasta) => new()
+    {
+        Id = t.Id, UsuarioId = t.UsuarioId, SucursalId = t.SucursalId, PuestoCajaId = t.PuestoCajaId,
+        EsDeCaja = t.EsDeCaja, FueraDeCaja = t.FueraDeCaja, Usuario = t.Usuario, Puesto = t.Puesto,
+        FechaApertura = desde, FechaCierre = hasta, MontoInicial = 0
+    };
 }

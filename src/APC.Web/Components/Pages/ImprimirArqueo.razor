@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = SesionService.RolEmpleado)]
 @inject SesionService SesionSrv
 @inject CajaService Caja
+@inject PuestoCajaService Puestos
 
 <PageTitle>Arqueo de caja</PageTitle>
 
@@ -13,7 +14,7 @@
 else
 {
     <div data-autoprint="true">
-        <TicketArqueo A="a" Titulo="@(a.Turno.EsDeCaja ? a.Turno.Puesto : null)" Comercio="@sesion.Tenant.Nombre" PuntoVenta="sesion.Tenant.PuntoVenta"
+        <TicketArqueo A="a" Parcial="parcial" CorteHora="corteHora" Titulo="@(a.Turno.EsDeCaja ? a.Turno.Puesto : null)" Comercio="@sesion.Tenant.Nombre" PuntoVenta="sesion.Tenant.PuntoVenta"
                       Pie="@(a.Turno.EsDeCaja
                           ? $"Abrió: {a.Turno.Usuario}{(a.Turno.UsuarioCierre != null ? " · Cerró: " + a.Turno.UsuarioCierre : "")} · Imprimió: {sesion.Nombre}"
                           : $"Cajero: {sesion.Nombre}")" />
@@ -23,17 +24,39 @@ else
 
 @code {
     [Parameter] public Guid Id { get; set; }
+    /// <summary>Lote del corte: viene en el link de "Imprimir parcial" y deja un corte en la caja.</summary>
+    [SupplyParameterFromQuery(Name = "corte")] public Guid? Lote { get; set; }
     private SesionActual sesion;
     private ArqueoResumen a;
+    private ArqueoResumen parcial;
+    private DateTime? corteHora;
 
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
         var turno = await Caja.ObtenerTurnoAsync(sesion.Cs, Id);
+        // En una pestaña nueva la sesión todavía no sabe en qué caja está el usuario.
+        if (sesion.Caja == null)
+        {
+            try { if (await Puestos.ExisteAsync(sesion.Cs)) sesion.Caja = await Puestos.ActivaDeUsuarioAsync(sesion.Cs, sesion.UsuarioId); }
+            catch (Exception) { }
+        }
         // La caja de la sucursal la puede imprimir quien esté en ella; un supervisor o administrador, cualquiera.
         var puede = turno != null && (turno.UsuarioId == sesion.UsuarioId || sesion.EsAdmin || sesion.EsSupervisor
                     || (turno.EsDeCaja && sesion.Caja?.CajaId == turno.PuestoCajaId));
         if (!puede) return;
+        if (Lote != null)
+        {
+            var corte = await Caja.RegistrarCorteAsync(sesion.Cs, turno, Lote.Value, sesion.UsuarioId);
+            if (corte != null)
+            {
+                corteHora = corte.Value.Hasta;
+                // El acumulado llega hasta el corte (así el parcial y el acumulado cierran entre sí).
+                turno.FechaCierre = corte.Value.Hasta;
+                if (corte.Value.Desde != null)
+                    parcial = await Caja.ArqueoAsync(sesion.Cs, CajaService.Tramo(turno, corte.Value.Desde.Value, corte.Value.Hasta));
+            }
+        }
         a = await Caja.ArqueoAsync(sesion.Cs, turno);
     }
 }

@@ -1146,3 +1146,6 @@ h1 { font-weight: 800; }
 @media screen {
   .ticket-corte { margin-bottom: 18px; border-bottom: 2px dashed #9AA4B2; padding-bottom: 14px; }
 }
+
+/* Arqueo parcial: secciones "desde el parcial anterior" y "acumulado" */
+.imp-seccion { margin: 8px 0 4px; padding-top: 6px; border-top: 1px dashed #000; text-align: center; font-weight: 700; font-size: 12px; }

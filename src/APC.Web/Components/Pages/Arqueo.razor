@@ -65,12 +65,12 @@ else
             @if (PuedeSupervisar)
             {
                 @* Supervisor y administrador: su caja o todas las abiertas de la sucursal, un ticket por caja *@
-                <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
+                <a class="btn" href="/imprimir/arqueo/@turno.Id?corte=@Guid.NewGuid()" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
                 <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: true)" target="_blank">Imprimir todas las cajas</a>
             }
             else
             {
-                <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
+                <a class="btn" href="/imprimir/arqueo/@turno.Id?corte=@Guid.NewGuid()" target="_blank">Imprimir parcial</a>
             }
         </div>
     </header>
@@ -162,7 +162,7 @@ else
     </div>
 }
 
-@if (!cargando && (PuedeSupervisar || !ExigeCaja))
+@if (!cargando)
 {
     <section class="panel" aria-label="Cajas del día">
         <header class="fact-head">
@@ -185,28 +185,34 @@ else
                     </div>
                 }
                 <div class="campo"><label for="dia">Día</label><input id="dia" class="input" type="date" @bind="dia" @bind:after="CargarCajas" /></div>
-                @if (PuedeSupervisar && (cajas.Count + sinCaja.Count) > 0)
+                @if ((cajas.Count + sinCaja.Count) > 0)
                 {
-                    <a class="btn" href="@UrlImprimirTodas(abiertas: false)" target="_blank"
-                       title="Un ticket por caja, con el total al final">@(filtroPuesto == null ? "Imprimir todas" : "Imprimir esta caja")</a>
+                    @* Si es de hoy, deja un corte: el próximo parcial muestra lo vendido desde acá *@
+                    <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: false)" target="_blank"
+                       title="@(dia == DateTime.Today ? "Arqueo parcial: deja un corte para el próximo" : "Un ticket por caja")">
+                        @(!PuedeSupervisar ? "Imprimir" : filtroPuesto == null ? "Imprimir todas" : "Imprimir esta caja")
+                    </a>
                 }
             </div>
         </header>
 
-        @if (VariosPuestos)
+        @if (VariosPuestos && PuestosFiltro.Any())
         {
-            @* Filtro visual por caja de la sucursal *@
+            @* Filtro visual por caja de la sucursal. El cajero ve solo la caja en la que está. *@
             <div class="filtro-cajas" role="group" aria-label="Filtrar por caja">
-                <button type="button" class="filtro-caja @(filtroPuesto == null ? "activo" : "")" aria-pressed="@(filtroPuesto == null ? "true" : "false")"
-                        @onclick="() => filtroPuesto = null">
-                    <span class="filtro-caja-nombre">Todas</span>
-                    <span class="filtro-caja-cant">@(cajas.Count + sinCaja.Count)</span>
-                </button>
-                @foreach (var p in puestos)
+                @if (PuedeSupervisar)
+                {
+                    <button type="button" class="filtro-caja @(filtroPuesto == null ? "activo" : "")" aria-pressed="@(filtroPuesto == null ? "true" : "false")"
+                            @onclick="() => filtroPuesto = null">
+                        <span class="filtro-caja-nombre">Todas</span>
+                        <span class="filtro-caja-cant">@(cajas.Count + sinCaja.Count)</span>
+                    </button>
+                }
+                @foreach (var p in PuestosFiltro)
                 {
                     var cant = cajas.Count(x => x.PuestoCajaId == p.Id) + sinCaja.Count(x => x.PuestoCajaId == p.Id);
                     <button type="button" class="filtro-caja @(filtroPuesto == p.Id ? "activo" : "")" aria-pressed="@(filtroPuesto == p.Id ? "true" : "false")"
-                            @onclick="() => filtroPuesto = p.Id" title="@(p.Ocupada ? $"En uso por {p.Usuario}" : "Libre")">
+                            @onclick="() => { if (PuedeSupervisar) filtroPuesto = p.Id; }" title="@(p.Ocupada ? $"En uso por {p.Usuario}" : "Libre")">
                         <span class="filtro-caja-punto @(p.Ocupada ? "en-uso" : "")" aria-hidden="true"></span>
                         <span class="filtro-caja-nombre">@p.Titulo</span>
                         <span class="filtro-caja-cant">@cant</span>
@@ -276,11 +282,11 @@ else
                         @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
                         <td class="mono">@c.Usuario</td>
                         <td>@(SucursalEnVista?.Nombre ?? "")</td>
-                        <td>@(c.PuestoCajaId == null ? "—" : c.FechaApertura.ToString("HH:mm"))</td>
+                        <td>@(c.EsDeCaja || c.FueraDeCaja || c.PuestoCajaId == null ? "Todo el día" : c.FechaApertura.ToString("HH:mm"))</td>
                         <td>
                             @if (c.EnUso) { <span class="cert-chip cert-aviso">En uso</span> }
-                            else if (c.PuestoCajaId != null) { <span>@c.FechaCierre?.ToString("HH:mm")</span> }
-                            else { <span class="cert-chip">Sin caja</span> }
+                            else if (c.FueraDeCaja || c.PuestoCajaId == null) { <span class="cert-chip">Sin caja</span> }
+                            else { <span>—</span> }
                         </td>
                         <td class="der fuerte">@Pesos(c.Ventas)</td>
                         <td class="der">—</td>
@@ -307,7 +313,7 @@ else
                         <td class="der @(c.Diferencia < 0 ? "negativo" : "")">@(c.Diferencia == null ? "—" : Pesos(c.Diferencia.Value))</td>
                         <td class="acciones">
                             <button type="button" class="btn btn-chico" @onclick="() => VerCaja(c)">Ver arqueo</button>
-                            <a class="btn btn-chico" href="/imprimir/arqueo/@c.Id" target="_blank">Imprimir</a>
+                            <a class="btn btn-chico" href="/imprimir/arqueo/@c.Id@(c.Abierta ? "?corte=" + Guid.NewGuid() : "")" target="_blank">Imprimir</a>
                         </td>
                     </tr>
                 }
@@ -325,10 +331,10 @@ else
                  @onclick:stopPropagation="true">
             <header class="modal-cab">
                 <div>
-                    <h2>Caja de @cajaVista.Usuario</h2>
-                    @if (cajaVista.Id == Guid.Empty && cajaVista.PuestoCajaId != null)
+                    <h2>@(cajaVista.Id == Guid.Empty && cajaVista.EsDeCaja ? cajaVista.Puesto : "Caja de " + cajaVista.Usuario)</h2>
+                    @if (cajaVista.Id == Guid.Empty && cajaVista.EsDeCaja)
                     {
-                        <span class="sub">@cajaVista.Puesto · @cajaVista.FechaApertura.ToString("dd/MM HH:mm") a @(cajaVista.EnUso ? "ahora" : cajaVista.FechaCierre?.ToString("HH:mm"))</span>
+                        <span class="sub">Todo el día @cajaVista.FechaApertura.ToString("dd/MM") · @cajaVista.Usuario</span>
                     }
                     else if (cajaVista.Id == Guid.Empty)
                     {
@@ -437,6 +443,8 @@ else
     private List<PuestoCaja> puestos = new();
     private Guid? filtroPuesto;
     private bool VariosPuestos => puestos.Count > 1;
+    /// <summary>Cajas del filtro: el supervisor ve todas; el cajero, solo en la que está ahora.</summary>
+    private IEnumerable<PuestoCaja> PuestosFiltro => PuedeSupervisar ? puestos : puestos.Where(p => p.Id == sesion.Caja?.CajaId);
 
     private IEnumerable<CajaTurno> CajasVisibles => filtroPuesto == null ? cajas : cajas.Where(c => c.PuestoCajaId == filtroPuesto);
     private IEnumerable<CajaTurno> SinCajaVisibles => filtroPuesto == null ? sinCaja : sinCaja.Where(c => c.PuestoCajaId == filtroPuesto);
@@ -477,6 +485,7 @@ else
         }
         catch (Exception) { puestos = new(); }
         if (filtroPuesto != null && !puestos.Any(p => p.Id == filtroPuesto)) filtroPuesto = null;
+        if (!PuedeSupervisar) filtroPuesto = VariosPuestos ? sesion.Caja?.CajaId : null;
     }
 
     /// <summary>Impresión de todas las cajas (un ticket por caja): la sucursal y caja que se están mirando.</summary>
@@ -489,6 +498,8 @@ else
         var url = "/imprimir/arqueo-cajas?" + (abiertas ? "abiertas=true" : "dia=" + dia.ToString("yyyy-MM-dd"));
         if (suc != null) url += "&sucursal=" + suc;
         if (!abiertas && filtroPuesto != null) url += "&caja=" + filtroPuesto;
+        // Parcial de hoy: deja un corte (el próximo parcial muestra lo vendido desde acá).
+        if (abiertas || dia == DateTime.Today) url += "&corte=" + Guid.NewGuid();
         return url;
     }
 
@@ -507,12 +518,25 @@ else
         await CargarPuestosAsync();
         if (!PuedeSupervisar)
         {
-            // Un cajero de una sucursal sin caja ve sus propios movimientos del día.
-            cajas = new();
-            sinCaja = ExigeCaja ? new()
-                : VariosPuestos
-                    ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sesion.SucursalId, sesion.PuntoVenta, sesion.UsuarioId)
+            // El cajero ve solo la caja en la que está ahora (todo lo del día); si no está en ninguna, lo suyo.
+            var miCaja = VariosPuestos ? sesion.Caja?.CajaId : null;
+            if (ExigeCaja)
+            {
+                sinCaja = new();
+                cajas = (await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId))
+                    .Where(t => miCaja != null && aperturaPorCaja
+                        ? t.EsDeCaja && t.PuestoCajaId == miCaja
+                        : !t.EsDeCaja && t.UsuarioId == sesion.UsuarioId)
+                    .ToList();
+            }
+            else
+            {
+                cajas = new();
+                sinCaja = VariosPuestos
+                    ? await Puestos.MovimientosPorCajaAsync(sesion.Cs, dia, sesion.SucursalId, sesion.PuntoVenta,
+                        puestoCajaId: miCaja, usuarioSinCaja: miCaja == null ? sesion.UsuarioId : (Guid?)null)
                     : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+            }
             await CargarResumenAsync();
             return;
         }
@@ -527,7 +551,7 @@ else
             await Puestos.AsignarPuestoAsync(sesion.Cs, cajas, dia, SucursalEnVista.Id);
         sinCaja = !SinCajaEnVista ? new()
             : VariosPuestos
-                ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, SucursalEnVista.Id, SucursalEnVista.PuntoVenta)
+                ? await Puestos.MovimientosPorCajaAsync(sesion.Cs, dia, SucursalEnVista.Id, SucursalEnVista.PuntoVenta)
                 : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta);
         await CargarResumenAsync();
     }

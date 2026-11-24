@@ -29,12 +29,12 @@ else
         @for (var i = 0; i < tickets.Count; i++)
         {
             var t = tickets[i];
-            <TicketArqueo A="t.A" Titulo="@t.Titulo" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
+            <TicketArqueo A="t.A" Parcial="t.Parcial" CorteHora="t.CorteHora" Titulo="@t.Titulo" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
                           Pie="@t.Pie" Corte="@(i < tickets.Count - 1 || total != null)" />
         }
         @if (total != null)
         {
-            <TicketArqueo A="total" Titulo="@($"TOTAL DE {tickets.Count} CAJAS")" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
+            <TicketArqueo A="total" CorteHora="totalCorte" Titulo="@($"TOTAL DE {tickets.Count} CAJAS")" Comercio="@sesion.Tenant.Nombre" PuntoVenta="PuntoVenta"
                           Pie="@($"{NombreSucursal} · Imprimió: {sesion.Nombre} · {DateTime.Now:dd/MM/yyyy HH:mm}")" />
         }
         <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
@@ -51,11 +51,15 @@ else
     /// <summary>Solo las cajas abiertas ahora ("Imprimir parcial").</summary>
     [SupplyParameterFromQuery(Name = "abiertas")] public bool Abiertas { get; set; }
 
-    private record Ticket(ArqueoResumen A, string Titulo, string Pie);
+    /// <summary>Lote del corte: viene en el link de imprimir y deja un corte en cada caja (arqueo parcial).</summary>
+    [SupplyParameterFromQuery(Name = "corte")] public Guid? Lote { get; set; }
+
+    private record Ticket(ArqueoResumen A, string Titulo, string Pie, ArqueoResumen Parcial = null, DateTime? CorteHora = null);
 
     private SesionActual sesion;
     private List<Ticket> tickets;
     private ArqueoResumen total;
+    private DateTime? totalCorte;
     private string error;
     private Sucursal sucursal;
 
@@ -65,11 +69,19 @@ else
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
-        if (!(sesion.EsSupervisor || sesion.EsAdmin)) { error = "Solo un supervisor o administrador puede imprimir todas las cajas."; return; }
+        var supervisa = sesion.EsSupervisor || sesion.EsAdmin;
+        // El cajero imprime solo la caja en la que está (o lo suyo "sin caja"). En una pestaña nueva
+        // la sesión todavía no sabe en qué caja está: se busca.
+        if (sesion.Caja == null)
+        {
+            try { if (await Puestos.ExisteAsync(sesion.Cs)) sesion.Caja = await Puestos.ActivaDeUsuarioAsync(sesion.Cs, sesion.UsuarioId); }
+            catch (Exception) { }
+        }
+        if (!supervisa) PuestoId = sesion.Caja?.CajaId;
 
         var dia = DateTime.TryParse(Dia, out var d) ? d.Date : DateTime.Today;
         // El supervisor, solo su sucursal.
-        Guid? sucId = sesion.EsSupervisor && !sesion.EsAdmin
+        Guid? sucId = !sesion.EsAdmin
             ? (sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId)
             : SucursalId;
 
@@ -92,9 +104,11 @@ else
         if (sucursal != null && !sucursal.ExigeCaja)
         {
             // Sucursal sin apertura de caja: lo vendido por ingreso a cada caja (o por usuario si tiene una sola).
+            // Una fila por caja con todo lo del día (desde las 00:00), más lo facturado "sin caja".
             filas = varias
-                ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sucursal.Id, sucursal.PuntoVenta)
-                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sucursal.PuntoVenta);
+                ? await Puestos.MovimientosPorCajaAsync(sesion.Cs, dia, sucursal.Id, sucursal.PuntoVenta,
+                    puestoCajaId: PuestoId, usuarioSinCaja: !supervisa && PuestoId == null ? sesion.UsuarioId : (Guid?)null)
+                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sucursal.PuntoVenta, supervisa ? (Guid?)null : sesion.UsuarioId);
             // Acá no se abren cajas: "las abiertas" no aplica y siempre sale todo lo del día, con y sin CAE.
         }
         else
@@ -103,6 +117,10 @@ else
             if (varias) await Puestos.AsignarPuestoAsync(sesion.Cs, filas, dia, sucursal.Id);
         }
         if (PuestoId != null) filas = filas.Where(f => f.PuestoCajaId == PuestoId).ToList();
+        // Cajero: solo su caja; o, si no está en ninguna, solo lo suyo.
+        if (!supervisa)
+            filas = filas.Where(f => PuestoId != null ? f.PuestoCajaId == PuestoId && (f.EsDeCaja || f.UsuarioId == sesion.UsuarioId)
+                                                      : f.UsuarioId == sesion.UsuarioId && !f.EsDeCaja).ToList();
 
         var orden = puestos.Select((p, i) => (p.Id, i)).ToDictionary(x => x.Id, x => x.i);
         tickets = new();
@@ -111,17 +129,32 @@ else
                      .ThenBy(f => f.Usuario)
                      .ThenBy(f => f.FechaApertura))
         {
+            // Arqueo parcial: deja un corte y muestra también lo vendido desde el corte anterior.
+            ArqueoResumen parcial = null;
+            DateTime? corteHora = null;
+            if (Lote != null && (dia == DateTime.Today || Abiertas))
+            {
+                var corte = await Caja.RegistrarCorteAsync(sesion.Cs, f, Lote.Value, sesion.UsuarioId);
+                if (corte != null)
+                {
+                    corteHora = corte.Value.Hasta;
+                    f.FechaCierre = corte.Value.Hasta;   // el acumulado llega hasta el corte
+                    if (corte.Value.Desde != null)
+                        parcial = await Caja.ArqueoAsync(sesion.Cs, CajaService.Tramo(f, corte.Value.Desde.Value, corte.Value.Hasta));
+                }
+            }
             var a = await Caja.ArqueoAsync(sesion.Cs, f);
             var titulo = f.FueraDeCaja ? $"Sin caja · {f.Usuario}" : f.Puesto ?? ("Cajero " + f.Usuario);
             if (sucursal == null && !string.IsNullOrEmpty(f.Sucursal)) titulo += " · " + f.Sucursal;
             var pie = f.EsDeCaja
                 ? $"Abrió: {f.Usuario}{(f.UsuarioCierre != null ? " · Cerró: " + f.UsuarioCierre : "")}"
                 : $"Cajero: {f.Usuario}";
-            tickets.Add(new Ticket(a, titulo, pie));
+            tickets.Add(new Ticket(a, titulo, pie + " · Imprimió: " + sesion.Nombre, parcial, corteHora));
         }
 
         if (tickets.Count > 1)
         {
+            totalCorte = tickets.Max(t => t.CorteHora);
             total = CajaService.Sumar(tickets.Select(t => t.A));
             total.Turno = new CajaTurno
             {

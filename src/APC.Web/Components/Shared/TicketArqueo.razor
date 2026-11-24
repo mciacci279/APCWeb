@@ -4,9 +4,36 @@
         <strong class="imp-razon">ARQUEO DE CAJA</strong>
         @if (!string.IsNullOrEmpty(Titulo)) { <strong>@Titulo</strong> }
         <span>@Comercio · Pto. Vta. @PuntoVenta.ToString("0000")</span>
-        <span>Apertura @A.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm")</span>
-        <span>@(A.Turno.FechaCierre != null ? "Cierre " + A.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm") : "PARCIAL — turno abierto")</span>
+        <span>@(A.Turno.FechaApertura.TimeOfDay == TimeSpan.Zero ? "Desde el inicio del día " + A.Turno.FechaApertura.ToString("dd/MM/yyyy") : "Apertura " + A.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm"))</span>
+        <span>@(CorteHora != null ? "PARCIAL — corte " + CorteHora.Value.ToString("dd/MM/yyyy HH:mm")
+               : A.Turno.FechaCierre != null && A.Turno.FechaCierre <= DateTime.Now ? "Cierre " + A.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm")
+               : "PARCIAL — " + DateTime.Now.ToString("dd/MM/yyyy HH:mm"))</span>
     </header>
+    @if (Parcial != null)
+    {
+        @* Lo vendido desde el corte anterior hasta este *@
+        <p class="imp-seccion">DESDE EL PARCIAL ANTERIOR<br />@Parcial.Turno.FechaApertura.ToString("HH:mm") a @Parcial.Turno.FechaCierre?.ToString("HH:mm")</p>
+        <table class="imp-renglones">
+            <tbody>
+                @if (Parcial.Grupos.Count == 0)
+                {
+                    <tr><td colspan="3">Sin movimientos.</td></tr>
+                }
+                @foreach (var g in Parcial.Grupos)
+                {
+                    <tr><td><strong>@g.Titulo</strong></td><td class="der"><strong>@g.Comprobantes</strong></td><td class="der"><strong>@g.Total.ToString("N2", Ar)</strong></td></tr>
+                    @foreach (var f in g.Formas)
+                    {
+                        <tr><td>&nbsp;&nbsp;@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@f.Total.ToString("N2", Ar)</td></tr>
+                    }
+                }
+            </tbody>
+        </table>
+        <section class="imp-totales">
+            <div class="imp-total"><span>Total del parcial</span><span>$ @Parcial.Ventas.ToString("N2", Ar)</span></div>
+        </section>
+        <p class="imp-seccion">ACUMULADO @(A.Turno.FechaApertura.TimeOfDay == TimeSpan.Zero ? "DEL DÍA" : "DESDE LA APERTURA")</p>
+    }
     <table class="imp-renglones">
         <thead><tr><th>Tipo / forma de pago</th><th class="der">Cant.</th><th class="der">Total</th></tr></thead>
         <tbody>
@@ -49,6 +76,10 @@
     [Parameter] public string Comercio { get; set; }
     [Parameter] public int PuntoVenta { get; set; }
     [Parameter] public string Pie { get; set; }
+    /// <summary>Arqueo desde el parcial anterior hasta este corte (si hubo un parcial antes).</summary>
+    [Parameter] public ArqueoResumen Parcial { get; set; }
+    /// <summary>Hora del corte que deja esta impresión (arqueo parcial).</summary>
+    [Parameter] public DateTime? CorteHora { get; set; }
     /// <summary>Corta la hoja después de este ticket (al imprimir varias cajas juntas).</summary>
     [Parameter] public bool Corte { get; set; }
 }
