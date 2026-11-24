@@ -49,7 +49,9 @@
     </section>
 
     <div class="acceso-formulario">
-        <form class="tarjeta-acceso" method="post" action="/cuenta/ingresar" data-enhance="false">
+        @* Mientras se valida y se redirige, un aviso a pantalla completa (lo muestra app.js al enviar) *@
+        <PantallaEspera Id="espera-ingreso" Titulo="Ingresando a Factu360…" Detalle="Estamos verificando tus datos y preparando tu espacio de trabajo." />
+        <form class="tarjeta-acceso" method="post" action="/cuenta/ingresar" data-enhance="false" data-espera="espera-ingreso">
             <AntiforgeryToken />
 
             <h1>Ingresar</h1>

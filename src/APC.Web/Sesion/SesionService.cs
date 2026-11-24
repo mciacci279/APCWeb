@@ -40,6 +40,15 @@ public class SesionActual
         return Modulo.EnLista(delRol, clave, Modulo.PorDefectoRol);
     }
     public Guid SucursalId => Sucursal?.Id ?? Guid.Empty;
+
+    /// <summary>
+    /// Caja en la que trabaja el usuario, si la sucursal tiene varias (ver PuestoCajaService).
+    /// Null si la sucursal tiene una sola o ninguna, o si el administrador entró sin caja.
+    /// </summary>
+    public PuestoCajaSesion Caja { get; set; }
+
+    /// <summary>El administrador eligió entrar sin tomar una caja (solo para consultar).</summary>
+    public bool SinCaja { get; set; }
 }
 
 /// <summary>Datos del usuario logueado y de su empresa, leídos de la cookie.</summary>

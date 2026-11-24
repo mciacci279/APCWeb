@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject CajaService Caja
 @inject SucursalService SucursalSrv
+@inject PuestoCajaService Puestos
 
 <PageTitle>Arqueo de caja · Factu360</PageTitle>
 
@@ -18,7 +19,8 @@ else if (turno == null)
     <header class="fact-head">
         <div class="fact-titulo">
             <h1>Arqueo de caja</h1>
-            <span class="sub">@(ExigeCaja ? "No tenés un turno abierto" : "Esta sucursal no pide abrir caja: abajo están todos los movimientos del día")</span>
+            <span class="sub">@(!ExigeCaja ? "Esta sucursal no pide abrir caja: abajo están todos los movimientos del día"
+                                : PorCaja ? $"{sesion.Caja.TituloCaja} está cerrada" : "No tenés un turno abierto")</span>
         </div>
     </header>
 
@@ -38,25 +40,45 @@ else if (turno == null)
     @if (ExigeCaja)
     {
     <section class="panel apertura">
-        <h2>Abrir caja</h2>
+        <h2>@(PorCaja ? $"Abrir {sesion.Caja.TituloCaja}" : "Abrir caja")</h2>
+        @if (PorCaja)
+        {
+            <p class="sub">Cada caja se abre y se cierra por separado, con su propio monto para el cambio. Queda abierta aunque cambie el cajero, hasta que alguien la cierre.</p>
+        }
         <div class="campo">
             <label for="monto-inicial">Monto inicial en efectivo</label>
             <input id="monto-inicial" class="input mono" type="number" step="0.01" min="0" @bind="montoInicial" />
         </div>
-        <button type="button" class="btn btn-primario btn-grande" @onclick="Abrir">Abrir caja</button>
+        <button type="button" class="btn btn-primario btn-grande" disabled="@abriendo" @onclick="Abrir">@(PorCaja ? $"Abrir {sesion.Caja.TituloCaja}" : "Abrir caja")</button>
     </section>
     }
 }
 else
 {
     <header class="fact-head">
-        <div class="fact-titulo"><h1>Arqueo de caja</h1><span class="sub">Turno abierto por @sesion.Nombre · @turno.FechaApertura.ToString("dd/MM HH:mm")</span></div>
+        <div class="fact-titulo">
+            <h1>Arqueo de caja@(turno.EsDeCaja ? " · " + turno.Puesto : "")</h1>
+            <span class="sub">@(turno.EsDeCaja ? $"Abierta por {turno.Usuario} · {turno.FechaApertura:dd/MM HH:mm}" : $"Turno abierto por {sesion.Nombre} · {turno.FechaApertura:dd/MM HH:mm}")</span>
+        </div>
         <div class="fila-btns">
             <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
-            <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
+            @if (PuedeSupervisar)
+            {
+                @* Supervisor y administrador: su caja o todas las abiertas de la sucursal, un ticket por caja *@
+                <a class="btn" href="@($"/imprimir/arqueo/{turno.Id}?corte={Guid.NewGuid()}")" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
+                <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: true)" target="_blank">Imprimir todas las cajas</a>
+            }
+            else
+            {
+                <a class="btn" href="@($"/imprimir/arqueo/{turno.Id}?corte={Guid.NewGuid()}")" target="_blank">Imprimir parcial</a>
+            }
         </div>
     </header>
 
+    @if (PorCaja && !turno.EsDeCaja)
+    {
+        <p class="alerta alerta-aviso">Este turno se abrió antes de que la apertura fuera por caja. Cerralo como siempre: la próxima apertura ya va a ser de @sesion.Caja.TituloCaja.</p>
+    }
     <div class="kpis">
         <div class="kpi"><span class="sub">Monto inicial</span><span class="mono kpi-num">@Pesos(turno.MontoInicial)</span></div>
         <div class="kpi"><span class="sub">Facturas</span><span class="mono kpi-num">@Pesos(arqueo.VentasFiscales)</span><span class="sub">@arqueo.CantidadFiscales comprobantes</span></div>
@@ -124,7 +146,9 @@ else
             </div>
             @if (confirmarCierre)
             {
-                <p class="alerta alerta-aviso">¿Cerrar el turno? Después de cerrar no se puede seguir facturando hasta abrir otro.</p>
+                <p class="alerta alerta-aviso">@(turno.EsDeCaja
+                    ? $"¿Cerrar {turno.Puesto}? Nadie va a poder facturar en esta caja hasta que se vuelva a abrir."
+                    : "¿Cerrar el turno? Después de cerrar no se puede seguir facturando hasta abrir otro.")</p>
                 <div class="fila-btns">
                     <button type="button" class="btn" @onclick="() => confirmarCierre = false">Cancelar</button>
                     <button type="button" class="btn btn-rojo" @onclick="Cerrar">Sí, cerrar</button>
@@ -132,13 +156,13 @@ else
             }
             else
             {
-                <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarCierre = true">Cerrar turno</button>
+                <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarCierre = true">@(turno.EsDeCaja ? $"Cerrar {turno.Puesto}" : "Cerrar turno")</button>
             }
         </aside>
     </div>
 }
 
-@if (!cargando && (PuedeSupervisar || !ExigeCaja))
+@if (!cargando)
 {
     <section class="panel" aria-label="Cajas del día">
         <header class="fact-head">
@@ -161,24 +185,109 @@ else
                     </div>
                 }
                 <div class="campo"><label for="dia">Día</label><input id="dia" class="input" type="date" @bind="dia" @bind:after="CargarCajas" /></div>
+                @if ((cajas.Count + sinCaja.Count) > 0)
+                {
+                    @* Si es de hoy, deja un corte: el próximo parcial muestra lo vendido desde acá *@
+                    <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: false)" target="_blank"
+                       title="@(dia == DateTime.Today ? "Arqueo parcial: deja un corte para el próximo" : "Un ticket por caja")">
+                        @(!PuedeSupervisar ? "Imprimir" : filtroPuesto == null ? "Imprimir todas" : "Imprimir esta caja")
+                    </a>
+                }
             </div>
         </header>
 
-        <table class="tabla">
-            <thead><tr><th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
-            <tbody>
-                @if (cajas.Count == 0 && sinCaja.Count == 0)
+        @if (VariosPuestos && PuestosFiltro.Any())
+        {
+            @* Filtro visual por caja de la sucursal. El cajero ve solo la caja en la que está. *@
+            <div class="filtro-cajas" role="group" aria-label="Filtrar por caja">
+                @if (PuedeSupervisar)
                 {
-                    <tr><td colspan="7" class="sub">@(SinCajaEnVista ? "No hubo ventas ese día." : "No se abrió ninguna caja ese día.")</td></tr>
+                    <button type="button" class="filtro-caja @(filtroPuesto == null ? "activo" : "")" aria-pressed="@(filtroPuesto == null ? "true" : "false")"
+                            @onclick="() => filtroPuesto = null">
+                        <span class="filtro-caja-nombre">Todas</span>
+                        <span class="filtro-caja-cant">@(cajas.Count + sinCaja.Count)</span>
+                    </button>
                 }
-                @* Sucursal que no exige caja: una fila por usuario con todo lo que vendió en el día *@
-                @foreach (var c in sinCaja)
+                @foreach (var p in PuestosFiltro)
                 {
-                    <tr class="@(cajaVista != null && cajaVista.Id == Guid.Empty && cajaVista.UsuarioId == c.UsuarioId ? "fila-sel" : "")">
+                    var cant = cajas.Count(x => x.PuestoCajaId == p.Id) + sinCaja.Count(x => x.PuestoCajaId == p.Id);
+                    <button type="button" class="filtro-caja @(filtroPuesto == p.Id ? "activo" : "")" aria-pressed="@(filtroPuesto == p.Id ? "true" : "false")"
+                            @onclick="() => { if (PuedeSupervisar) filtroPuesto = p.Id; }" title="@(p.Ocupada ? $"En uso por {p.Usuario}" : "Libre")">
+                        <span class="filtro-caja-punto @(p.Ocupada ? "en-uso" : "")" aria-hidden="true"></span>
+                        <span class="filtro-caja-nombre">@p.Titulo</span>
+                        <span class="filtro-caja-cant">@cant</span>
+                    </button>
+                }
+            </div>
+        }
+
+        @* Resumen de lo que se está mirando: sigue al filtro de caja (y al de sucursal y día). *@
+        @if (resumen == null)
+        {
+            <div class="kpis kpis-chicos" aria-hidden="true">
+                @for (var i = 0; i < 5; i++) { <div class="kpi"><span class="sk" style="width:60%;height:12px"></span><span class="sk" style="width:80%;height:24px;margin-top:8px"></span></div> }
+            </div>
+        }
+        else
+        {
+            var r = ResumenVisible;
+            <div class="kpis kpis-chicos resumen-dia" @key="@(filtroPuesto?.ToString() ?? "todas")">
+                <div class="kpi"><span class="sub">Facturas</span><span class="mono kpi-num">@Pesos(r.VentasFiscales)</span><span class="sub">@r.CantidadFiscales comprobantes</span></div>
+                <div class="kpi"><span class="sub">Notas de pedido</span><span class="mono kpi-num">@Pesos(r.VentasNoFiscales)</span><span class="sub">@r.CantidadNoFiscales comprobantes</span></div>
+                <div class="kpi"><span class="sub">Notas de crédito</span><span class="mono kpi-num">@Pesos(r.NotasCredito)</span></div>
+                <div class="kpi"><span class="sub">Ingresos / retiros</span><span class="mono kpi-num">@Pesos(r.IngresosEgresos)</span></div>
+                <div class="kpi kpi-oscuro"><span class="sub-claro">Total vendido (neto)</span><span class="mono kpi-num">@Pesos(r.Ventas)</span><span class="sub-claro">Efectivo esperado @Pesos(r.EfectivoEsperado)</span></div>
+            </div>
+
+            <details class="resumen-detalle" open="@(r.Grupos.Count > 0)">
+                <summary>Detalle por tipo y forma de pago @(FiltroTitulo)</summary>
+                <div class="tabla-scroll">
+                    <table class="tabla">
+                        <thead><tr><th>Tipo / forma de pago</th><th class="der">Cantidad de comprobantes</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (r.Grupos.Count == 0)
+                            {
+                                <tr><td colspan="3" class="sub">Sin movimientos.</td></tr>
+                            }
+                            @foreach (var g in r.Grupos)
+                            {
+                                <tr class="fila-grupo"><td>@g.Titulo</td><td class="der">@g.Comprobantes</td><td class="der">@Pesos(g.Total)</td></tr>
+                                @foreach (var fp in g.Formas)
+                                {
+                                    <tr><td class="sangria">@fp.FormaPago</td><td class="der">@fp.Comprobantes</td><td class="der">@Pesos(fp.Total)</td></tr>
+                                }
+                            }
+                            @if (r.Grupos.Count > 0)
+                            {
+                                <tr class="fila-total"><td>Total vendido (neto)</td><td class="der">@r.CantidadComprobantes</td><td class="der">@Pesos(r.Ventas)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+
+        <h3 class="resumen-sub">@(SinCajaEnVista && !VariosPuestos ? "Por usuario" : "Por caja y cajero")</h3>
+        <table class="tabla">
+            <thead><tr>@if (VariosPuestos) { <th>Caja</th> }<th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+                @if (!CajasVisibles.Any() && !SinCajaVisibles.Any())
+                {
+                    <tr><td colspan="8" class="sub">@(filtroPuesto != null ? "Nadie trabajó en esa caja ese día." : SinCajaEnVista ? "No hubo ventas ese día." : "No se abrió ninguna caja ese día.")</td></tr>
+                }
+                @* Sucursal que no exige caja: una fila por usuario (o por cada ingreso a una caja, si hay varias) *@
+                @foreach (var c in SinCajaVisibles)
+                {
+                    <tr class="@(ReferenceEquals(cajaVista, c) ? "fila-sel" : "")">
+                        @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
                         <td class="mono">@c.Usuario</td>
                         <td>@(SucursalEnVista?.Nombre ?? "")</td>
-                        <td>—</td>
-                        <td><span class="cert-chip">Sin caja</span></td>
+                        <td>@(c.EsDeCaja || c.FueraDeCaja || c.PuestoCajaId == null ? "Todo el día" : c.FechaApertura.ToString("HH:mm"))</td>
+                        <td>
+                            @if (c.EnUso) { <span class="cert-chip cert-aviso">En uso</span> }
+                            else if (c.FueraDeCaja || c.PuestoCajaId == null) { <span class="cert-chip">Sin caja</span> }
+                            else { <span>—</span> }
+                        </td>
                         <td class="der fuerte">@Pesos(c.Ventas)</td>
                         <td class="der">—</td>
                         <td class="acciones">
@@ -186,10 +295,14 @@ else
                         </td>
                     </tr>
                 }
-                @foreach (var c in cajas)
+                @foreach (var c in CajasVisibles)
                 {
                     <tr class="@(cajaVista?.Id == c.Id ? "fila-sel" : "")">
-                        <td class="mono">@c.Usuario</td>
+                        @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
+                        <td class="mono" title="@(c.EsDeCaja ? "Abrió" + (c.UsuarioCierre != null ? " / cerró" : "") : "")">
+                            @c.Usuario
+                            @if (c.EsDeCaja && c.UsuarioCierre != null && c.UsuarioCierre != c.Usuario) { <span class="sub"> → @c.UsuarioCierre</span> }
+                        </td>
                         <td>@c.Sucursal</td>
                         <td>@c.FechaApertura.ToString("HH:mm")</td>
                         <td>
@@ -200,7 +313,7 @@ else
                         <td class="der @(c.Diferencia < 0 ? "negativo" : "")">@(c.Diferencia == null ? "—" : Pesos(c.Diferencia.Value))</td>
                         <td class="acciones">
                             <button type="button" class="btn btn-chico" @onclick="() => VerCaja(c)">Ver arqueo</button>
-                            <a class="btn btn-chico" href="/imprimir/arqueo/@c.Id" target="_blank">Imprimir</a>
+                            <a class="btn btn-chico" href="@($"/imprimir/arqueo/{c.Id}" + (c.Abierta ? "?corte=" + Guid.NewGuid() : ""))" target="_blank">Imprimir</a>
                         </td>
                     </tr>
                 }
@@ -218,8 +331,12 @@ else
                  @onclick:stopPropagation="true">
             <header class="modal-cab">
                 <div>
-                    <h2>Caja de @cajaVista.Usuario</h2>
-                    @if (cajaVista.Id == Guid.Empty)
+                    <h2>@(cajaVista.Id == Guid.Empty && cajaVista.EsDeCaja ? cajaVista.Puesto : "Caja de " + cajaVista.Usuario)</h2>
+                    @if (cajaVista.Id == Guid.Empty && cajaVista.EsDeCaja)
+                    {
+                        <span class="sub">Todo el día @cajaVista.FechaApertura.ToString("dd/MM") · @cajaVista.Usuario</span>
+                    }
+                    else if (cajaVista.Id == Guid.Empty)
                     {
                         <span class="sub">Sin caja · todo el día @cajaVista.FechaApertura.ToString("dd/MM")</span>
                     }
@@ -292,6 +409,11 @@ else
     private decimal movMonto;
     private string movConcepto;
     private bool confirmarCierre;
+    private bool abriendo;
+
+    /// <summary>Ya se corrió el script 28: si el usuario está en una caja de la sucursal, se abre y cierra esa caja.</summary>
+    private bool aperturaPorCaja;
+    private bool PorCaja => aperturaPorCaja && ExigeCaja && sesion?.Caja != null;
 
     // ---- Supervisión: el supervisor ve las cajas de su sucursal; el administrador, todas ----
     private List<CajaTurno> cajas = new();
@@ -317,6 +439,70 @@ else
 
     private bool SinCajaEnVista => SucursalEnVista?.ExigeCaja == false;
 
+    // ---- filtro por caja de la sucursal (si tiene varias: ver PuestoCajaService) ----
+    private List<PuestoCaja> puestos = new();
+    private Guid? filtroPuesto;
+    private bool VariosPuestos => puestos.Count > 1;
+    /// <summary>Cajas del filtro: el supervisor ve todas; el cajero, solo en la que está ahora.</summary>
+    private IEnumerable<PuestoCaja> PuestosFiltro => PuedeSupervisar ? puestos : puestos.Where(p => p.Id == sesion.Caja?.CajaId);
+
+    private IEnumerable<CajaTurno> CajasVisibles => filtroPuesto == null ? cajas : cajas.Where(c => c.PuestoCajaId == filtroPuesto);
+    private IEnumerable<CajaTurno> SinCajaVisibles => filtroPuesto == null ? sinCaja : sinCaja.Where(c => c.PuestoCajaId == filtroPuesto);
+
+    // ---- Resumen del día: el arqueo de cada fila se calcula una vez y se suma según el filtro ----
+    /// <summary>Arqueo de cada fila (turnos y movimientos sin caja), por referencia. Null mientras carga.</summary>
+    private Dictionary<CajaTurno, ArqueoResumen> resumen;
+
+    private string FiltroTitulo => filtroPuesto == null ? "" : "· " + (puestos.FirstOrDefault(p => p.Id == filtroPuesto)?.Titulo ?? "");
+
+    private ArqueoResumen ResumenVisible => CajaService.Sumar(CajasVisibles.Concat(SinCajaVisibles)
+        .Select(c => resumen != null && resumen.TryGetValue(c, out var a) ? a : null).Where(a => a != null));
+
+    private async Task CargarResumenAsync()
+    {
+        resumen = null;
+        StateHasChanged();
+        var d = new Dictionary<CajaTurno, ArqueoResumen>(ReferenceEqualityComparer.Instance);
+        foreach (var c in cajas.Concat(sinCaja))
+        {
+            try { d[c] = await Caja.ArqueoAsync(sesion.Cs, c); }
+            catch (Exception) { /* una fila con error no tumba el resumen */ }
+        }
+        resumen = d;
+    }
+
+
+    /// <summary>Las cajas de la sucursal que se está mirando. Sin el script 27 o sin sucursal elegida, ninguna.</summary>
+    private async Task CargarPuestosAsync()
+    {
+        puestos = new();
+        var suc = SucursalEnVista;
+        if (suc == null || (PuedeSupervisar && sesion.EsAdmin && string.IsNullOrEmpty(sucursalFiltro) && sucursales.Count > 1)) return;
+        try
+        {
+            if (await Puestos.ExisteAsync(sesion.Cs))
+                puestos = await Puestos.ListarAsync(sesion.Cs, suc.Id);
+        }
+        catch (Exception) { puestos = new(); }
+        if (filtroPuesto != null && !puestos.Any(p => p.Id == filtroPuesto)) filtroPuesto = null;
+        if (!PuedeSupervisar) filtroPuesto = VariosPuestos ? sesion.Caja?.CajaId : null;
+    }
+
+    /// <summary>Impresión de todas las cajas (un ticket por caja): la sucursal y caja que se están mirando.</summary>
+    private string UrlImprimirTodas(bool abiertas)
+    {
+        var suc = sesion.EsAdmin
+            ? (Guid.TryParse(sucursalFiltro, out var elegida) ? elegida : (Guid?)null)
+            : (sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
+        if (abiertas && suc == null && sesion.SucursalId != Guid.Empty) suc = sesion.SucursalId;
+        var url = "/imprimir/arqueo-cajas?" + (abiertas ? "abiertas=true" : "dia=" + dia.ToString("yyyy-MM-dd"));
+        if (suc != null) url += "&sucursal=" + suc;
+        if (!abiertas && filtroPuesto != null) url += "&caja=" + filtroPuesto;
+        // Parcial de hoy: deja un corte (el próximo parcial muestra lo vendido desde acá).
+        if (abiertas || dia == DateTime.Today) url += "&corte=" + Guid.NewGuid();
+        return url;
+    }
+
     private string TituloCajas
     {
         get
@@ -329,12 +515,29 @@ else
 
     private async Task CargarCajas()
     {
+        await CargarPuestosAsync();
         if (!PuedeSupervisar)
         {
-            // Un cajero de una sucursal sin caja ve sus propios movimientos del día.
-            cajas = new();
-            sinCaja = ExigeCaja ? new()
-                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+            // El cajero ve solo la caja en la que está ahora (todo lo del día); si no está en ninguna, lo suyo.
+            var miCaja = VariosPuestos ? sesion.Caja?.CajaId : null;
+            if (ExigeCaja)
+            {
+                sinCaja = new();
+                cajas = (await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId))
+                    .Where(t => miCaja != null && aperturaPorCaja
+                        ? t.EsDeCaja && t.PuestoCajaId == miCaja
+                        : !t.EsDeCaja && t.UsuarioId == sesion.UsuarioId)
+                    .ToList();
+            }
+            else
+            {
+                cajas = new();
+                sinCaja = VariosPuestos
+                    ? await Puestos.MovimientosPorCajaAsync(sesion.Cs, dia, sesion.SucursalId, sesion.PuntoVenta,
+                        puestoCajaId: miCaja, usuarioSinCaja: miCaja == null ? sesion.UsuarioId : (Guid?)null)
+                    : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+            }
+            await CargarResumenAsync();
             return;
         }
 
@@ -344,9 +547,13 @@ else
             : (Guid.TryParse(sucursalFiltro, out var elegida) ? elegida : null);
 
         cajas = await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sucursal);
-        sinCaja = SinCajaEnVista
-            ? await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta)
-            : new();
+        if (VariosPuestos)
+            await Puestos.AsignarPuestoAsync(sesion.Cs, cajas, dia, SucursalEnVista.Id);
+        sinCaja = !SinCajaEnVista ? new()
+            : VariosPuestos
+                ? await Puestos.MovimientosPorCajaAsync(sesion.Cs, dia, SucursalEnVista.Id, SucursalEnVista.PuntoVenta)
+                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta);
+        await CargarResumenAsync();
     }
 
     private async Task VerCaja(CajaTurno t)
@@ -366,6 +573,7 @@ else
         sesion = await SesionSrv.ObtenerAsync();
         // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
         if (!sesion.TieneModulo(Modulo.Caja)) { Nav.NavigateTo("/sin-permiso"); return; }
+        try { aperturaPorCaja = await Caja.AperturaPorCajaAsync(sesion.Cs); } catch (Exception) { aperturaPorCaja = false; }
         await Refrescar();
 
         if (sesion.EsAdmin)
@@ -385,7 +593,7 @@ else
     {
         // Se calculan primero y se asignan juntos: Blazor redibuja entre cada await,
         // y la pantalla no debe ver un turno abierto sin su arqueo.
-        var t = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId);
+        var t = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId, PorCaja ? sesion.Caja.CajaId : null);
         var a = t == null ? null : await Caja.ArqueoAsync(sesion.Cs, t);
         turno = t;
         arqueo = a;
@@ -393,9 +601,17 @@ else
 
     private async Task Abrir()
     {
-        await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
-        cerrado = null;
-        await Refrescar();
+        if (abriendo) return;
+        abriendo = true;
+        try
+        {
+            await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId,
+                PorCaja ? sesion.Caja.CajaId : null);
+            cerrado = null;
+            await Refrescar();
+            if (PuedeSupervisar) await CargarCajas();
+        }
+        finally { abriendo = false; }
     }
 
     private async Task Movimiento(bool ingreso)
@@ -410,7 +626,7 @@ else
 
     private async Task Cerrar()
     {
-        cerrado = await Caja.CerrarAsync(sesion.Cs, turno, contado, observaciones);
+        cerrado = await Caja.CerrarAsync(sesion.Cs, turno, contado, observaciones, sesion.UsuarioId);
         confirmarCierre = false;
         contado = 0;
         observaciones = null;

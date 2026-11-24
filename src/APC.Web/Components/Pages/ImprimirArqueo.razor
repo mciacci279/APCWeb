@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = SesionService.RolEmpleado)]
 @inject SesionService SesionSrv
 @inject CajaService Caja
+@inject PuestoCajaService Puestos
 
 <PageTitle>Arqueo de caja</PageTitle>
 
@@ -12,56 +13,50 @@
 }
 else
 {
-    <div class="impresion ticket-80" data-autoprint="true">
-        <header class="imp-emisor">
-            <strong class="imp-razon">ARQUEO DE CAJA</strong>
-            <span>@sesion.Tenant.Nombre · Pto. Vta. @sesion.Tenant.PuntoVenta.ToString("0000")</span>
-            <span>Apertura @a.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm")</span>
-            <span>@(a.Turno.FechaCierre != null ? "Cierre " + a.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm") : "PARCIAL — turno abierto")</span>
-        </header>
-        <table class="imp-renglones">
-            <thead><tr><th>Tipo / forma de pago</th><th class="der">Cant.</th><th class="der">Total</th></tr></thead>
-            <tbody>
-                @foreach (var g in a.Grupos)
-                {
-                    <tr><td><strong>@g.Titulo</strong></td><td class="der"><strong>@g.Comprobantes</strong></td><td class="der"><strong>@g.Total.ToString("N2", Ar)</strong></td></tr>
-                    @foreach (var f in g.Formas)
-                    {
-                        <tr><td>&nbsp;&nbsp;@f.FormaPago</td><td class="der">@f.Comprobantes</td><td class="der">@f.Total.ToString("N2", Ar)</td></tr>
-                    }
-                }
-            </tbody>
-        </table>
-        <section class="imp-totales">
-            <div><span>Monto inicial</span><span>$ @a.Turno.MontoInicial.ToString("N2", Ar)</span></div>
-            <div><span>Facturas</span><span>$ @a.VentasFiscales.ToString("N2", Ar)</span></div>
-            <div><span>Notas de pedido</span><span>$ @a.VentasNoFiscales.ToString("N2", Ar)</span></div>
-            <div><span>Notas de crédito</span><span>$ @a.NotasCredito.ToString("N2", Ar)</span></div>
-            <div><span>Ingresos / retiros</span><span>$ @a.IngresosEgresos.ToString("N2", Ar)</span></div>
-            <div class="imp-total"><span>Efectivo esperado</span><span>$ @a.EfectivoEsperado.ToString("N2", Ar)</span></div>
-            @if (a.Turno.EfectivoContado != null)
-            {
-                <div><span>Efectivo contado</span><span>$ @a.Turno.EfectivoContado.Value.ToString("N2", Ar)</span></div>
-                <div class="imp-total"><span>Diferencia</span><span>$ @((a.Turno.Diferencia ?? 0).ToString("N2", Ar))</span></div>
-            }
-            @if (!string.IsNullOrWhiteSpace(a.Turno.Observaciones)) { <p>Obs.: @a.Turno.Observaciones</p> }
-        </section>
-        <p class="imp-chico">Cajero: @sesion.Nombre</p>
+    <div data-autoprint="true">
+        <TicketArqueo A="a" Parcial="parcial" CorteHora="corteHora" Titulo="@(a.Turno.EsDeCaja ? a.Turno.Puesto : null)" Comercio="@sesion.Tenant.Nombre" PuntoVenta="sesion.Tenant.PuntoVenta"
+                      Pie="@(a.Turno.EsDeCaja
+                          ? $"Abrió: {a.Turno.Usuario}{(a.Turno.UsuarioCierre != null ? " · Cerró: " + a.Turno.UsuarioCierre : "")} · Imprimió: {sesion.Nombre}"
+                          : $"Cajero: {sesion.Nombre}")" />
         <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
     </div>
 }
 
 @code {
-    private static readonly CultureInfo Ar = new("es-AR");
     [Parameter] public Guid Id { get; set; }
+    /// <summary>Lote del corte: viene en el link de "Imprimir parcial" y deja un corte en la caja.</summary>
+    [SupplyParameterFromQuery(Name = "corte")] public Guid? Lote { get; set; }
     private SesionActual sesion;
     private ArqueoResumen a;
+    private ArqueoResumen parcial;
+    private DateTime? corteHora;
 
     protected override async Task OnInitializedAsync()
     {
         sesion = await SesionSrv.ObtenerAsync();
         var turno = await Caja.ObtenerTurnoAsync(sesion.Cs, Id);
-        if (turno == null || turno.UsuarioId != sesion.UsuarioId && !sesion.EsAdmin) return;
+        // En una pestaña nueva la sesión todavía no sabe en qué caja está el usuario.
+        if (sesion.Caja == null)
+        {
+            try { if (await Puestos.ExisteAsync(sesion.Cs)) sesion.Caja = await Puestos.ActivaDeUsuarioAsync(sesion.Cs, sesion.UsuarioId); }
+            catch (Exception) { }
+        }
+        // La caja de la sucursal la puede imprimir quien esté en ella; un supervisor o administrador, cualquiera.
+        var puede = turno != null && (turno.UsuarioId == sesion.UsuarioId || sesion.EsAdmin || sesion.EsSupervisor
+                    || (turno.EsDeCaja && sesion.Caja?.CajaId == turno.PuestoCajaId));
+        if (!puede) return;
+        if (Lote != null)
+        {
+            var corte = await Caja.RegistrarCorteAsync(sesion.Cs, turno, Lote.Value, sesion.UsuarioId);
+            if (corte != null)
+            {
+                corteHora = corte.Value.Hasta;
+                // El acumulado llega hasta el corte (así el parcial y el acumulado cierran entre sí).
+                turno.FechaCierre = corte.Value.Hasta;
+                if (corte.Value.Desde != null)
+                    parcial = await Caja.ArqueoAsync(sesion.Cs, CajaService.Tramo(turno, corte.Value.Desde.Value, corte.Value.Hasta));
+            }
+        }
         a = await Caja.ArqueoAsync(sesion.Cs, turno);
     }
 }

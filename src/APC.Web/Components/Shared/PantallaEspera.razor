@@ -1,0 +1,25 @@
+@* Aviso de espera a pantalla completa: tapa todo mientras el sistema trabaja, para que no
+   se siga haciendo clic. En páginas sin interactividad (Ingresar) lo muestra app.js al enviar
+   el formulario; en las interactivas, con Visible. *@
+<div id="@Id" class="espera @(Visible ? "visible" : "")" role="status" aria-live="polite" aria-hidden="@(Visible ? "false" : "true")">
+    <div class="espera-caja">
+        <div class="espera-logo">
+            <span class="espera-anillo" aria-hidden="true"></span>
+            <LogoFactu360 Tamanio="64" Prefijo="@("esp-" + Id)" />
+        </div>
+        <p class="espera-titulo">@Titulo</p>
+        @if (!string.IsNullOrEmpty(Detalle))
+        {
+            <p class="espera-detalle">@Detalle</p>
+        }
+        <div class="espera-barra" aria-hidden="true"><span></span></div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Id del elemento (app.js lo busca por este id).</summary>
+    [Parameter] public string Id { get; set; } = "espera";
+    [Parameter] public string Titulo { get; set; } = "Un momento…";
+    [Parameter] public string Detalle { get; set; }
+    [Parameter] public bool Visible { get; set; }
+}

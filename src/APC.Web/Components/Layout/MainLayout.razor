@@ -4,6 +4,8 @@
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider Auth
 @inject IJSRuntime JS
+@inject PuestoCajaService Puestos
+@implements IDisposable
 
 <div class="app @(plegada ? "rail-plegada" : "")">
     <nav class="rail" aria-label="Menú principal">
@@ -40,6 +42,13 @@
                 <NavLink class="rail-btn" href="/arqueo" title="Arqueo de caja" aria-label="Arqueo de caja">
                     <span class="rail-ico"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"></rect><path d="M3 10h18M7 15h3"></path></svg></span>
                     <span>Arqueo</span>
+                </NavLink>
+            }
+            @if (Hay(Modulo.Caja) && (sesion?.EsSupervisor == true || sesion?.EsAdmin == true))
+            {
+                <NavLink class="rail-btn" href="/cajas" title="Cajas: quién está en cada una" aria-label="Cajas">
+                    <span class="rail-ico"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v10H4z M7 10V6h10v4 M9 3h6v3H9z M8 14h2 M14 14h2 M8 17h8"></path></svg></span>
+                    <span>Cajas</span>
                 </NavLink>
             }
             @if (Hay(Modulo.Presupuestos))
@@ -156,6 +165,14 @@
                     <span class="rail-quien-dato rail-quien-suc">@sesion.Sucursal.Nombre</span>
                     <span class="rail-quien-dato">Pto. Vta. @sesion.PuntoVenta.ToString("0000")</span>
                 }
+                @if (sesion.Caja != null)
+                {
+                    <button type="button" class="rail-caja" @onclick="CambiarCaja" title="Cambiar de caja">
+                        <span class="rail-caja-punto" aria-hidden="true"></span>
+                        <span>@sesion.Caja.TituloCaja</span>
+                        <span class="rail-caja-cambiar">cambiar</span>
+                    </button>
+                }
             </div>
         }
         <form method="post" action="/cuenta/salir" data-enhance="false">
@@ -171,7 +188,23 @@
         {
             <p class="aviso-abono" role="status">@avisoAbono</p>
         }
-        @Body
+        @if (pideCaja)
+        {
+            @* La sucursal tiene varias cajas: hasta que elija una, no se muestra la pantalla *@
+            <SelectorCaja Cs="@sesion.Cs" UsuarioId="sesion.UsuarioId" SucursalId="sesion.SucursalId"
+                          Nombre="@NombreMostrado" Sucursal="@sesion.Sucursal?.Nombre" Aviso="@avisoCaja"
+                          PuedeSeguirSinCaja="sesion.EsAdmin" PuedeVolver="sesion.Caja != null"
+                          OnElegida="CajaElegida" OnSinCaja="EntrarSinCaja" OnCancelar="() => pideCaja = false" />
+        }
+        else if (!listo)
+        {
+            @* Hasta saber en qué caja está el usuario, la página no arranca: abriría el turno equivocado *@
+            <div class="page-pad" aria-busy="true"><table class="tabla"><tbody><FilasEsqueleto /></tbody></table></div>
+        }
+        else
+        {
+            @Body
+        }
     </div>
 </div>
 
@@ -222,7 +255,16 @@
         $"{sesion.Nombre} · {(sesion.EsSuperAdmin ? "CM Tech" : Comercio)}" +
         (sesion.Sucursal == null ? "" : " · " + sesion.Sucursal.Nombre);
 
+    /// <summary>Ya se sabe en qué caja está el usuario (o que no hay cajas): recién ahí se muestra la página.</summary>
+    private bool listo;
+
     protected override async Task OnInitializedAsync()
+    {
+        try { await IniciarAsync(); }
+        finally { listo = true; }
+    }
+
+    private async Task IniciarAsync()
     {
         // Si la empresa fue suspendida con el usuario adentro, se cierra la sesión
         var user = (await Auth.GetAuthenticationStateAsync()).User;
@@ -232,6 +274,8 @@
 
         // Abono vencido, dentro de los días de gracia: aviso para el administrador del comercio.
         var t = sesion.Tenant;
+        await RevisarCajaAsync();
+
         if (t != null && sesion.EsAdmin && t.AbonoVencido && !t.SuspendidaPorAbono)
             avisoAbono = $"El abono del sistema venció el {t.AbonoPagoHasta:dd/MM/yyyy}. " +
                          (t.AbonoDiasParaSuspension <= 1 ? "El servicio se suspende mañana." : $"El servicio se suspende en {t.AbonoDiasParaSuspension} días.") +
@@ -249,6 +293,85 @@
         var modulo = Modulo.DeRuta(ruta);
         if (modulo != null && !sesion.TieneModulo(modulo)) Nav.NavigateTo("/sin-permiso");
     }
+
+    // ------------------------------------------------------------------ caja del usuario
+
+    private bool pideCaja;
+    private string avisoCaja;
+    private Timer latido;
+
+    /// <summary>
+    /// Si la sucursal tiene más de una caja, el usuario tiene que elegir en cuál trabaja.
+    /// Si ya estaba en una (recargó la página u otra pestaña), sigue en esa.
+    /// </summary>
+    private async Task RevisarCajaAsync()
+    {
+        if (sesion == null || sesion.EsSuperAdmin || sesion.Sucursal == null || string.IsNullOrEmpty(sesion.Cs)) return;
+        try
+        {
+            if (!await Puestos.ExisteAsync(sesion.Cs)) return;   // sin el script 27 todo sigue como antes
+            if (sesion.Caja == null)
+            {
+                var activa = await Puestos.ActivaDeUsuarioAsync(sesion.Cs, sesion.UsuarioId);
+                if (activa != null && activa.SucursalId == sesion.SucursalId) sesion.Caja = activa;
+            }
+            if (sesion.Caja == null && !sesion.SinCaja && await Puestos.ContarActivasAsync(sesion.Cs, sesion.SucursalId) > 1)
+                pideCaja = true;
+        }
+        catch (Exception) { /* sin conexión a la base de la empresa: se sigue sin cajas */ }
+
+        if (sesion.Caja != null) IniciarLatido();
+    }
+
+    private void CajaElegida(PuestoCajaSesion s)
+    {
+        sesion.Caja = s;
+        sesion.SinCaja = false;
+        pideCaja = false;
+        avisoCaja = null;
+        IniciarLatido();
+    }
+
+    private void EntrarSinCaja()
+    {
+        sesion.SinCaja = true;
+        pideCaja = false;
+        avisoCaja = null;
+    }
+
+    private void CambiarCaja()
+    {
+        avisoCaja = null;
+        pideCaja = true;
+    }
+
+    /// <summary>
+    /// Cada minuto avisa que el usuario sigue en la caja. Si la sesión ya no está abierta
+    /// (la liberó un supervisor o venció por inactividad), vuelve a pedir la caja.
+    /// </summary>
+    private void IniciarLatido()
+    {
+        latido?.Dispose();
+        latido = new Timer(async _ =>
+        {
+            try
+            {
+                var caja = sesion?.Caja;
+                if (caja == null) return;
+                if (await Puestos.LatirAsync(sesion.Cs, caja.Id)) return;
+                await InvokeAsync(() =>
+                {
+                    sesion.Caja = null;
+                    avisoCaja = $"{caja.TituloCaja} se liberó (la liberó un supervisor o estuvo {PuestoCajaService.MinutosInactividad} minutos sin conexión). Elegí de nuevo en cuál trabajás.";
+                    pideCaja = true;
+                    StateHasChanged();
+                });
+            }
+            catch (Exception) { /* sin conexión: se reintenta en el próximo minuto */ }
+        }, null, 60_000, 60_000);
+    }
+
+    public void Dispose() => latido?.Dispose();
 
     protected override async Task OnAfterRenderAsync(bool primera)
     {

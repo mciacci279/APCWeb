@@ -1,0 +1,175 @@
+@* Pantalla para elegir la caja al ingresar, cuando la sucursal tiene más de una.
+   Cada caja es una tarjeta: libre, ocupada (con quién y desde cuándo) o la última que usó el usuario.
+   Se actualiza sola cada 10 segundos, así se ve cuando otro libera o toma una caja. *@
+@implements IDisposable
+@inject PuestoCajaService Puestos
+
+<PantallaEspera Id="espera-caja" Visible="tomando != null" Titulo="@($"Abriendo {nombreTomando}…")"
+                Detalle="Reservamos la caja a tu nombre y preparamos todo para que empieces a trabajar." />
+
+<div class="sel-caja-fondo" role="dialog" aria-modal="true" aria-labelledby="sel-caja-tit">
+    <div class="sel-caja">
+        <header class="sel-caja-cab">
+            <LogoFactu360 Tamanio="52" Prefijo="selcaja" />
+            <div>
+                <p class="sel-caja-hola">Hola, @Nombre</p>
+                <h1 id="sel-caja-tit">¿En qué caja vas a trabajar?</h1>
+                <p class="sel-caja-sub">@Sucursal · Mientras la uses, nadie más puede tomarla. Al salir del sistema queda libre.</p>
+            </div>
+        </header>
+
+        @if (Aviso != null)
+        {
+            <p class="alerta alerta-aviso" role="status">@Aviso</p>
+        }
+        @if (error != null)
+        {
+            <p class="alerta alerta-error" role="alert">@error</p>
+        }
+
+        <div class="sel-caja-grilla" aria-busy="@(cajas == null ? "true" : "false")">
+            @if (cajas == null)
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    <div class="sel-caja-card cargando"><span class="sk sel-caja-sk-ico"></span><span class="sk" style="width: 60%"></span><span class="sk" style="width: 40%"></span></div>
+                }
+            }
+            else
+            {
+                foreach (var c in cajas)
+                {
+                    var mia = c.UsuarioId == UsuarioId;
+                    var libre = !c.Ocupada || mia;
+                    var ultima = c.Id == ultimaId;
+                    <button type="button" class="sel-caja-card @(libre ? "libre" : "ocupada") @(ultima ? "ultima" : "") @(mia ? "mia" : "")"
+                            disabled="@(!libre || tomando != null)" @onclick="() => Tomar(c)"
+                            aria-label="@($"{c.Titulo}: {(mia ? "es la tuya" : libre ? "libre" : $"ocupada por {c.Usuario}")}")">
+                        @if (mia)
+                        {
+                            <span class="sel-caja-badge">Estás acá</span>
+                        }
+                        else if (ultima)
+                        {
+                            <span class="sel-caja-badge">Tu última caja</span>
+                        }
+                        <span class="sel-caja-ico" aria-hidden="true">
+                            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v10H4z M7 10V6h10v4 M9 3h6v3H9z M8 14h2 M14 14h2 M8 17h8"></path></svg>
+                        </span>
+                        <span class="sel-caja-nombre">@c.Titulo</span>
+                        @if (c.MercadoPagoCajaId != null)
+                        {
+                            <img class="logo-mp sel-caja-mp" src="img/mercadopago-color.png" alt="Cobra con Mercado Pago" />
+                        }
+                        @if (libre)
+                        {
+                            <span class="sel-caja-estado libre"><span class="sel-caja-punto" aria-hidden="true"></span>@(mia ? "Tuya ahora" : "Libre")</span>
+                        }
+                        else
+                        {
+                            <span class="sel-caja-estado ocupada">
+                                <span class="sel-caja-avatar" aria-hidden="true">@Iniciales(c.Usuario)</span>
+                                @c.Usuario · desde @c.Desde?.ToString("HH:mm")
+                            </span>
+                        }
+                        @if (tomando == c.Id)
+                        {
+                            <span class="sel-caja-entrando">Entrando…</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+
+        @if (cajas != null && cajas.Count > 0 && cajas.All(c => c.Ocupada && c.UsuarioId != UsuarioId))
+        {
+            <p class="sel-caja-llenas">Todas las cajas están en uso. Esperá a que se libere una, o pedile a un supervisor que libere la que corresponda.</p>
+        }
+
+        <footer class="sel-caja-pie">
+            <button type="button" class="btn" @onclick="Cargar">Actualizar</button>
+            @if (PuedeVolver)
+            {
+                <button type="button" class="btn" @onclick="OnCancelar">Volver a mi caja</button>
+            }
+            @if (PuedeSeguirSinCaja)
+            {
+                <button type="button" class="btn" @onclick="OnSinCaja" title="Para consultar o administrar: no se puede facturar sin caja">Entrar sin caja</button>
+            }
+            <span class="crece"></span>
+            <form method="post" action="/cuenta/salir" data-enhance="false">
+                <AntiforgeryToken />
+                <button type="submit" class="btn">Salir del sistema</button>
+            </form>
+        </footer>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Cs { get; set; }
+    [Parameter] public Guid UsuarioId { get; set; }
+    [Parameter] public Guid SucursalId { get; set; }
+    [Parameter] public string Nombre { get; set; }
+    [Parameter] public string Sucursal { get; set; }
+    /// <summary>Mensaje arriba de las tarjetas, por ejemplo cuando un supervisor liberó la caja.</summary>
+    [Parameter] public string Aviso { get; set; }
+    /// <summary>Solo el administrador puede entrar sin caja (para consultar).</summary>
+    [Parameter] public bool PuedeSeguirSinCaja { get; set; }
+    /// <summary>Ya tiene caja y abrió esto para cambiarla: puede volver sin elegir.</summary>
+    [Parameter] public bool PuedeVolver { get; set; }
+    [Parameter] public EventCallback<PuestoCajaSesion> OnElegida { get; set; }
+    [Parameter] public EventCallback OnSinCaja { get; set; }
+    [Parameter] public EventCallback OnCancelar { get; set; }
+
+    private List<PuestoCaja> cajas;
+    private Guid? ultimaId;
+    private Guid? tomando;
+    private string error;
+    private Timer refresco;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        refresco = new Timer(async _ =>
+        {
+            try { await InvokeAsync(async () => { if (tomando == null) { await Cargar(); StateHasChanged(); } }); }
+            catch (Exception) { /* la pantalla se cerró */ }
+        }, null, 10_000, 10_000);
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            cajas = await Puestos.ListarAsync(Cs, SucursalId);
+            ultimaId ??= await Puestos.UltimaDeUsuarioAsync(Cs, UsuarioId, SucursalId);
+        }
+        catch (Exception ex)
+        {
+            cajas ??= new();
+            error = "No se pudieron leer las cajas: " + ex.GetBaseException().Message;
+        }
+    }
+
+    private string nombreTomando = "la caja";
+
+    private async Task Tomar(PuestoCaja c)
+    {
+        tomando = c.Id;
+        nombreTomando = c.Titulo;
+        error = null;
+        try
+        {
+            var (sesion, err) = await Puestos.TomarAsync(Cs, c.Id, UsuarioId);
+            if (err != null) { error = err; await Cargar(); return; }
+            await OnElegida.InvokeAsync(sesion);
+        }
+        catch (Exception ex) { error = "No se pudo tomar la caja: " + ex.GetBaseException().Message; }
+        finally { tomando = null; }
+    }
+
+    private static string Iniciales(string usuario) =>
+        string.IsNullOrWhiteSpace(usuario) ? "?" : usuario.Trim()[..Math.Min(2, usuario.Trim().Length)].ToUpperInvariant();
+
+    public void Dispose() => refresco?.Dispose();
+}

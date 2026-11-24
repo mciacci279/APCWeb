@@ -130,3 +130,25 @@ window.addEventListener('load', function () {
   setInterval(revisar, 800);
   document.addEventListener('DOMContentLoaded', revisar);
 })();
+
+// Aviso de espera al enviar formularios que tardan (ingreso): se muestra el aviso indicado en
+// data-espera y se desactiva el botón para que no se envíe dos veces.
+(function () {
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || !form.getAttribute) return;
+    var id = form.getAttribute('data-espera');
+    if (!id) return;
+    var aviso = document.getElementById(id);
+    if (aviso) { aviso.classList.add('visible'); aviso.setAttribute('aria-hidden', 'false'); }
+    var boton = form.querySelector('[type=submit]');
+    if (boton) setTimeout(function () { boton.disabled = true; }, 0);
+  });
+  // Si vuelve con "Atrás" del navegador, la página sale de la memoria: se saca el aviso.
+  window.addEventListener('pageshow', function () {
+    document.querySelectorAll('.espera.visible').forEach(function (a) {
+      if (!a.hasAttribute('data-fija')) { a.classList.remove('visible'); a.setAttribute('aria-hidden', 'true'); }
+    });
+    document.querySelectorAll('form[data-espera] [type=submit]').forEach(function (b) { b.disabled = false; });
+  });
+})();

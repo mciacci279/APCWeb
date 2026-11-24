@@ -95,6 +95,7 @@ builder.Services.AddSingleton<RecuperoClaveService>();
 builder.Services.AddSingleton<EmpresaCentralService>();
 builder.Services.AddSingleton<CertificadoService>();
 builder.Services.AddSingleton<CajaService>();
+builder.Services.AddSingleton<PuestoCajaService>();
 builder.Services.AddSingleton<FacturacionService>();
 builder.Services.AddSingleton<PresupuestoService>();
 builder.Services.AddSingleton<ReporteService>();
@@ -197,8 +198,18 @@ app.MapPost("/cuenta/ingresar", async (HttpContext ctx, IAntiforgery af, Usuario
     return Results.Redirect(u.Rol == RolUsuario.SuperAdmin ? "/admin/empresas" : "/");
 }).DisableAntiforgery().RequireRateLimiting(PoliticaAcceso); // se valida a mano arriba
 
-app.MapPost("/cuenta/salir", async (HttpContext ctx) =>
+app.MapPost("/cuenta/salir", async (HttpContext ctx, TenantRegistry tenants, PuestoCajaService puestos) =>
 {
+    // Al salir, la caja que tenía el usuario queda libre para otro.
+    try
+    {
+        var tenant = tenants.Buscar(ctx.User.FindFirst("tenant")?.Value);
+        if (tenant != null && Guid.TryParse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var usuarioId)
+            && await puestos.ExisteAsync(tenant.ConnectionString))
+            await puestos.SalirAsync(tenant.ConnectionString, usuarioId);
+    }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "No se pudo liberar la caja al salir"); }
+
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/ingresar");
 });

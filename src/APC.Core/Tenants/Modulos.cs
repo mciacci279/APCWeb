@@ -58,6 +58,7 @@ public static class Modulo
         ruta = "/" + (ruta ?? "").Trim('/').ToLowerInvariant();
         if (ruta == "/") return Facturar;
         if (ruta.StartsWith("/arqueo")) return Caja;
+        if (ruta.StartsWith("/cajas")) return Caja;
         if (ruta.StartsWith("/presupuesto")) return Presupuestos;
         if (ruta.StartsWith("/productos")) return Productos;
         if (ruta.StartsWith("/clientes")) return Clientes;
