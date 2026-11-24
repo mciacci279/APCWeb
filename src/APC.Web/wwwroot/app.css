@@ -1,23 +1,27 @@
-/* APC Web — diseño A2 "Menú compacto + vuelto" (CM Tech) */
+/* Factu360 — diseño 2026 "azul y naranja" (CM Tech). Las reglas nuevas del rediseño están al final del archivo. */
 :root {
-  /* Paleta Procu360 */
-  --azul: #0B1220;          /* barra lateral y fondos oscuros */
-  --azul-2: #1C2940;        /* hover sobre el oscuro */
-  --azul-borde: #33415C;
-  --azul-linea: #22304A;
-  --accion: #1D4ED8;        /* botones y pestaña elegida */
-  --accion-osc: #1740AE;
-  --celeste: #7DD3FC;       /* acento */
+  /* Paleta Factu360: azul marino, azul de acción y naranja para la acción principal */
+  --azul: #0A1A3D;          /* barra lateral y fondos oscuros */
+  --azul-2: #16295A;        /* hover sobre el oscuro */
+  --azul-borde: #2B3F72;
+  --azul-linea: #1E3266;
+  --accion: #1D5FD1;        /* links, pestaña elegida, botones secundarios fuertes */
+  --accion-osc: #0F3F99;
+  --azul-vivo: #2F7BF5;     /* ícono activo del menú, foco, gráficos */
+  --naranja: #F26B1D;       /* la acción principal de cada pantalla */
+  --naranja-osc: #D9560C;
+  --verde-marca: #16A34A;
+  --celeste: #9CC0FF;       /* acento sobre fondo oscuro */
   --rojo: #DC2626;
   --rojo-osc: #B21D1D;
-  --fondo: #F4F6FA;
+  --fondo: #F3F5F9;
   --blanco: #FFFFFF;
-  --borde: #E2E8F0;
-  --borde-input: #CBD5E1;
-  --texto: #0F172A;
-  --texto-2: #475569;
-  --muted: #64748B;
-  --claro: #A5B4CB;
+  --borde: #E1E6EF;
+  --borde-input: #C9D2E1;
+  --texto: #0F1B33;
+  --texto-2: #3A4660;
+  --muted: #56627A;
+  --claro: #A9B6D3;
   --ok-fondo: #E3F3EA;
   --ok-texto: #14532D;
   --aviso-fondo: #FFF4DB;
@@ -687,3 +691,191 @@ input.input-ajuste { width: 72px; text-align: right; }
   .acceso-virtudes { display: none; }
   .acceso-formulario { padding: 28px 16px 48px; }
 }
+
+/* =====================================================================
+   Rediseño Factu360 (2026): azul y naranja, encabezado tipo banner,
+   tarjetas más amplias, skeleton al cargar y animaciones suaves.
+   Va al final para pisar las reglas anteriores sin tocarlas.
+   ===================================================================== */
+:root { --ease: cubic-bezier(.65, 0, .25, 1); --radio: 18px; --sombra: 0 10px 30px rgba(10, 26, 61, .10); }
+body { background: var(--fondo); }
+h1 { font-weight: 800; }
+
+/* ---------- estructura ---------- */
+.page-pad, .fact-main { padding: 20px 32px 32px; gap: 20px; }
+
+/* ---------- barra lateral ---------- */
+.rail { flex-basis: 264px; padding: 0 12px 12px; gap: 4px; background: linear-gradient(180deg, #0A1A3D 0%, #0E2452 100%); }
+.rail::before { content: ""; display: block; height: 4px; margin: 0 -12px 0; flex: none;
+  background: linear-gradient(90deg, var(--naranja) 0 33.34%, var(--azul-vivo) 33.34% 66.67%, var(--verde-marca) 66.67%); }
+.rail-marca { gap: 12px; padding: 18px 4px 18px; }
+.rail-plegar { width: 44px; height: 44px; border-radius: 12px; border-color: rgba(255,255,255,.14); background: rgba(255,255,255,.06); color: #E6ECF7; transition: border-color .2s, background-color .2s; }
+.rail-plegar:hover { border-color: rgba(255,255,255,.4); background: rgba(255,255,255,.1); }
+.rail-logo-f360 { display: flex; align-items: center; gap: 10px; text-decoration: none; min-width: 0; }
+.rail-logo-f360 svg { flex: none; }
+.rail-marca-txt { display: flex; flex-direction: column; line-height: 1.1; font-size: 22px; letter-spacing: -0.03em; }
+.rail-marca-dos { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; font-size: 26px; letter-spacing: 0; color: #67E8F9; }
+.rail-marca-by { font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--claro); }
+.rail-grupo { margin: 12px 0 6px; padding: 0 12px; font-size: 12px; color: #8C9BBE; letter-spacing: .08em; }
+.rail-btn { min-height: 48px; padding: 6px 10px; border-radius: 12px; border: 1px solid transparent; color: #D5DDEE; font-size: 15px; font-weight: 600; gap: 12px;
+  transition: background-color .2s, color .2s, border-color .2s; }
+.rail-btn:hover { background: rgba(255,255,255,.07); color: #fff; }
+.rail-btn.active { background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.16); color: #fff; }
+.rail-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.06); color: #C3CEE6; transition: background-color .2s, color .2s; }
+.rail-ico svg { width: 20px; height: 20px; }
+.rail-btn.active .rail-ico { background: var(--azul-vivo); color: #fff; }
+.rail-btn.active svg { color: inherit; }
+.rail-btn.rail-presu.active .rail-ico, .rail-btn.rail-presu:hover .rail-ico { background: var(--presu); color: #fff; }
+.rail-btn.rail-presu.active, .rail-btn.rail-presu:hover { background: rgba(255,255,255,.10); }
+.rail-quien { margin: 8px 0 4px; padding: 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 14px; background: rgba(255,255,255,.05); }
+.rail-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--azul-vivo); border: 0; color: #fff; font-size: 15px; }
+.rail-quien-nombre { font-size: 15px; }
+.rail-quien-dato { font-size: 13px; }
+.rail-plegada .rail { flex-basis: 84px; padding: 0 12px 12px; }
+.rail-plegada .rail-marca-txt { display: none; }
+.rail-plegada .rail-marca { flex-direction: column; }
+.rail-plegada .rail-btn { padding: 4px 0; }
+/* Las reglas viejas ocultan todos los <span> del botón al plegar: el ícono tiene que seguir visible */
+.rail-plegada .rail-btn .rail-ico { display: flex; }
+@media (max-width: 900px) {
+  .rail { flex-basis: 84px; padding: 0 12px 12px; }
+  .rail-marca { flex-direction: column; }
+  .rail-btn { padding: 4px 0; }
+  .rail-btn .rail-ico { display: flex; }
+}
+
+/* ---------- encabezado de cada pantalla: banner azul ---------- */
+.fact-head:has(> .fact-titulo h1) { position: relative; overflow: hidden; padding: 26px 28px; border-radius: 20px; color: #fff;
+  background: linear-gradient(120deg, #0A1A3D 0%, #123373 60%, #1A57B8 100%); box-shadow: var(--sombra); }
+.fact-head:has(> .fact-titulo h1)::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px;
+  background: linear-gradient(90deg, var(--naranja) 0 33.34%, var(--azul-vivo) 33.34% 66.67%, var(--verde-marca) 66.67%); }
+.fact-head:has(> .fact-titulo h1) .fact-titulo { flex-direction: column; align-items: flex-start; gap: 6px; }
+.fact-head:has(> .fact-titulo h1) h1 { color: #fff; font-size: 30px; letter-spacing: -0.02em; }
+.fact-head:has(> .fact-titulo h1) .sub, .fact-head:has(> .fact-titulo h1) label { color: #D2DCF0; }
+.fact-head:has(> .fact-titulo h1) a:not(.btn) { color: #BFD6FF; }
+.fact-head:has(> .fact-titulo h1) .btn:not(.btn-primario):not(.btn-rojo):not(.btn-nc) { background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.24); color: #fff; }
+.fact-head:has(> .fact-titulo h1) .btn:not(.btn-primario):not(.btn-rojo):not(.btn-nc):hover { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.5); color: #fff; }
+.fact-head:has(> .fact-titulo h1) .input { border-color: transparent; }
+/* Presupuestos: el mismo banner en tono ámbar, para no confundirlos con una factura */
+.fact-head.cab-presu:has(> .fact-titulo h1) { border-left: 0; padding-left: 28px; background: linear-gradient(120deg, #4A2203 0%, #7A3F07 60%, #B4600F 100%); }
+
+/* ---------- tarjetas, alertas y etiquetas ---------- */
+.panel { border-radius: var(--radio); padding: 20px; border-color: var(--borde); }
+.kpi { border-radius: 14px; padding: 16px 18px; }
+.kpi-num { font-size: 24px; font-weight: 700; }
+.alerta { border-radius: 12px; padding: 12px 16px; }
+.etiqueta, .cert-chip { font-weight: 600; padding: 3px 10px; }
+
+/* ---------- botones: naranja para la acción principal ---------- */
+.btn { border-radius: 10px; font-weight: 600; color: var(--texto); transition: transform .18s var(--ease), box-shadow .18s var(--ease), background-color .18s, border-color .18s, color .18s; }
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(10, 26, 61, .12); }
+.btn-primario, .btn-emitir, .boton-acceso { background: var(--naranja); border-color: var(--naranja); color: #fff; box-shadow: 0 8px 20px rgba(242, 107, 29, .28); }
+.btn-primario:hover:not(:disabled), .btn-emitir:hover:not(:disabled), .boton-acceso:hover { background: var(--naranja-osc); border-color: var(--naranja-osc); color: #fff; }
+.btn-emitir { border-radius: 14px; font-weight: 700; transition: transform .18s var(--ease), background-color .18s; }
+.btn-emitir:hover:not(:disabled) { transform: translateY(-1px); }
+.btn-grande { min-height: 54px; border-radius: 14px; }
+/* Brillo que cruza los botones principales, como en factu360.com.ar */
+.btn-emitir, .btn-primario.btn-grande, .boton-acceso { position: relative; overflow: hidden; }
+.btn-emitir::after, .btn-primario.btn-grande::after, .boton-acceso::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%; pointer-events: none;
+  background: linear-gradient(100deg, rgba(255,255,255,0), rgba(255,255,255,.45), rgba(255,255,255,0)); animation: brillo 3.6s ease-in-out infinite; }
+.btn-emitir:disabled::after, .btn-primario:disabled::after { display: none; }
+@keyframes brillo { 0% { left: -60%; } 60%, 100% { left: 130%; } }
+
+/* ---------- controles ---------- */
+.input { border-radius: 10px; transition: border-color .2s, box-shadow .2s; }
+.input:focus { outline: none; border-color: var(--azul-vivo); box-shadow: 0 0 0 4px rgba(47, 123, 245, .14); }
+.input-buscar { height: 56px; border-radius: 14px; border-color: var(--azul-vivo); box-shadow: 0 0 0 4px rgba(47, 123, 245, .12); }
+
+/* ---------- tablas ---------- */
+.tabla th { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 12px; }
+.tabla td { border-top-color: #EEF1F6; }
+.tabla tbody tr { transition: background-color .15s; }
+.tabla tbody tr:not(.fila-esqueleto):hover td { background: #F7F9FC; }
+.fila-sel td, .tabla tbody tr.fila-sel:hover td { background: var(--sel); }
+.fila-sel td:first-child { box-shadow: inset 3px 0 0 var(--accion); }
+
+/* ---------- pestañas ---------- */
+.pestania { border-radius: 10px; transition: background-color .2s, color .2s, border-color .2s; }
+
+/* ---------- Facturar: panel de cobro ---------- */
+.ticket { background: linear-gradient(180deg, #0A1A3D 0%, #0E2452 100%); }
+.btn-pago { border-radius: 10px; transition: background-color .2s, border-color .2s, color .2s; }
+.btn-pago .logo-mp { height: 38px; width: auto; display: block; }
+.btn-pago.activo .logo-mp-blanco, .btn-pago:not(.activo) .logo-mp-color { display: none; }
+.renglon { border-radius: 12px; }
+.renglon.activo { border-color: var(--azul-vivo); box-shadow: 0 0 0 4px rgba(47, 123, 245, .10); }
+
+/* ---------- logo de Mercado Pago junto al texto ---------- */
+/* El PNG oficial trae su margen de respeto alrededor: por eso las alturas parecen grandes */
+.logo-mp { height: 32px; width: auto; vertical-align: middle; }
+.pes-mp { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.pes-mp .logo-mp { height: 36px; }
+.pestania.activa .logo-mp-color, .pestania:not(.activa) .logo-mp-blanco { display: none; }
+.titulo-mp { display: flex; align-items: center; gap: 10px; }
+.titulo-mp .logo-mp { height: 48px; }
+
+/* ---------- animaciones ---------- */
+/* Los bloques de cada pantalla aparecen escalonados al abrirla */
+@keyframes aparecer { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.page-pad > :not(.modal-fondo), .fact-main > :not(.modal-fondo) { animation: aparecer .6s var(--ease) both; }
+.page-pad > :nth-child(2), .fact-main > :nth-child(2) { animation-delay: .06s; }
+.page-pad > :nth-child(3), .fact-main > :nth-child(3) { animation-delay: .12s; }
+.page-pad > :nth-child(4), .fact-main > :nth-child(4) { animation-delay: .18s; }
+.page-pad > :nth-child(n+5), .fact-main > :nth-child(n+5) { animation-delay: .24s; }
+.ticket { animation: aparecer .6s var(--ease) .12s both; }
+/* Las filas de las grillas entran una tras otra */
+@keyframes fila-entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.tabla tbody tr { animation: fila-entra .45s var(--ease) both; }
+.tabla tbody tr:nth-child(2) { animation-delay: .04s; } .tabla tbody tr:nth-child(3) { animation-delay: .08s; }
+.tabla tbody tr:nth-child(4) { animation-delay: .12s; } .tabla tbody tr:nth-child(5) { animation-delay: .16s; }
+.tabla tbody tr:nth-child(6) { animation-delay: .2s; } .tabla tbody tr:nth-child(7) { animation-delay: .24s; }
+.tabla tbody tr:nth-child(n+8) { animation-delay: .28s; }
+.renglon { animation: fila-entra .35s var(--ease) both; }
+/* Skeleton gris con brillo mientras cargan los datos */
+@keyframes esqueleto { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+.sk { display: block; height: 14px; border-radius: 6px; background-color: #E6EAF1;
+  background-image: linear-gradient(90deg, #E6EAF1 0, #F4F6FA 40%, #E6EAF1 80%); background-repeat: no-repeat; background-size: 840px 100%;
+  animation: esqueleto 1.3s linear infinite; }
+.sk-alto { height: 24px; }
+.kpi .sk + .sk { margin-top: 4px; }
+.fila-esqueleto td { padding: 16px 12px; }
+.tabla tbody tr.fila-esqueleto { animation: none; }
+/* Logo Factu360: se dibujan el círculo y la F, aparece el 360, gira la órbita y pasa un brillo */
+@keyframes logo-trazo { from { stroke-dashoffset: 140; } to { stroke-dashoffset: 0; } }
+@keyframes logo-aparece { from { opacity: 0; } to { opacity: 1; } }
+@keyframes logo-gira { to { transform: rotate(360deg); } }
+@keyframes logo-brillo { 0% { transform: translateX(-40px); } 55%, 100% { transform: translateX(120px); } }
+.logo-trazo { stroke-dasharray: 140; animation: logo-trazo 1.9s cubic-bezier(.6, 0, .2, 1) both; }
+.logo-360 { animation: logo-aparece .9s ease 1.3s both; }
+.logo-orbita { transform-box: view-box; transform-origin: 32px 32px; animation: logo-gira 4.5s linear infinite; }
+.logo-brillo { animation: logo-brillo 5s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+@media (max-width: 760px) {
+  .page-pad, .fact-main { padding: 16px; }
+  .fact-head:has(> .fact-titulo h1) { padding: 22px 18px; }
+  .rail::before { display: none; }
+}
+
+/* ---------- Ingreso con la marca Factu360 ---------- */
+.acceso-marca { background: linear-gradient(150deg, #0A1A3D 0%, #123373 65%, #1A57B8 100%); }
+.acceso-marca::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; z-index: 2;
+  background: linear-gradient(90deg, var(--naranja) 0 33.34%, var(--azul-vivo) 33.34% 66.67%, var(--verde-marca) 66.67%); }
+.resplandor.uno { background: rgba(47, 123, 245, .45); }
+.logo-acceso { gap: 12px; animation: logo-aparece .5s ease both; }
+.logo-acceso-txt { display: flex; flex-direction: column; line-height: 1.1; font-size: 26px; letter-spacing: -0.03em; }
+.logo-acceso-txt .rail-marca-dos { font-size: 31px; }
+.lema { color: #fff; }
+.bajada, .acceso-virtudes li { color: #D2DCF0; }
+.acceso-marca > div, .acceso-virtudes { animation: aparecer .6s var(--ease) .1s both; }
+.acceso-pie { color: var(--claro); }
+.virtud-mp { display: inline-flex; align-items: center; gap: 6px; }
+.virtud-mp .logo-mp { height: 38px; }
+.tarjeta-acceso { border-radius: 20px; animation: aparecer .6s var(--ease) .18s both; }
+.input-icono input:focus { border-color: var(--azul-vivo); box-shadow: 0 0 0 4px rgba(47, 123, 245, .14); }
+.boton-acceso { border-radius: 14px; font-weight: 700; }
+.btn-pago { gap: 4px; }
+.con-logo-mp { display: inline-flex; align-items: center; gap: 4px; }
+.con-logo-mp .logo-mp { height: 32px; }

@@ -6,7 +6,7 @@
 @inject ClienteService ClienteSrv
 @inject PadronService Padron
 
-<PageTitle>Clientes · APC Web</PageTitle>
+<PageTitle>Clientes · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -32,7 +32,11 @@
             <table class="tabla">
                 <thead><tr><th>Cliente</th><th>Documento</th><th>Condición IVA</th><th>Domicilio</th><th>Teléfono</th></tr></thead>
                 <tbody>
-                    @if (lista.Count == 0)
+                    @if (cargando)
+                    {
+                        <FilasEsqueleto Filas="8" Columnas="5" />
+                    }
+                    else if (lista.Count == 0)
                     {
                         <tr><td colspan="5" class="sub">No hay clientes que coincidan. Creá el primero con «Nuevo cliente».</td></tr>
                     }
@@ -129,6 +133,7 @@
 @code {
     private SesionActual sesion;
     private List<ClienteItem> lista = new();
+    private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private List<OpcionItem> tiposDocumento = new();
     private List<OpcionItem> condicionesIva = new();
     private ClienteDetalle edit;
@@ -158,6 +163,7 @@
         tiposDocumento = await ClienteSrv.TiposDocumentoAsync(sesion.Cs);
         condicionesIva = await ClienteSrv.CondicionesIvaAsync(sesion.Cs);
         await Buscar();
+        cargando = false;
     }
 
     private async Task BuscarKey(KeyboardEventArgs e)

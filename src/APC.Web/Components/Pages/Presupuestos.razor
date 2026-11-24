@@ -6,7 +6,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>Presupuestos · APC Web</PageTitle>
+<PageTitle>Presupuestos · Factu360</PageTitle>
 
 <div class="page-pad pagina-presu">
     <header class="fact-head">
@@ -29,7 +29,11 @@
         <table class="tabla">
             <thead><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Forma de pago</th><th>Usuario</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
-                @if (lista.Count == 0)
+                @if (cargando)
+                {
+                    <FilasEsqueleto Filas="8" Columnas="8" />
+                }
+                else if (lista.Count == 0)
                 {
                     <tr><td colspan="8" class="sub">No hay presupuestos en el período.</td></tr>
                 }
@@ -69,6 +73,7 @@
     private DateTime desde = DateTime.Today.AddDays(-30), hasta = DateTime.Today;
     private bool soloMios;
     private List<PresupuestoListado> lista = new();
+    private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private string mensaje;
 
     protected override async Task OnInitializedAsync()
@@ -77,6 +82,7 @@
         // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
         if (!sesion.TieneModulo(Modulo.Presupuestos)) { Nav.NavigateTo("/sin-permiso"); return; }
         await Buscar();
+        cargando = false;
     }
 
     private async Task Buscar()

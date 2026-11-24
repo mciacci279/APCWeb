@@ -3,14 +3,14 @@
 @attribute [AllowAnonymous]
 @inject RecuperoClaveService Recupero
 
-<PageTitle>Clave nueva · APC Web</PageTitle>
+<PageTitle>Clave nueva · Factu360</PageTitle>
 
 <main class="login">
     <form class="login-card" method="post" action="/cuenta/restablecer" data-enhance="false">
         <AntiforgeryToken />
         <input type="hidden" name="t" value="@T" />
         <div class="login-brand">
-            <div class="rail-logo">APC</div>
+            <LogoFactu360 Tamanio="40" Prefijo="marca" />
             <div>
                 <h1>Elegí tu clave nueva</h1>
                 @if (usuario != null) { <p>Usuario: <strong>@usuario</strong></p> }

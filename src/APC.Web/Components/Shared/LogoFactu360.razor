@@ -1,0 +1,15 @@
+@* Logo de Factu360, el mismo de factu360.com.ar, con su animación (ver "Logo Factu360" en app.css).
+   Se arma como texto porque Razor trata a la etiqueta <text> del SVG como propia. *@
+@((MarkupString)Svg)
+
+@code {
+    /// <summary>Lado del logo en píxeles.</summary>
+    [Parameter] public int Tamanio { get; set; } = 44;
+
+    /// <summary>Prefijo de los id del SVG: tiene que ser distinto si hay dos logos en la misma página.</summary>
+    [Parameter] public string Prefijo { get; set; } = "f360";
+
+    private string Svg => Plantilla.Replace("{T}", Tamanio.ToString()).Replace("{P}", Prefijo);
+
+    private const string Plantilla = "<svg aria-hidden=\"true\" width=\"{T}\" height=\"{T}\" viewBox=\"0 0 64 64\"><defs><linearGradient id=\"{P}-anillo\" gradientUnits=\"userSpaceOnUse\" x1=\"12\" y1=\"10\" x2=\"52\" y2=\"54\"><stop offset=\"0\" stop-color=\"#A5F3FC\"></stop><stop offset=\".55\" stop-color=\"#22D3EE\"></stop><stop offset=\"1\" stop-color=\"#F5B83D\"></stop></linearGradient><linearGradient id=\"{P}-efe\" gradientUnits=\"userSpaceOnUse\" x1=\"24\" y1=\"22\" x2=\"35\" y2=\"42\"><stop offset=\"0\" stop-color=\"#FFFFFF\"></stop><stop offset=\"1\" stop-color=\"#A5F3FC\"></stop></linearGradient><linearGradient id=\"{P}-brillo\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"0\"><stop offset=\"0\" stop-color=\"#FFFFFF\" stop-opacity=\"0\"></stop><stop offset=\".5\" stop-color=\"#FFFFFF\" stop-opacity=\".3\"></stop><stop offset=\"1\" stop-color=\"#FFFFFF\" stop-opacity=\"0\"></stop></linearGradient><clipPath id=\"{P}-recorte\"><rect x=\"2\" y=\"2\" width=\"60\" height=\"60\" rx=\"17\"></rect></clipPath></defs><rect x=\"2\" y=\"2\" width=\"60\" height=\"60\" rx=\"17\" fill=\"#101B30\" stroke=\"#22D3EE\" stroke-opacity=\".35\" stroke-width=\"1.5\"></rect><g clip-path=\"url(#{P}-recorte)\"><g transform=\"rotate(22 32 32)\"><rect class=\"logo-brillo\" x=\"-10\" y=\"-20\" width=\"18\" height=\"104\" fill=\"url(#{P}-brillo)\"></rect></g></g><path class=\"logo-trazo\" d=\"M42.5 13.81A21 21 0 1 1 32 11\" fill=\"none\" stroke=\"url(#{P}-anillo)\" stroke-width=\"3.6\" stroke-linecap=\"round\"></path><path class=\"logo-trazo\" d=\"M24 42V22h11M24 31.5h8.5\" fill=\"none\" stroke=\"url(#{P}-efe)\" stroke-width=\"4.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path><text class=\"logo-360\" x=\"28.4\" y=\"42\" font-family=\"Plus Jakarta Sans, Inter, sans-serif\" font-weight=\"700\" font-size=\"9\" fill=\"#F5B83D\">360</text><g class=\"logo-orbita\"><circle cx=\"32\" cy=\"11\" r=\"4.6\" fill=\"#F5B83D\" opacity=\".28\"></circle><circle cx=\"32\" cy=\"11\" r=\"2.6\" fill=\"#F5B83D\"></circle></g></svg>";
+}

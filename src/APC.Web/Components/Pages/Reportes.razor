@@ -8,7 +8,7 @@
 @inject SucursalService SucursalSrv
 @inject IJSRuntime JS
 
-<PageTitle>Reportes · APC Web</PageTitle>
+<PageTitle>Reportes · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -47,7 +47,16 @@
 
     @if (cargando)
     {
-        <p>Cargando…</p>
+        @* Skeleton: las tarjetas y la tabla en gris mientras se calcula el período *@
+        <div class="kpis" aria-busy="true" aria-label="Cargando el reporte">
+            @for (var k = 0; k < 4; k++)
+            {
+                <div class="kpi"><span class="sk" style="width: 55%"></span><span class="sk sk-alto" style="width: 75%"></span><span class="sk" style="width: 40%"></span></div>
+            }
+        </div>
+        <section class="panel tabla-scroll">
+            <table class="tabla"><tbody><FilasEsqueleto Filas="6" Columnas="4" /></tbody></table>
+        </section>
     }
     else if (resumen != null)
     {

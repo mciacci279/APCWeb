@@ -9,7 +9,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-<PageTitle>Empresas · APC Web</PageTitle>
+<PageTitle>Empresas · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -47,7 +47,11 @@
             <table class="tabla">
                 <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
                 <tbody>
-                    @if (lista.Count == 0)
+                    @if (cargando)
+                    {
+                        <FilasEsqueleto Filas="8" Columnas="6" />
+                    }
+                    else if (lista.Count == 0)
                     {
                         <tr><td colspan="6" class="sub">Todavía no hay empresas. Creá la primera con «Nueva empresa».</td></tr>
                     }
@@ -104,7 +108,7 @@
                         <button type="button" role="tab" aria-selected="@(pestania == 3 ? "true" : "false")" class="pestania @(pestania == 3 ? "activa" : "")" @onclick="() => pestania = 3">Sucursales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 5 ? "true" : "false")" class="pestania @(pestania == 5 ? "activa" : "")" @onclick="() => AbrirNegocio()">Datos fiscales</button>
                         <button type="button" role="tab" aria-selected="@(pestania == 4 ? "true" : "false")" class="pestania @(pestania == 4 ? "activa" : "")" @onclick="() => AbrirModulos()">Módulos</button>
-                        <button type="button" role="tab" aria-selected="@(pestania == 6 ? "true" : "false")" class="pestania @(pestania == 6 ? "activa" : "")" @onclick="() => AbrirMercadoPago()">Mercado Pago</button>
+                        <button type="button" role="tab" aria-selected="@(pestania == 6 ? "true" : "false")" class="pestania @(pestania == 6 ? "activa" : "")" @onclick="() => AbrirMercadoPago()"><span class="pes-mp"><img class="logo-mp logo-mp-color" src="img/mercadopago-color.png" alt="Mercado Pago" /><img class="logo-mp logo-mp-blanco" src="img/mercadopago-blanco.png" alt="Mercado Pago" /></span></button>
                         <button type="button" role="tab" aria-selected="@(pestania == 2 ? "true" : "false")" class="pestania @(pestania == 2 ? "activa" : "")" @onclick="() => pestania = 2">Estado</button>
                     </div>
                 }
@@ -256,7 +260,7 @@
                 }
                 else if (pestania == 6)
                 {
-                    <h2>Cobro con QR de Mercado Pago</h2>
+                    <h2 class="titulo-mp"><img class="logo-mp" src="img/mercadopago-color.png" alt="Mercado Pago" /> Cobro con QR</h2>
                     <p class="sub">El comercio pone su propia cuenta: la plata va directo ahí, CM Tech no toca el dinero. Hace falta una aplicación creada en «Tus integraciones» de Mercado Pago, y de ahí sale el access token.</p>
 
                     @if (mpCuenta == null)
@@ -598,6 +602,7 @@
 
 @code {
     private List<TenantConfig> lista = new();
+    private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private TenantConfig edit;
     private bool esNueva;
     private int pestania;
@@ -715,7 +720,11 @@
         return $"vence el {c.Vence:dd/MM/yyyy}";
     }
 
-    protected override async Task OnInitializedAsync() => await Recargar();
+    protected override async Task OnInitializedAsync()
+    {
+        await Recargar();
+        cargando = false;
+    }
 
     private async Task Recargar()
     {
