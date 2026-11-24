@@ -16,7 +16,7 @@
             <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
             <label class="check"><input type="checkbox" @bind="soloMios" /> Solo los míos</label>
             <button type="button" class="btn" @onclick="Buscar">Buscar</button>
-            <a class="btn btn-presupuesto" href="/presupuestos/nuevo">Nuevo presupuesto</a>
+            <a class="btn btn-primario" href="/presupuestos/nuevo">+ Nuevo presupuesto</a>
         </div>
     </header>
 
@@ -26,6 +26,7 @@
     }
 
     <div class="panel tabla-scroll">
+        <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="presupuesto" Plural="presupuestos" />
         <table class="tabla">
             <thead><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Forma de pago</th><th>Usuario</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
@@ -37,7 +38,7 @@
                 {
                     <tr><td colspan="8" class="sub">No hay presupuestos en el período.</td></tr>
                 }
-                @foreach (var p in lista)
+                @foreach (var p in Paginador.Cortar(lista, pagina))
                 {
                     <tr class="@(p.Cancelado ? "fila-baja" : "")">
                         <td>@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
@@ -64,6 +65,7 @@
                 }
             </tbody>
         </table>
+        <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="presupuesto" Plural="presupuestos" />
     </div>
 </div>
 
@@ -73,6 +75,7 @@
     private DateTime desde = DateTime.Today.AddDays(-30), hasta = DateTime.Today;
     private bool soloMios;
     private List<PresupuestoListado> lista = new();
+    private int pagina = 1;   // página visible de la grilla
     private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private string mensaje;
 
@@ -88,6 +91,7 @@
     private async Task Buscar()
     {
         lista = await PresupuestoSrv.ListarAsync(sesion.Cs, desde, hasta, soloMios ? sesion.UsuarioId : null);
+        pagina = 1;
     }
 
     private async Task Imprimir(Guid id) => await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{id}");

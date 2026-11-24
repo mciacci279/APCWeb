@@ -143,7 +143,8 @@ public class CatalogoService
         return await cn.QueryFirstOrDefaultAsync<EmpresaDatos>(
             @"SELECT TOP 1 e.Id, e.Nombre, e.Descripcion, e.Cuit, e.IngresosBrutos, e.FechaInicioActividades,
                      e.Domicilio, e.Telefono1, e.CP, e.Email, e.IvaId, i.Nombre AS CondicionIva,
-                     ISNULL(i.EsMonotributo, 0) AS EsMonotributo
+                     ISNULL(i.EsMonotributo, 0) AS EsMonotributo,
+                     ISNULL(i.EsResponsableInscripto, 0) AS EsResponsableInscripto
               FROM dbo.Empresa e LEFT JOIN dbo.Iva i ON i.Id = e.IvaId");
     }
 

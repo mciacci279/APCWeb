@@ -44,6 +44,7 @@
         @if (edit == null)
         {
         <section class="panel crece tabla-scroll">
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="empresa" Plural="empresas" />
             <table class="tabla">
                 <thead><tr><th>Código</th><th>Razón social</th><th>Nombre de fantasía</th><th>ARCA</th><th class="der">Usuarios</th><th>Estado</th></tr></thead>
                 <tbody>
@@ -55,7 +56,7 @@
                     {
                         <tr><td colspan="6" class="sub">Todavía no hay empresas. Creá la primera con «Nueva empresa».</td></tr>
                     }
-                    @foreach (var e in lista)
+                    @foreach (var e in Paginador.Cortar(lista, pagina))
                     {
                         <tr class="@(edit?.Id == e.Id ? "fila-sel" : "") @(e.Activa ? "" : "fila-baja")">
                             <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(e)">@e.Codigo</button></td>
@@ -80,6 +81,7 @@
                     }
                 </tbody>
             </table>
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="empresa" Plural="empresas" />
         </section>
         }
 
@@ -602,6 +604,7 @@
 
 @code {
     private List<TenantConfig> lista = new();
+    private int pagina = 1;   // página visible de la grilla
     private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private TenantConfig edit;
     private bool esNueva;
