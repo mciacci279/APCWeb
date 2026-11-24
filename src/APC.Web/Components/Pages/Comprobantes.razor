@@ -93,7 +93,7 @@
 
     <div class="panel tabla-scroll">
         <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="comprobante" Plural="comprobantes" />
-        <table class="tabla">
+        <table class="tabla tabla-comprobantes">
             <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Forma de pago</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
                 @if (cargando)
@@ -107,11 +107,11 @@
                 @foreach (var c in Paginador.Cortar(lista, pagina))
                 {
                     <tr class="@(c.Anulada ? "fila-baja" : "")">
-                        <td>@c.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td class="col-fecha">@c.Fecha.ToString("dd/MM/yy HH:mm")</td>
                         <td class="mono">@(c.EsNotaPedido ? $"Pedido X {Numero(c.Terminal, c.NumeroInterno)}" : $"{c.Tipo} {Numero(c.Terminal, c.Numero)}")</td>
                         <td>@c.ClienteNombre</td>
                         <td>@c.FormaPago</td>
-                        <td class="der fuerte">@Pesos(c.MontoTotal)</td>
+                        <td class="der fuerte mono col-total">@Pesos(c.MontoTotal)</td>
                         <td>
                             @if (c.EsNotaPedido)
                             {

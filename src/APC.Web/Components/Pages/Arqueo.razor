@@ -16,7 +16,10 @@
 else if (turno == null)
 {
     <header class="fact-head">
-        <div class="fact-titulo"><h1>Arqueo de caja</h1><span class="sub">No tenés un turno abierto</span></div>
+        <div class="fact-titulo">
+            <h1>Arqueo de caja</h1>
+            <span class="sub">@(ExigeCaja ? "No tenés un turno abierto" : "Esta sucursal no pide abrir caja: abajo están todos los movimientos del día")</span>
+        </div>
     </header>
 
     @if (cerrado != null)
@@ -32,6 +35,8 @@ else if (turno == null)
         </section>
     }
 
+    @if (ExigeCaja)
+    {
     <section class="panel apertura">
         <h2>Abrir caja</h2>
         <div class="campo">
@@ -40,6 +45,7 @@ else if (turno == null)
         </div>
         <button type="button" class="btn btn-primario btn-grande" @onclick="Abrir">Abrir caja</button>
     </section>
+    }
 }
 else
 {
@@ -132,7 +138,7 @@ else
     </div>
 }
 
-@if (!cargando && PuedeSupervisar)
+@if (!cargando && (PuedeSupervisar || !ExigeCaja))
 {
     <section class="panel" aria-label="Cajas del día">
         <header class="fact-head">
@@ -161,9 +167,24 @@ else
         <table class="tabla">
             <thead><tr><th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
-                @if (cajas.Count == 0)
+                @if (cajas.Count == 0 && sinCaja.Count == 0)
                 {
-                    <tr><td colspan="7" class="sub">No se abrió ninguna caja ese día.</td></tr>
+                    <tr><td colspan="7" class="sub">@(SinCajaEnVista ? "No hubo ventas ese día." : "No se abrió ninguna caja ese día.")</td></tr>
+                }
+                @* Sucursal que no exige caja: una fila por usuario con todo lo que vendió en el día *@
+                @foreach (var c in sinCaja)
+                {
+                    <tr class="@(cajaVista != null && cajaVista.Id == Guid.Empty && cajaVista.UsuarioId == c.UsuarioId ? "fila-sel" : "")">
+                        <td class="mono">@c.Usuario</td>
+                        <td>@(SucursalEnVista?.Nombre ?? "")</td>
+                        <td>—</td>
+                        <td><span class="cert-chip">Sin caja</span></td>
+                        <td class="der fuerte">@Pesos(c.Ventas)</td>
+                        <td class="der">—</td>
+                        <td class="acciones">
+                            <button type="button" class="btn btn-chico" @onclick="() => VerCaja(c)">Ver movimientos</button>
+                        </td>
+                    </tr>
                 }
                 @foreach (var c in cajas)
                 {
@@ -198,7 +219,14 @@ else
             <header class="modal-cab">
                 <div>
                     <h2>Caja de @cajaVista.Usuario</h2>
-                    <span class="sub">@cajaVista.Sucursal · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")@(cajaVista.Abierta ? " · abierta" : "")</span>
+                    @if (cajaVista.Id == Guid.Empty)
+                    {
+                        <span class="sub">Sin caja · todo el día @cajaVista.FechaApertura.ToString("dd/MM")</span>
+                    }
+                    else
+                    {
+                        <span class="sub">@cajaVista.Sucursal · @cajaVista.FechaApertura.ToString("dd/MM HH:mm")@(cajaVista.Abierta ? " · abierta" : "")</span>
+                    }
                 </div>
                 <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarDetalle">×</button>
             </header>
@@ -277,6 +305,18 @@ else
 
     private bool PuedeSupervisar => sesion.EsSupervisor || sesion.EsAdmin;
 
+    /// <summary>La sucursal del usuario pide abrir caja para facturar (si no se sabe, se asume que sí).</summary>
+    private bool ExigeCaja => sesion?.Sucursal?.ExigeCaja ?? true;
+
+    /// <summary>Movimientos por usuario de una sucursal que no exige caja (ver CajaService.MovimientosSinCajaAsync).</summary>
+    private List<CajaTurno> sinCaja = new();
+
+    /// <summary>La sucursal que se está mirando en "Cajas del día": la elegida por el administrador o la del usuario.</summary>
+    private Sucursal SucursalEnVista =>
+        sucursales.FirstOrDefault(s => s.Id.ToString() == sucursalFiltro) ?? sesion?.Sucursal;
+
+    private bool SinCajaEnVista => SucursalEnVista?.ExigeCaja == false;
+
     private string TituloCajas
     {
         get
@@ -289,7 +329,14 @@ else
 
     private async Task CargarCajas()
     {
-        if (!PuedeSupervisar) return;
+        if (!PuedeSupervisar)
+        {
+            // Un cajero de una sucursal sin caja ve sus propios movimientos del día.
+            cajas = new();
+            sinCaja = ExigeCaja ? new()
+                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+            return;
+        }
 
         // El supervisor ve solo su sucursal; el administrador elige cuál, o todas.
         Guid? sucursal = sesion.EsSupervisor && !sesion.EsAdmin
@@ -297,6 +344,9 @@ else
             : (Guid.TryParse(sucursalFiltro, out var elegida) ? elegida : null);
 
         cajas = await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sucursal);
+        sinCaja = SinCajaEnVista
+            ? await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta)
+            : new();
     }
 
     private async Task VerCaja(CajaTurno t)

@@ -39,9 +39,10 @@ public class MercadoPagoService
     public async Task<List<MercadoPagoCaja>> CajasAsync(Guid empresaId)
     {
         using var cn = await Db.AbrirAsync(Central);
+        // Se ordena acá y no en el SQL: la columna Numero puede no existir todavía (script 26).
         return (await cn.QueryAsync<MercadoPagoCaja>(
-            "SELECT * FROM dbo.MercadoPagoCaja WHERE EmpresaId = @empresaId ORDER BY PuntoVenta",
-            new { empresaId })).ToList();
+            "SELECT * FROM dbo.MercadoPagoCaja WHERE EmpresaId = @empresaId",
+            new { empresaId })).OrderBy(c => c.PuntoVenta).ThenBy(c => c.Numero).ToList();
     }
 
     /// <summary>Guarda el token y consulta /users/me para quedarse con el id de la cuenta.</summary>
@@ -166,7 +167,8 @@ public class MercadoPagoService
         var cajas = await CajasAsync(empresa.Id);
         foreach (var s in sucursales.Where(x => x.Activa))
         {
-            var caja = cajas.FirstOrDefault(c => c.PuntoVenta == s.PuntoVenta);
+            // La Caja 1 de cada sucursal; las demás se agregan con AgregarCajaAsync.
+            var caja = cajas.Where(c => c.PuntoVenta == s.PuntoVenta).OrderBy(c => c.Numero).FirstOrDefault();
             var externo = $"{Clave(empresa.Codigo)}POS{s.PuntoVenta:0000}";
 
             if (caja?.PosId != null)
@@ -256,6 +258,79 @@ public class MercadoPagoService
             new { imagen, cajaId });
     }
 
+    /// <summary>
+    /// Agrega otra caja (Caja 2, Caja 3…) a una sucursal: la crea en Mercado Pago dentro de la tienda
+    /// de la empresa y guarda su QR para imprimir. Necesita el script 26 y la tienda ya creada.
+    /// </summary>
+    public async Task<string> AgregarCajaAsync(TenantConfig empresa, Sucursal sucursal)
+    {
+        var cuenta = await CuentaAsync(empresa.Id);
+        if (cuenta == null) return "Primero guardá el access token de la cuenta.";
+        if (string.IsNullOrWhiteSpace(cuenta.StoreId))
+            return "Primero creá la tienda y la primera caja con «Crear tienda y cajas».";
+
+        using var cn = await Db.AbrirAsync(Central);
+        var hayColumna = await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.MercadoPagoCaja', 'Numero') IS NULL THEN 0 ELSE 1 END") == 1;
+        if (!hayColumna) return "Falta correr el script 26 en la base central. Lo podés hacer desde el panel de base de datos.";
+
+        var deLaSucursal = (await CajasAsync(empresa.Id)).Where(c => c.PuntoVenta == sucursal.PuntoVenta).ToList();
+        var numero = deLaSucursal.Count == 0 ? 1 : deLaSucursal.Max(c => Math.Max(c.Numero, 1)) + 1;
+        // La Caja 1 conserva el formato de siempre; las nuevas llevan el número al final.
+        var externo = numero == 1
+            ? $"{Clave(empresa.Codigo)}POS{sucursal.PuntoVenta:0000}"
+            : $"{Clave(empresa.Codigo)}POS{sucursal.PuntoVenta:0000}C{numero:00}";
+        var nombre = Recortar($"{sucursal.Nombre} · Caja {numero}", 60);
+
+        var (ok, datos, error) = await PostAsync(cuenta.AccessToken, "/pos", new
+        {
+            name = nombre,
+            fixed_amount = true,
+            store_id = cuenta.StoreId,
+            external_id = externo,
+            category = 621102
+        });
+
+        string posId = null, qr = null;
+        if (ok)
+        {
+            posId = Texto(datos, "id");
+            qr = TextoAnidado(datos, "qr", "image");
+        }
+        else
+        {
+            // Puede existir de un intento anterior con el mismo external_id: se reusa.
+            var (okBusca, lista, _) = await GetAsync(cuenta.AccessToken, $"/pos?external_id={Uri.EscapeDataString(externo)}");
+            if (okBusca && lista.TryGetProperty("results", out var res) && res.GetArrayLength() > 0)
+            {
+                posId = Texto(res[0], "id");
+                qr = TextoAnidado(res[0], "qr", "image");
+            }
+            if (posId == null) return $"No se pudo crear la caja en Mercado Pago: {error}";
+        }
+
+        var id = Guid.NewGuid();
+        await cn.ExecuteAsync(
+            @"INSERT INTO dbo.MercadoPagoCaja (Id, EmpresaId, SucursalId, PuntoVenta, ExternalPosId, PosId, QrEstatico, Numero, Nombre)
+              VALUES (@id, @e, @suc, @pv, @ext, @pos, @qr, @numero, @nombre)",
+            new { id, e = empresa.Id, suc = sucursal.Id, pv = sucursal.PuntoVenta, ext = externo, pos = posId, qr, numero, nombre });
+
+        if (string.IsNullOrWhiteSpace(qr)) await AsegurarQrImpresoAsync(cn, id);
+        return null;
+    }
+
+    /// <summary>Pide de nuevo a Mercado Pago la imagen del QR de una caja, para imprimirlo.</summary>
+    public async Task<string> GenerarQrAsync(Guid cajaId)
+    {
+        using var cn = await Db.AbrirAsync(Central);
+        await AsegurarQrImpresoAsync(cn, cajaId);
+        var imagen = await cn.ExecuteScalarAsync<string>(
+            "SELECT QrEstatico FROM dbo.MercadoPagoCaja WHERE Id = @cajaId", new { cajaId });
+        return string.IsNullOrWhiteSpace(imagen)
+            ? "Mercado Pago no devolvió la imagen del QR. Se puede bajar desde el panel de la cuenta, en «Pagos con QR»."
+            : null;
+    }
+
     private async Task ActualizarCajaAsync(Guid id, Guid sucursalId, string posId, string qr)
     {
         using var cn = await Db.AbrirAsync(Central);
@@ -271,7 +346,7 @@ public class MercadoPagoService
     /// Devuelve el texto del QR para dibujarlo en pantalla.
     /// </summary>
     public async Task<(OrdenQr Orden, PagoQr Pago)> CobrarAsync(
-        TenantConfig empresa, Sucursal sucursal, Guid usuarioId, decimal importe, string descripcion)
+        TenantConfig empresa, Sucursal sucursal, Guid usuarioId, decimal importe, string descripcion, Guid? cajaId = null)
     {
         var pago = new PagoQr
         {
@@ -288,8 +363,9 @@ public class MercadoPagoService
             return (Falla("Esta empresa todavía no tiene configurada la cuenta de Mercado Pago."), pago);
 
         var puntoVenta = sucursal?.PuntoVenta ?? empresa.PuntoVenta;
-        var cajas = await CajasAsync(empresa.Id);
-        var caja = cajas.FirstOrDefault(c => c.PuntoVenta == puntoVenta);
+        // La caja elegida en esa computadora; si no eligió ninguna (o ya no existe), la primera de la sucursal.
+        var cajas = (await CajasAsync(empresa.Id)).Where(c => c.PuntoVenta == puntoVenta && c.Creada).ToList();
+        var caja = cajas.FirstOrDefault(c => c.Id == cajaId) ?? cajas.FirstOrDefault();
         if (caja?.PosId == null)
             return (Falla($"No hay una caja de Mercado Pago para el punto de venta {puntoVenta:0000}. Pedile a CM Tech que la cree."), pago);
 

@@ -37,6 +37,12 @@ public class MercadoPagoCaja
     /// </summary>
     public bool UsaQrFijo { get; set; }
     public DateTime FechaAlta { get; set; }
+    /// <summary>Número de caja dentro del punto de venta: 1, 2, 3… (script 26; las de antes son la 1).</summary>
+    public int Numero { get; set; } = 1;
+    /// <summary>Nombre que se le puso a la caja en Mercado Pago, por ejemplo «Centro · Caja 2».</summary>
+    public string Nombre { get; set; }
+    /// <summary>Cómo se muestra la caja en pantalla.</summary>
+    public string Titulo => string.IsNullOrWhiteSpace(Nombre) ? $"Caja {Math.Max(Numero, 1)}" : Nombre;
 
     /// <summary>Se completa al listar, para mostrar el nombre junto al punto de venta.</summary>
     public string Sucursal { get; set; }

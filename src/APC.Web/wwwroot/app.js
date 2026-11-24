@@ -103,3 +103,30 @@ window.addEventListener('load', function () {
     setTimeout(function () { window.print(); }, 300);
   }
 });
+
+// Menú lateral: si en la pantalla no entran todas las opciones, aparece un botón que titila
+// abajo del menú. Al tocarlo baja el menú; desaparece cuando ya se ve el final.
+(function () {
+  function revisar() {
+    var nav = document.querySelector('.rail-nav');
+    var rail = document.querySelector('.rail');
+    if (!nav || !rail) return;
+    var hayMas = nav.scrollHeight - nav.clientHeight - nav.scrollTop > 4;
+    rail.classList.toggle('rail-hay-mas', hayMas);
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.rail-mas')) return;
+    var nav = document.querySelector('.rail-nav');
+    if (nav) nav.scrollBy({ top: Math.max(120, nav.clientHeight * 0.7), behavior: 'smooth' });
+  });
+
+  // El scroll no burbujea: se escucha en captura para enterarse cuando se mueve el menú.
+  document.addEventListener('scroll', function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains('rail-nav')) revisar();
+  }, true);
+  window.addEventListener('resize', revisar);
+  // Blazor cambia el menú al navegar o plegarlo: se vuelve a mirar cada tanto (es barato).
+  setInterval(revisar, 800);
+  document.addEventListener('DOMContentLoaded', revisar);
+})();

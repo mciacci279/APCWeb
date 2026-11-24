@@ -74,6 +74,36 @@ public class CajaService
             new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId })).ToList();
     }
 
+    /// <summary>
+    /// Para sucursales que no exigen abrir caja: lo vendido en el día por cada usuario, armado como una
+    /// "caja" de todo el día (Id vacío, de 00:00 a 24:00, sin monto inicial) para poder ver su arqueo
+    /// con <see cref="ArqueoAsync"/>. Cuenta facturas con CAE y notas de pedido no anuladas.
+    /// </summary>
+    public async Task<List<CajaTurno>> MovimientosSinCajaAsync(string cs, DateTime dia, int? puntoVenta, Guid? usuarioId = null)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var filas = (await cn.QueryAsync<CajaTurno>(
+            $@"SELECT f.UsuarioId, u.NombreUsuario AS Usuario, SUM(f.MontoTotal) AS Ventas
+               FROM dbo.Factura f
+               LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
+               WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND ISNULL(f.Anulada, 0) = 0
+                 AND ((f.CAE IS NOT NULL AND f.CAE <> '') OR ISNULL(f.Impresa, 0) = 1)
+                 {(puntoVenta != null ? "AND f.Terminal = @puntoVenta" : "")}
+                 {(usuarioId != null ? "AND f.UsuarioId = @usuarioId" : "")}
+               GROUP BY f.UsuarioId, u.NombreUsuario
+               ORDER BY u.NombreUsuario",
+            new { desde = dia.Date, hasta = dia.Date.AddDays(1), puntoVenta, usuarioId })).ToList();
+
+        foreach (var c in filas)
+        {
+            c.Id = Guid.Empty;
+            c.FechaApertura = dia.Date;
+            c.FechaCierre = dia.Date.AddDays(1);
+            c.MontoInicial = 0;
+        }
+        return filas;
+    }
+
     private static async Task<bool> ExisteColumnaSucursalAsync(System.Data.IDbConnection cn) =>
         await cn.ExecuteScalarAsync<int>(
             "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'SucursalId') IS NULL THEN 0 ELSE 1 END") == 1;
