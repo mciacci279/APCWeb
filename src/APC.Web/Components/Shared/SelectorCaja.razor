@@ -4,6 +4,9 @@
 @implements IDisposable
 @inject PuestoCajaService Puestos
 
+<PantallaEspera Id="espera-caja" Visible="tomando != null" Titulo="@($"Abriendo {nombreTomando}…")"
+                Detalle="Reservamos la caja a tu nombre y preparamos todo para que empieces a trabajar." />
+
 <div class="sel-caja-fondo" role="dialog" aria-modal="true" aria-labelledby="sel-caja-tit">
     <div class="sel-caja">
         <header class="sel-caja-cab">
@@ -148,9 +151,12 @@
         }
     }
 
+    private string nombreTomando = "la caja";
+
     private async Task Tomar(PuestoCaja c)
     {
         tomando = c.Id;
+        nombreTomando = c.Titulo;
         error = null;
         try
         {

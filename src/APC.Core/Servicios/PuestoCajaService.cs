@@ -208,6 +208,70 @@ public class PuestoCajaService
             new { sesionId, porUsuarioId, motivo = MotivoSalidaCaja.Liberada });
     }
 
+    /// <summary>
+    /// Para el arqueo de una sucursal que no exige abrir caja pero tiene varias: una fila por cada ingreso
+    /// de un usuario a una caja en el día, con lo que vendió mientras estuvo en ella. Cada fila sirve
+    /// como "caja" para <see cref="CajaService.ArqueoAsync"/> (Id vacío, de la hora de entrada a la de salida).
+    /// </summary>
+    public async Task<List<CajaTurno>> MovimientosPorIngresoAsync(string cs, DateTime dia, Guid sucursalId, int puntoVenta, Guid? usuarioId = null)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var filas = (await cn.QueryAsync<CajaTurno>(
+            @"WITH t AS (
+                  SELECT s.Id, s.UsuarioId, s.CajaId,
+                         CASE WHEN s.FechaIngreso < @desde THEN @desde ELSE s.FechaIngreso END AS Ini,
+                         CASE WHEN s.FechaSalida IS NOT NULL THEN s.FechaSalida
+                              WHEN s.UltimoLatido < DATEADD(MINUTE, -10, GETDATE()) THEN s.UltimoLatido
+                              ELSE GETDATE() END AS Fin,
+                         CASE WHEN s.FechaSalida IS NULL AND s.UltimoLatido >= DATEADD(MINUTE, -10, GETDATE()) THEN 1 ELSE 0 END AS EnUso
+                  FROM dbo.PuestoCajaSesion s
+                  JOIN dbo.PuestoCaja c ON c.Id = s.CajaId
+                  WHERE c.SucursalId = @sucursalId AND s.FechaIngreso < @hasta
+                    AND ISNULL(s.FechaSalida, GETDATE()) >= @desde
+                    AND (@usuarioId IS NULL OR s.UsuarioId = @usuarioId))
+              SELECT t.UsuarioId, u.NombreUsuario AS Usuario, t.CajaId AS PuestoCajaId,
+                     ISNULL(c.Nombre, 'Caja ' + CAST(c.Numero AS VARCHAR(10))) AS Puesto,
+                     t.Ini AS FechaApertura, CASE WHEN t.Fin > @hasta THEN @hasta ELSE t.Fin END AS FechaCierre,
+                     CAST(t.EnUso AS BIT) AS EnUso,
+                     (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                      WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.Ini AND f.Fecha < t.Fin AND f.Terminal = @puntoVenta
+                        AND ISNULL(f.Anulada, 0) = 0
+                        AND ((f.CAE IS NOT NULL AND f.CAE <> '') OR ISNULL(f.Impresa, 0) = 1)) AS Ventas
+              FROM t
+              JOIN dbo.PuestoCaja c ON c.Id = t.CajaId
+              LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
+              ORDER BY t.Ini",
+            new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId, puntoVenta, usuarioId })).ToList();
+        foreach (var f in filas)
+        {
+            f.Id = Guid.Empty;
+            f.SucursalId = sucursalId;
+            f.MontoInicial = 0;
+        }
+        return filas;
+    }
+
+    /// <summary>
+    /// Completa en cada turno de caja (arqueo) en qué caja de la sucursal estaba el usuario al abrirlo.
+    /// </summary>
+    public async Task AsignarPuestoAsync(string cs, List<CajaTurno> turnos, DateTime dia, Guid? sucursalId)
+    {
+        if (turnos.Count == 0) return;
+        var sesiones = await HistorialAsync(cs, dia.AddDays(-1), dia, sucursalId);
+        foreach (var t in turnos)
+        {
+            var s = sesiones
+                .Where(x => x.UsuarioId == t.UsuarioId && x.FechaIngreso <= t.FechaApertura.AddMinutes(5)
+                            && (x.FechaSalida ?? DateTime.MaxValue) >= t.FechaApertura)
+                .OrderByDescending(x => x.FechaIngreso).FirstOrDefault()
+                ?? sesiones.Where(x => x.UsuarioId == t.UsuarioId && x.FechaIngreso.Date == t.FechaApertura.Date)
+                           .OrderBy(x => x.FechaIngreso).FirstOrDefault();
+            if (s == null) continue;
+            t.PuestoCajaId = s.CajaId;
+            t.Puesto = s.TituloCaja;
+        }
+    }
+
     /// <summary>Historial de ingresos a las cajas, lo más nuevo primero (hasta 1000 filas).</summary>
     public async Task<List<PuestoCajaSesion>> HistorialAsync(string cs, DateTime desde, DateTime hasta,
         Guid? sucursalId = null, Guid? cajaId = null, Guid? usuarioId = null)

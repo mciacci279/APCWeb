@@ -310,6 +310,12 @@ public class CajaTurno
     public string Sucursal { get; set; }
     public decimal Ventas { get; set; }
     public bool Abierta => FechaCierre == null;
+
+    /// <summary>Caja de la sucursal (PuestoCaja) en la que estaba el usuario, si la sucursal tiene varias.</summary>
+    public Guid? PuestoCajaId { get; set; }
+    public string Puesto { get; set; }
+    /// <summary>Fila armada desde un ingreso a una caja que todavía sigue en uso.</summary>
+    public bool EnUso { get; set; }
 }
 
 public class ArqueoFormaPago

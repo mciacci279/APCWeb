@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject CajaService Caja
 @inject SucursalService SucursalSrv
+@inject PuestoCajaService Puestos
 
 <PageTitle>Arqueo de caja · Factu360</PageTitle>
 
@@ -164,21 +165,48 @@ else
             </div>
         </header>
 
-        <table class="tabla">
-            <thead><tr><th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
-            <tbody>
-                @if (cajas.Count == 0 && sinCaja.Count == 0)
+        @if (VariosPuestos)
+        {
+            @* Filtro visual por caja de la sucursal *@
+            <div class="filtro-cajas" role="group" aria-label="Filtrar por caja">
+                <button type="button" class="filtro-caja @(filtroPuesto == null ? "activo" : "")" aria-pressed="@(filtroPuesto == null ? "true" : "false")"
+                        @onclick="() => filtroPuesto = null">
+                    <span class="filtro-caja-nombre">Todas</span>
+                    <span class="filtro-caja-cant">@(cajas.Count + sinCaja.Count)</span>
+                </button>
+                @foreach (var p in puestos)
                 {
-                    <tr><td colspan="7" class="sub">@(SinCajaEnVista ? "No hubo ventas ese día." : "No se abrió ninguna caja ese día.")</td></tr>
+                    var cant = cajas.Count(x => x.PuestoCajaId == p.Id) + sinCaja.Count(x => x.PuestoCajaId == p.Id);
+                    <button type="button" class="filtro-caja @(filtroPuesto == p.Id ? "activo" : "")" aria-pressed="@(filtroPuesto == p.Id ? "true" : "false")"
+                            @onclick="() => filtroPuesto = p.Id" title="@(p.Ocupada ? $"En uso por {p.Usuario}" : "Libre")">
+                        <span class="filtro-caja-punto @(p.Ocupada ? "en-uso" : "")" aria-hidden="true"></span>
+                        <span class="filtro-caja-nombre">@p.Titulo</span>
+                        <span class="filtro-caja-cant">@cant</span>
+                    </button>
                 }
-                @* Sucursal que no exige caja: una fila por usuario con todo lo que vendió en el día *@
-                @foreach (var c in sinCaja)
+            </div>
+        }
+
+        <table class="tabla">
+            <thead><tr>@if (VariosPuestos) { <th>Caja</th> }<th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+            <tbody>
+                @if (!CajasVisibles.Any() && !SinCajaVisibles.Any())
                 {
-                    <tr class="@(cajaVista != null && cajaVista.Id == Guid.Empty && cajaVista.UsuarioId == c.UsuarioId ? "fila-sel" : "")">
+                    <tr><td colspan="8" class="sub">@(filtroPuesto != null ? "Nadie trabajó en esa caja ese día." : SinCajaEnVista ? "No hubo ventas ese día." : "No se abrió ninguna caja ese día.")</td></tr>
+                }
+                @* Sucursal que no exige caja: una fila por usuario (o por cada ingreso a una caja, si hay varias) *@
+                @foreach (var c in SinCajaVisibles)
+                {
+                    <tr class="@(ReferenceEquals(cajaVista, c) ? "fila-sel" : "")">
+                        @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
                         <td class="mono">@c.Usuario</td>
                         <td>@(SucursalEnVista?.Nombre ?? "")</td>
-                        <td>—</td>
-                        <td><span class="cert-chip">Sin caja</span></td>
+                        <td>@(c.PuestoCajaId == null ? "—" : c.FechaApertura.ToString("HH:mm"))</td>
+                        <td>
+                            @if (c.EnUso) { <span class="cert-chip cert-aviso">En uso</span> }
+                            else if (c.PuestoCajaId != null) { <span>@c.FechaCierre?.ToString("HH:mm")</span> }
+                            else { <span class="cert-chip">Sin caja</span> }
+                        </td>
                         <td class="der fuerte">@Pesos(c.Ventas)</td>
                         <td class="der">—</td>
                         <td class="acciones">
@@ -186,9 +214,10 @@ else
                         </td>
                     </tr>
                 }
-                @foreach (var c in cajas)
+                @foreach (var c in CajasVisibles)
                 {
                     <tr class="@(cajaVista?.Id == c.Id ? "fila-sel" : "")">
+                        @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
                         <td class="mono">@c.Usuario</td>
                         <td>@c.Sucursal</td>
                         <td>@c.FechaApertura.ToString("HH:mm")</td>
@@ -219,7 +248,11 @@ else
             <header class="modal-cab">
                 <div>
                     <h2>Caja de @cajaVista.Usuario</h2>
-                    @if (cajaVista.Id == Guid.Empty)
+                    @if (cajaVista.Id == Guid.Empty && cajaVista.PuestoCajaId != null)
+                    {
+                        <span class="sub">@cajaVista.Puesto · @cajaVista.FechaApertura.ToString("dd/MM HH:mm") a @(cajaVista.EnUso ? "ahora" : cajaVista.FechaCierre?.ToString("HH:mm"))</span>
+                    }
+                    else if (cajaVista.Id == Guid.Empty)
                     {
                         <span class="sub">Sin caja · todo el día @cajaVista.FechaApertura.ToString("dd/MM")</span>
                     }
@@ -317,6 +350,29 @@ else
 
     private bool SinCajaEnVista => SucursalEnVista?.ExigeCaja == false;
 
+    // ---- filtro por caja de la sucursal (si tiene varias: ver PuestoCajaService) ----
+    private List<PuestoCaja> puestos = new();
+    private Guid? filtroPuesto;
+    private bool VariosPuestos => puestos.Count > 1;
+
+    private IEnumerable<CajaTurno> CajasVisibles => filtroPuesto == null ? cajas : cajas.Where(c => c.PuestoCajaId == filtroPuesto);
+    private IEnumerable<CajaTurno> SinCajaVisibles => filtroPuesto == null ? sinCaja : sinCaja.Where(c => c.PuestoCajaId == filtroPuesto);
+
+    /// <summary>Las cajas de la sucursal que se está mirando. Sin el script 27 o sin sucursal elegida, ninguna.</summary>
+    private async Task CargarPuestosAsync()
+    {
+        puestos = new();
+        var suc = SucursalEnVista;
+        if (suc == null || (PuedeSupervisar && sesion.EsAdmin && string.IsNullOrEmpty(sucursalFiltro) && sucursales.Count > 1)) return;
+        try
+        {
+            if (await Puestos.ExisteAsync(sesion.Cs))
+                puestos = await Puestos.ListarAsync(sesion.Cs, suc.Id);
+        }
+        catch (Exception) { puestos = new(); }
+        if (filtroPuesto != null && !puestos.Any(p => p.Id == filtroPuesto)) filtroPuesto = null;
+    }
+
     private string TituloCajas
     {
         get
@@ -329,12 +385,15 @@ else
 
     private async Task CargarCajas()
     {
+        await CargarPuestosAsync();
         if (!PuedeSupervisar)
         {
             // Un cajero de una sucursal sin caja ve sus propios movimientos del día.
             cajas = new();
             sinCaja = ExigeCaja ? new()
-                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+                : VariosPuestos
+                    ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sesion.SucursalId, sesion.PuntoVenta, sesion.UsuarioId)
+                    : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
             return;
         }
 
@@ -344,9 +403,12 @@ else
             : (Guid.TryParse(sucursalFiltro, out var elegida) ? elegida : null);
 
         cajas = await Caja.TurnosDelDiaAsync(sesion.Cs, dia, sucursal);
-        sinCaja = SinCajaEnVista
-            ? await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta)
-            : new();
+        if (VariosPuestos)
+            await Puestos.AsignarPuestoAsync(sesion.Cs, cajas, dia, SucursalEnVista.Id);
+        sinCaja = !SinCajaEnVista ? new()
+            : VariosPuestos
+                ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, SucursalEnVista.Id, SucursalEnVista.PuntoVenta)
+                : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta);
     }
 
     private async Task VerCaja(CajaTurno t)

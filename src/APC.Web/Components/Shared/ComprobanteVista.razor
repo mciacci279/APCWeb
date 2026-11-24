@@ -11,8 +11,12 @@ else if (EsTicket)
         {
             <img class="imp-logo" src="@logo" alt="@titular" />
         }
-        <div class="tk-razon">@titular</div>
-        @if (!string.Equals(titular, razon, StringComparison.OrdinalIgnoreCase))
+        @* Con logo, el logo reemplaza al nombre de fantasía; la razón social sale igual porque es obligatoria *@
+        @if (logo == null)
+        {
+            <div class="tk-razon">@titular</div>
+        }
+        @if (logo != null || !string.Equals(titular, razon, StringComparison.OrdinalIgnoreCase))
         {
             <div class="tk-dato tk-razon-social"><span>Razón social:</span><span>@razon</span></div>
         }
