@@ -187,6 +187,53 @@ else
             </div>
         }
 
+        @* Resumen de lo que se está mirando: sigue al filtro de caja (y al de sucursal y día). *@
+        @if (resumen == null)
+        {
+            <div class="kpis kpis-chicos" aria-hidden="true">
+                @for (var i = 0; i < 5; i++) { <div class="kpi"><span class="sk" style="width:60%;height:12px"></span><span class="sk" style="width:80%;height:24px;margin-top:8px"></span></div> }
+            </div>
+        }
+        else
+        {
+            var r = ResumenVisible;
+            <div class="kpis kpis-chicos resumen-dia" @key="@(filtroPuesto?.ToString() ?? "todas")">
+                <div class="kpi"><span class="sub">Facturas</span><span class="mono kpi-num">@Pesos(r.VentasFiscales)</span><span class="sub">@r.CantidadFiscales comprobantes</span></div>
+                <div class="kpi"><span class="sub">Notas de pedido</span><span class="mono kpi-num">@Pesos(r.VentasNoFiscales)</span><span class="sub">@r.CantidadNoFiscales comprobantes</span></div>
+                <div class="kpi"><span class="sub">Notas de crédito</span><span class="mono kpi-num">@Pesos(r.NotasCredito)</span></div>
+                <div class="kpi"><span class="sub">Ingresos / retiros</span><span class="mono kpi-num">@Pesos(r.IngresosEgresos)</span></div>
+                <div class="kpi kpi-oscuro"><span class="sub-claro">Total vendido (neto)</span><span class="mono kpi-num">@Pesos(r.Ventas)</span><span class="sub-claro">Efectivo esperado @Pesos(r.EfectivoEsperado)</span></div>
+            </div>
+
+            <details class="resumen-detalle" open="@(r.Grupos.Count > 0)">
+                <summary>Detalle por tipo y forma de pago @(FiltroTitulo)</summary>
+                <div class="tabla-scroll">
+                    <table class="tabla">
+                        <thead><tr><th>Tipo / forma de pago</th><th class="der">Cantidad de comprobantes</th><th class="der">Total</th></tr></thead>
+                        <tbody>
+                            @if (r.Grupos.Count == 0)
+                            {
+                                <tr><td colspan="3" class="sub">Sin movimientos.</td></tr>
+                            }
+                            @foreach (var g in r.Grupos)
+                            {
+                                <tr class="fila-grupo"><td>@g.Titulo</td><td class="der">@g.Comprobantes</td><td class="der">@Pesos(g.Total)</td></tr>
+                                @foreach (var fp in g.Formas)
+                                {
+                                    <tr><td class="sangria">@fp.FormaPago</td><td class="der">@fp.Comprobantes</td><td class="der">@Pesos(fp.Total)</td></tr>
+                                }
+                            }
+                            @if (r.Grupos.Count > 0)
+                            {
+                                <tr class="fila-total"><td>Total vendido (neto)</td><td class="der">@r.CantidadComprobantes</td><td class="der">@Pesos(r.Ventas)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+
+        <h3 class="resumen-sub">@(SinCajaEnVista && !VariosPuestos ? "Por usuario" : "Por caja y cajero")</h3>
         <table class="tabla">
             <thead><tr>@if (VariosPuestos) { <th>Caja</th> }<th>Cajero</th><th>Sucursal</th><th>Apertura</th><th>Cierre</th><th class="der">Ventas</th><th class="der">Diferencia</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
@@ -358,6 +405,57 @@ else
     private IEnumerable<CajaTurno> CajasVisibles => filtroPuesto == null ? cajas : cajas.Where(c => c.PuestoCajaId == filtroPuesto);
     private IEnumerable<CajaTurno> SinCajaVisibles => filtroPuesto == null ? sinCaja : sinCaja.Where(c => c.PuestoCajaId == filtroPuesto);
 
+    // ---- Resumen del día: el arqueo de cada fila se calcula una vez y se suma según el filtro ----
+    /// <summary>Arqueo de cada fila (turnos y movimientos sin caja), por referencia. Null mientras carga.</summary>
+    private Dictionary<CajaTurno, ArqueoResumen> resumen;
+
+    private string FiltroTitulo => filtroPuesto == null ? "" : "· " + (puestos.FirstOrDefault(p => p.Id == filtroPuesto)?.Titulo ?? "");
+
+    private ArqueoResumen ResumenVisible => Sumar(CajasVisibles.Concat(SinCajaVisibles)
+        .Select(c => resumen != null && resumen.TryGetValue(c, out var a) ? a : null).Where(a => a != null));
+
+    private async Task CargarResumenAsync()
+    {
+        resumen = null;
+        StateHasChanged();
+        var d = new Dictionary<CajaTurno, ArqueoResumen>(ReferenceEqualityComparer.Instance);
+        foreach (var c in cajas.Concat(sinCaja))
+        {
+            try { d[c] = await Caja.ArqueoAsync(sesion.Cs, c); }
+            catch (Exception) { /* una fila con error no tumba el resumen */ }
+        }
+        resumen = d;
+    }
+
+    /// <summary>Junta varios arqueos en uno: mismas formas de pago se suman.</summary>
+    private static ArqueoResumen Sumar(IEnumerable<ArqueoResumen> partes)
+    {
+        var lista = partes.ToList();
+        const string orden = "FSPNC";
+        return new ArqueoResumen
+        {
+            VentasFiscales = lista.Sum(a => a.VentasFiscales),
+            CantidadFiscales = lista.Sum(a => a.CantidadFiscales),
+            VentasNoFiscales = lista.Sum(a => a.VentasNoFiscales),
+            CantidadNoFiscales = lista.Sum(a => a.CantidadNoFiscales),
+            NotasCredito = lista.Sum(a => a.NotasCredito),
+            IngresosEgresos = lista.Sum(a => a.IngresosEgresos),
+            EfectivoEsperado = lista.Sum(a => a.EfectivoEsperado),
+            Grupos = lista.SelectMany(a => a.Grupos)
+                .GroupBy(g => g.Codigo)
+                .OrderBy(g => { var i = orden.IndexOf(g.Key ?? "?", StringComparison.Ordinal); return i < 0 ? 99 : i; })
+                .Select(g => new ArqueoGrupo
+                {
+                    Codigo = g.Key,
+                    Titulo = g.First().Titulo,
+                    Formas = g.SelectMany(x => x.Formas)
+                        .GroupBy(x => x.FormaPago)
+                        .Select(x => new ArqueoFormaPago { FormaPago = x.Key, Comprobantes = x.Sum(y => y.Comprobantes), Total = x.Sum(y => y.Total) })
+                        .OrderBy(x => x.FormaPago).ToList()
+                }).ToList()
+        };
+    }
+
     /// <summary>Las cajas de la sucursal que se está mirando. Sin el script 27 o sin sucursal elegida, ninguna.</summary>
     private async Task CargarPuestosAsync()
     {
@@ -394,6 +492,7 @@ else
                 : VariosPuestos
                     ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sesion.SucursalId, sesion.PuntoVenta, sesion.UsuarioId)
                     : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sesion.Sucursal?.PuntoVenta, sesion.UsuarioId);
+            await CargarResumenAsync();
             return;
         }
 
@@ -409,6 +508,7 @@ else
             : VariosPuestos
                 ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, SucursalEnVista.Id, SucursalEnVista.PuntoVenta)
                 : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, SucursalEnVista.PuntoVenta);
+        await CargarResumenAsync();
     }
 
     private async Task VerCaja(CajaTurno t)
