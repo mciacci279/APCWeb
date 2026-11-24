@@ -1,0 +1,476 @@
+@page "/cajas"
+@attribute [Authorize(Roles = SesionService.RolSupervisor)]
+@using APC.Core.Tenants
+@implements IDisposable
+@inject SesionService SesionSrv
+@inject NavigationManager Nav
+@inject PuestoCajaService Puestos
+@inject SucursalService SucursalSrv
+@inject MercadoPagoService MpSrv
+
+<PageTitle>Cajas · Factu360</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Cajas</h1>
+            <span class="sub">@(SucursalElegida?.Nombre ?? "") · Quién está en cada caja y el historial de ingresos</span>
+        </div>
+        <div class="rep-chips">
+            <div class="rep-chip"><span class="rep-chip-num mono">@cajas.Count(c => c.Activa)</span><span class="rep-chip-txt">Cajas activas</span></div>
+            <div class="rep-chip"><span class="rep-chip-num mono">@cajas.Count(c => c.Activa && c.Ocupada)</span><span class="rep-chip-txt">En uso ahora</span></div>
+            <div class="rep-chip"><span class="rep-chip-num mono">@cajas.Count(c => c.Activa && !c.Ocupada)</span><span class="rep-chip-txt">Libres</span></div>
+            <div class="rep-chip"><span class="rep-chip-num mono">@historial.Count</span><span class="rep-chip-txt">Ingresos en el período</span></div>
+        </div>
+    </header>
+
+    @if (!cargado)
+    {
+        <div class="cajas-grilla">
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="caja-card"><span class="sk sk-alto" style="width: 50%"></span><span class="sk" style="width: 80%"></span><span class="sk" style="width: 60%"></span></div>
+            }
+        </div>
+    }
+    else if (!existe)
+    {
+        <p class="alerta alerta-aviso">Falta correr el script 27 («Cajas por sucursal») en la base de la empresa. Lo puede hacer CM Tech desde Base de datos.</p>
+    }
+    else
+    {
+        <div class="rep-barra">
+            @if (sesion.EsAdmin && sucursales.Count > 1)
+            {
+                <div class="campo">
+                    <label for="cajas-suc">Sucursal</label>
+                    <select id="cajas-suc" class="input" @bind="sucursalTexto" @bind:after="CambiarSucursal">
+                        @foreach (var s in sucursales)
+                        {
+                            <option value="@s.Id">@s.Nombre · Pto. Vta. @s.PuntoVenta.ToString("0000")</option>
+                        }
+                    </select>
+                </div>
+            }
+            <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
+            @if (sesion.EsAdmin)
+            {
+                <button type="button" class="btn btn-primario rep-exportar" disabled="@ocupado" @onclick="NuevaCaja">+ Nueva caja</button>
+            }
+        </div>
+
+        @if (mensaje != null)
+        {
+            <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+        }
+
+        @if (cajas.Count == 0)
+        {
+            <section class="panel cajas-vacio">
+                <h2>Esta sucursal todavía no tiene cajas cargadas</h2>
+                <p class="sub">Con una sola caja todo funciona como siempre. Si cargás dos o más, cada usuario va a elegir al ingresar en cuál trabaja, y dos personas no pueden estar en la misma caja a la vez.</p>
+            </section>
+        }
+
+        <div class="cajas-grilla">
+            @foreach (var c in cajas)
+            {
+                <article class="caja-card @(c.Ocupada ? "en-uso" : "libre") @(c.Activa ? "" : "inactiva")">
+                    @if (edit?.Id == c.Id)
+                    {
+                        <div class="caja-card-edit">
+                            <div class="campo">
+                                <label for="caja-nombre">Nombre</label>
+                                <input id="caja-nombre" class="input" maxlength="60" placeholder="@($"Caja {c.Numero}")" @bind="edit.Nombre" />
+                            </div>
+                            <div class="campo">
+                                <label for="caja-mp">Caja de Mercado Pago</label>
+                                <select id="caja-mp" class="input" @bind="editMp">
+                                    <option value="">Sin Mercado Pago</option>
+                                    @foreach (var m in cajasMp)
+                                    {
+                                        <option value="@m.Id">@m.Titulo · @m.ExternalPosId</option>
+                                    }
+                                </select>
+                            </div>
+                            <label class="check"><input type="checkbox" @bind="edit.Activa" /> Activa</label>
+                            <div class="fila-btns">
+                                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="Guardar">Guardar</button>
+                                <button type="button" class="btn" @onclick="() => edit = null">Cancelar</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <header class="caja-card-cab">
+                            <span class="caja-card-ico" aria-hidden="true">
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16v10H4z M7 10V6h10v4 M9 3h6v3H9z M8 14h2 M14 14h2 M8 17h8"></path></svg>
+                            </span>
+                            <div class="caja-card-tit">
+                                <h2>@c.Titulo</h2>
+                                <span class="sub">N.º @c.Numero@(c.Activa ? "" : " · dada de baja")</span>
+                            </div>
+                            @if (c.MercadoPagoCajaId != null)
+                            {
+                                <img class="logo-mp" src="img/mercadopago-color.png" alt="Cobra con Mercado Pago" title="@NombreMp(c.MercadoPagoCajaId)" />
+                            }
+                        </header>
+
+                        @if (c.Ocupada)
+                        {
+                            <div class="caja-card-estado en-uso">
+                                <span class="caja-avatar" style="background: @ColorUsuario(c.Usuario)">@Iniciales(c.Usuario)</span>
+                                <div>
+                                    <strong>@c.Usuario</strong>
+                                    <span class="sub">desde las @c.Desde?.ToString("HH:mm") · @HaceCuanto(c.UltimoLatido)</span>
+                                </div>
+                                <span class="caja-pulso" aria-hidden="true"></span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="caja-card-estado libre"><span class="caja-punto" aria-hidden="true"></span> Libre</div>
+                        }
+
+                        <div class="fila-btns">
+                            @if (c.Ocupada)
+                            {
+                                @if (confirmarLiberar == c.Id)
+                                {
+                                    <span class="sub">¿Sacar a @c.Usuario de esta caja?</span>
+                                    <button type="button" class="btn btn-chico btn-rojo" disabled="@ocupado" @onclick="() => Liberar(c)">Sí, liberar</button>
+                                    <button type="button" class="btn btn-chico" @onclick="() => confirmarLiberar = null">No</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-chico btn-cancelar" @onclick="() => confirmarLiberar = c.Id">Liberar caja</button>
+                                }
+                            }
+                            <button type="button" class="btn btn-chico" @onclick="() => VerHistorialDe(c)">Historial</button>
+                            @if (sesion.EsAdmin)
+                            {
+                                <button type="button" class="btn btn-chico" @onclick="() => Editar(c)">Editar</button>
+                            }
+                        </div>
+                    }
+                </article>
+            }
+        </div>
+
+        <section class="panel cajas-historial" aria-labelledby="tit-hist">
+            <div class="entre fila-btns">
+                <h2 id="tit-hist">Historial de ingresos</h2>
+            </div>
+            <div class="fila-campos">
+                <div class="campo campo-fecha"><label for="h-desde">Desde</label><input id="h-desde" class="input" type="date" @bind="desde" @bind:after="CargarHistorial" /></div>
+                <div class="campo campo-fecha"><label for="h-hasta">Hasta</label><input id="h-hasta" class="input" type="date" @bind="hasta" @bind:after="CargarHistorial" /></div>
+                <div class="campo">
+                    <label for="h-caja">Caja</label>
+                    <select id="h-caja" class="input" @bind="filtroCaja" @bind:after="CargarHistorial">
+                        <option value="">Todas</option>
+                        @foreach (var c in cajas)
+                        {
+                            <option value="@c.Id">@c.Titulo</option>
+                        }
+                    </select>
+                </div>
+                <div class="campo">
+                    <label for="h-usuario">Usuario</label>
+                    <select id="h-usuario" class="input" @bind="filtroUsuario">
+                        <option value="">Todos</option>
+                        @foreach (var u in Usuarios)
+                        {
+                            <option value="@u">@u</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            @if (desde.Date == hasta.Date && historial.Count > 0)
+            {
+                @* Línea del día: cada caja es una fila y cada ingreso una barra entre la hora de entrada y la de salida *@
+                <div class="linea-dia" role="img" aria-label="Línea del día con los ingresos a cada caja">
+                    <div class="linea-horas" aria-hidden="true">
+                        @for (var h = 0; h <= 24; h += 3)
+                        {
+                            <span style="left: @(h * 100 / 24)%">@h.ToString("00"):00</span>
+                        }
+                    </div>
+                    @foreach (var c in cajas.Where(x => HistorialVisible.Any(s => s.CajaId == x.Id)))
+                    {
+                        <div class="linea-fila">
+                            <span class="linea-caja">@c.Titulo</span>
+                            <div class="linea-pista">
+                                @foreach (var s in HistorialVisible.Where(x => x.CajaId == c.Id))
+                                {
+                                    var (izq, ancho) = Barra(s);
+                                    <span class="linea-barra @(s.Abierta ? "abierta" : "")"
+                                          style="left: @(izq.ToString("0.##", CultureInfo.InvariantCulture))%; width: @(ancho.ToString("0.##", CultureInfo.InvariantCulture))%; background: @ColorUsuario(s.Usuario)"
+                                          title="@s.Usuario · @s.FechaIngreso.ToString("HH:mm") a @(s.Abierta ? "ahora" : s.FechaSalida?.ToString("HH:mm"))">@Iniciales(s.Usuario)</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="tabla-scroll">
+                <Paginador Total="HistorialVisible.Count" @bind-Pagina="pagina" Singular="ingreso" Plural="ingresos" />
+                <table class="tabla">
+                    <thead><tr><th>Caja</th><th>Usuario</th><th>Ingreso</th><th>Salida</th><th class="der">Duración</th><th>Cómo terminó</th></tr></thead>
+                    <tbody>
+                        @if (!cargado)
+                        {
+                            <FilasEsqueleto Filas="6" Columnas="6" />
+                        }
+                        else if (HistorialVisible.Count == 0)
+                        {
+                            <tr><td colspan="6" class="sub">No hubo ingresos a las cajas en el período.</td></tr>
+                        }
+                        @foreach (var s in Paginador.Cortar(HistorialVisible, pagina))
+                        {
+                            <tr>
+                                <td class="fuerte">@s.TituloCaja</td>
+                                <td><span class="caja-avatar chico" style="background: @ColorUsuario(s.Usuario)">@Iniciales(s.Usuario)</span> @s.Usuario</td>
+                                <td class="mono">@s.FechaIngreso.ToString("dd/MM HH:mm")</td>
+                                <td class="mono">@(s.Abierta ? "—" : s.FechaSalida?.ToString("dd/MM HH:mm"))</td>
+                                <td class="der mono">@Duracion(s.Duracion)</td>
+                                <td><span class="etiqueta @ClaseMotivo(s)">@TextoMotivo(s)</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <Paginador Total="HistorialVisible.Count" @bind-Pagina="pagina" Singular="ingreso" Plural="ingresos" />
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private SesionActual sesion;
+    private bool cargado;
+    private bool existe;
+    private bool ocupado;
+    private string mensaje;
+    private bool mensajeOk;
+
+    private List<Sucursal> sucursales = new();
+    private string sucursalTexto = "";
+    private List<PuestoCaja> cajas = new();
+    private List<MercadoPagoCaja> cajasMp = new();
+
+    private PuestoCaja edit;
+    private string editMp = "";
+    private Guid? confirmarLiberar;
+
+    private DateTime desde = DateTime.Today;
+    private DateTime hasta = DateTime.Today;
+    private string filtroCaja = "";
+    private string filtroUsuario = "";
+    private List<PuestoCajaSesion> historial = new();
+    private int pagina = 1;
+
+    private Timer refresco;
+
+    private Sucursal SucursalElegida => sucursales.FirstOrDefault(s => s.Id.ToString() == sucursalTexto) ?? sesion?.Sucursal;
+
+    private List<PuestoCajaSesion> HistorialVisible =>
+        string.IsNullOrEmpty(filtroUsuario) ? historial : historial.Where(s => s.Usuario == filtroUsuario).ToList();
+
+    private IEnumerable<string> Usuarios => historial.Select(s => s.Usuario).Where(u => !string.IsNullOrEmpty(u)).Distinct().OrderBy(u => u);
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (sesion == null || !(sesion.EsSupervisor || sesion.EsAdmin) || !sesion.TieneModulo(Modulo.Caja)) { Nav.NavigateTo("/sin-permiso"); return; }
+
+        try { existe = await Puestos.ExisteAsync(sesion.Cs); }
+        catch (Exception ex) { existe = false; Aviso(false, "No se pudo leer la base: " + ex.GetBaseException().Message); }
+
+        if (existe)
+        {
+            // El administrador elige la sucursal; el supervisor ve la suya.
+            if (sesion.EsAdmin)
+            {
+                try { sucursales = await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: false); }
+                catch (Exception) { sucursales = new(); }
+            }
+            sucursalTexto = (sesion.Sucursal ?? sucursales.FirstOrDefault())?.Id.ToString() ?? "";
+            await Refrescar();
+
+            // Los estados se actualizan solos, para ver quién entra y quién sale.
+            refresco = new Timer(async _ =>
+            {
+                try { await InvokeAsync(async () => { if (edit == null && !ocupado) { await CargarCajas(); StateHasChanged(); } }); }
+                catch (Exception) { }
+            }, null, 15_000, 15_000);
+        }
+        cargado = true;
+    }
+
+    private Guid? SucursalId => Guid.TryParse(sucursalTexto, out var g) ? g : null;
+
+    private async Task Refrescar()
+    {
+        await CargarCajas();
+        await CargarHistorial();
+    }
+
+    private async Task CambiarSucursal()
+    {
+        edit = null;
+        filtroCaja = "";
+        await Refrescar();
+    }
+
+    private async Task CargarCajas()
+    {
+        if (SucursalId == null) { cajas = new(); return; }
+        cajas = await Puestos.ListarAsync(sesion.Cs, SucursalId, incluirInactivas: sesion.EsAdmin);
+        try
+        {
+            var pv = SucursalElegida?.PuntoVenta ?? sesion.PuntoVenta;
+            cajasMp = (await MpSrv.CajasAsync(sesion.Tenant.Id)).Where(m => m.PuntoVenta == pv && m.Creada).ToList();
+        }
+        catch (Exception) { cajasMp = new(); }   // la empresa no usa Mercado Pago
+    }
+
+    private async Task CargarHistorial()
+    {
+        if (hasta < desde) (desde, hasta) = (hasta, desde);
+        historial = await Puestos.HistorialAsync(sesion.Cs, desde, hasta, SucursalId,
+            Guid.TryParse(filtroCaja, out var c) ? c : null);
+        pagina = 1;
+    }
+
+    private async Task VerHistorialDe(PuestoCaja c)
+    {
+        filtroCaja = c.Id.ToString();
+        await CargarHistorial();
+    }
+
+    private async Task Liberar(PuestoCaja c)
+    {
+        if (c.SesionId == null) return;
+        ocupado = true;
+        try
+        {
+            await Puestos.LiberarAsync(sesion.Cs, c.SesionId.Value, sesion.UsuarioId);
+            confirmarLiberar = null;
+            Aviso(true, $"{c.Titulo} quedó libre. A {c.Usuario} se le va a pedir que elija otra caja.");
+            await Refrescar();
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo liberar: " + ex.GetBaseException().Message); }
+        finally { ocupado = false; }
+    }
+
+    private void Editar(PuestoCaja c)
+    {
+        edit = new PuestoCaja
+        {
+            Id = c.Id, SucursalId = c.SucursalId, Numero = c.Numero, Nombre = c.Nombre,
+            MercadoPagoCajaId = c.MercadoPagoCajaId, Activa = c.Activa
+        };
+        editMp = c.MercadoPagoCajaId?.ToString() ?? "";
+    }
+
+    private async Task NuevaCaja()
+    {
+        if (SucursalId == null) { Aviso(false, "Elegí la sucursal."); return; }
+        ocupado = true;
+        try
+        {
+            var nueva = new PuestoCaja { SucursalId = SucursalId.Value };
+            var error = await Puestos.GuardarAsync(sesion.Cs, nueva);
+            if (error != null) { Aviso(false, error); return; }
+            await CargarCajas();
+            Aviso(true, cajas.Count(x => x.Activa) > 1
+                ? $"Caja {nueva.Numero} creada. Desde ahora cada usuario de la sucursal elige su caja al ingresar."
+                : $"Caja {nueva.Numero} creada. Cuando haya dos o más, cada usuario va a elegir la suya al ingresar.");
+            Editar(cajas.First(x => x.Id == nueva.Id));
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo crear la caja: " + ex.GetBaseException().Message); }
+        finally { ocupado = false; }
+    }
+
+    private async Task Guardar()
+    {
+        if (edit == null) return;
+        ocupado = true;
+        try
+        {
+            edit.MercadoPagoCajaId = Guid.TryParse(editMp, out var mp) ? mp : null;
+            var error = await Puestos.GuardarAsync(sesion.Cs, edit);
+            if (error != null) { Aviso(false, error); return; }
+            Aviso(true, $"{edit.Titulo} guardada.");
+            edit = null;
+            await Refrescar();
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo guardar: " + ex.GetBaseException().Message); }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string texto) { mensajeOk = ok; mensaje = texto; }
+
+    private string NombreMp(Guid? id) => cajasMp.FirstOrDefault(m => m.Id == id)?.Titulo ?? "Mercado Pago";
+
+    // ---------- presentación ----------
+
+    /// <summary>Posición y ancho (en % del día) de la barra de un ingreso en la línea del día.</summary>
+    private (double Izq, double Ancho) Barra(PuestoCajaSesion s)
+    {
+        var dia = desde.Date;
+        var ini = s.FechaIngreso < dia ? dia : s.FechaIngreso;
+        var fin = s.FechaSalida ?? (s.Abierta ? DateTime.Now : s.UltimoLatido);
+        if (fin > dia.AddDays(1)) fin = dia.AddDays(1);
+        var izq = Math.Clamp((ini - dia).TotalMinutes / 1440 * 100, 0, 100);
+        var ancho = Math.Max(0.6, (fin - ini).TotalMinutes / 1440 * 100);
+        return (izq, Math.Min(ancho, 100 - izq));
+    }
+
+    private static readonly string[] Paleta = { "#2F7BF5", "#F26B1D", "#16A34A", "#7C3AED", "#0EA5E9", "#DB2777", "#CA8A04", "#475569" };
+
+    /// <summary>Cada usuario tiene siempre el mismo color, en la tarjeta, la tabla y la línea del día.</summary>
+    private static string ColorUsuario(string usuario)
+    {
+        if (string.IsNullOrEmpty(usuario)) return Paleta[^1];
+        var h = 0;
+        foreach (var ch in usuario) h = (h * 31 + ch) & 0x7FFFFFFF;
+        return Paleta[h % Paleta.Length];
+    }
+
+    private static string Iniciales(string usuario) =>
+        string.IsNullOrWhiteSpace(usuario) ? "?" : usuario.Trim()[..Math.Min(2, usuario.Trim().Length)].ToUpperInvariant();
+
+    private static string HaceCuanto(DateTime? latido)
+    {
+        if (latido == null) return "";
+        var min = (int)(DateTime.Now - latido.Value).TotalMinutes;
+        return min <= 1 ? "conectado" : $"último aviso hace {min} min";
+    }
+
+    private static string Duracion(TimeSpan d) =>
+        d.TotalMinutes < 1 ? "menos de 1 min"
+        : d.TotalHours < 1 ? $"{(int)d.TotalMinutes} min"
+        : $"{(int)d.TotalHours} h {d.Minutes:00} min";
+
+    private static string TextoMotivo(PuestoCajaSesion s) => s.Motivo switch
+    {
+        null when s.Abierta => "En uso",
+        MotivoSalidaCaja.Salio => "Salió del sistema",
+        MotivoSalidaCaja.Inactividad => "Sin conexión 10 min",
+        MotivoSalidaCaja.Liberada => "Liberada" + (string.IsNullOrEmpty(s.LiberadaPorUsuario) ? "" : " por " + s.LiberadaPorUsuario),
+        MotivoSalidaCaja.Cambio => "Cambió de caja",
+        _ => "Cerrada"
+    };
+
+    private static string ClaseMotivo(PuestoCajaSesion s) => s.Motivo switch
+    {
+        null when s.Abierta => "etiqueta-ok",
+        MotivoSalidaCaja.Liberada => "etiqueta-rojo",
+        MotivoSalidaCaja.Inactividad => "etiqueta-falta",
+        _ => "etiqueta-gris"
+    };
+
+    public void Dispose() => refresco?.Dispose();
+}

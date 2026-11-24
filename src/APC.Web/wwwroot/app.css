@@ -994,3 +994,96 @@ h1 { font-weight: 800; }
 /* ---------- Mercado Pago: varias cajas por sucursal ---------- */
 .mp-agregar { align-items: flex-end; margin: 12px 0 4px; }
 .qr-caja-mp { margin-top: 8px; max-width: 280px; }
+
+/* =====================================================================
+   Cajas por usuario: elegir la caja al ingresar y pantalla de Cajas
+   ===================================================================== */
+
+/* ---------- selector de caja (pantalla completa) ---------- */
+.sel-caja-fondo { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: radial-gradient(1200px 600px at 15% 10%, rgba(47,123,245,.35), transparent 60%),
+              radial-gradient(900px 500px at 90% 90%, rgba(242,107,29,.22), transparent 60%),
+              linear-gradient(150deg, #0A1A3D 0%, #102a5c 60%, #123373 100%);
+  animation: aparecer .4s var(--ease) both; overflow-y: auto; }
+.sel-caja { width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 22px; color: #fff; }
+.sel-caja-cab { display: flex; align-items: center; gap: 18px; }
+.sel-caja-hola { margin: 0; color: var(--celeste); font-weight: 600; }
+.sel-caja h1 { margin: 2px 0 6px; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; color: #fff; }
+.sel-caja-sub { margin: 0; color: #C9D6EE; font-size: 15px; }
+.sel-caja-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.sel-caja-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-height: 190px; padding: 22px 20px 18px;
+  border-radius: 20px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.07); color: #fff; text-align: left; font: inherit; cursor: pointer;
+  backdrop-filter: blur(6px); transition: transform .2s var(--ease), background-color .2s, border-color .2s, box-shadow .2s; animation: aparecer .5s var(--ease) both; }
+.sel-caja-card:nth-child(2) { animation-delay: .05s; } .sel-caja-card:nth-child(3) { animation-delay: .1s; } .sel-caja-card:nth-child(n+4) { animation-delay: .15s; }
+.sel-caja-card.libre:hover:not(:disabled) { transform: translateY(-4px); background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.4); box-shadow: 0 18px 40px rgba(0,0,0,.3); }
+.sel-caja-card.ultima { border-color: var(--naranja); box-shadow: 0 0 0 3px rgba(242,107,29,.35); }
+.sel-caja-card.mia { border-color: #4ADE80; box-shadow: 0 0 0 3px rgba(74,222,128,.3); }
+.sel-caja-card.ocupada { cursor: not-allowed; opacity: .72; background: rgba(0,0,0,.18); }
+.sel-caja-card:disabled { color: #fff; }
+.sel-caja-card.cargando { cursor: default; }
+.sel-caja-badge { position: absolute; top: 14px; right: 14px; padding: 3px 10px; border-radius: 999px; background: var(--naranja); color: #fff; font-size: 12px; font-weight: 700; }
+.sel-caja-card.mia .sel-caja-badge { background: #16A34A; }
+.sel-caja-ico { width: 58px; height: 58px; border-radius: 16px; display: flex; align-items: center; justify-content: center; background: var(--azul-vivo); color: #fff; box-shadow: 0 10px 24px rgba(47,123,245,.45); }
+.sel-caja-card.ocupada .sel-caja-ico { background: rgba(255,255,255,.12); box-shadow: none; }
+.sel-caja-sk-ico { width: 58px; height: 58px; border-radius: 16px; }
+.sel-caja-nombre { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+.sel-caja-mp { height: 30px; background: #fff; border-radius: 8px; padding: 0 4px; }
+.sel-caja-estado { margin-top: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.sel-caja-estado.libre { color: #86EFAC; }
+.sel-caja-estado.ocupada { color: #E2E8F0; font-weight: 500; }
+.sel-caja-punto { width: 10px; height: 10px; border-radius: 50%; background: #4ADE80; animation: latido-verde 1.6s ease-out infinite; }
+.sel-caja-avatar { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.2); font-size: 11px; font-weight: 700; }
+.sel-caja-entrando { font-size: 13px; color: var(--celeste); }
+.sel-caja-llenas { margin: 0; padding: 12px 16px; border-radius: 12px; background: rgba(242,107,29,.18); border: 1px solid rgba(242,107,29,.5); }
+.sel-caja-pie { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.sel-caja-pie form { margin: 0; }
+.sel-caja-pie .btn { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.25); color: #fff; }
+.sel-caja-pie .btn:hover { background: rgba(255,255,255,.2); color: #fff; }
+.sel-caja .alerta { margin: 0; }
+@keyframes latido-verde { 0% { box-shadow: 0 0 0 0 rgba(74,222,128,.6); } 100% { box-shadow: 0 0 0 9px rgba(74,222,128,0); } }
+
+/* ---------- caja actual en la tarjeta del usuario (menú) ---------- */
+.rail-caja { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.06); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .2s; }
+.rail-caja:hover { background: rgba(255,255,255,.14); }
+.rail-caja-punto { width: 8px; height: 8px; border-radius: 50%; background: #4ADE80; flex: none; animation: latido-verde 1.6s ease-out infinite; }
+.rail-caja-cambiar { margin-left: auto; color: var(--celeste); font-weight: 500; }
+.rail-plegada .rail-caja { display: none; }
+
+/* ---------- pantalla Cajas ---------- */
+.cajas-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.caja-card { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 18px; background: #fff; border: 1px solid var(--borde);
+  box-shadow: 0 6px 20px rgba(10,26,61,.05); animation: aparecer .5s var(--ease) both; transition: box-shadow .2s, transform .2s var(--ease); }
+.caja-card:hover { box-shadow: var(--sombra); transform: translateY(-2px); }
+.caja-card.en-uso { border-color: #BBF7D0; }
+.caja-card.inactiva { opacity: .6; }
+.caja-card-cab { display: flex; align-items: center; gap: 12px; }
+.caja-card-ico { width: 48px; height: 48px; flex: none; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: var(--sel); color: var(--accion); }
+.caja-card.en-uso .caja-card-ico { background: #DCFCE7; color: #15803D; }
+.caja-card-tit { flex: 1; min-width: 0; }
+.caja-card-tit h2 { margin: 0; font-size: 18px; }
+.caja-card-cab .logo-mp { height: 30px; }
+.caja-card-estado { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: var(--fondo); }
+.caja-card-estado.en-uso { background: #F0FDF4; }
+.caja-card-estado.libre { color: #15803D; font-weight: 600; }
+.caja-card-estado .sub { display: block; font-size: 13px; }
+.caja-punto { width: 10px; height: 10px; border-radius: 50%; background: #16A34A; }
+.caja-pulso { margin-left: auto; width: 10px; height: 10px; border-radius: 50%; background: #16A34A; animation: latido-verde 1.6s ease-out infinite; }
+.caja-avatar { width: 38px; height: 38px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 700; }
+.caja-avatar.chico { width: 26px; height: 26px; font-size: 10px; vertical-align: middle; margin-right: 6px; }
+.caja-card-edit { display: flex; flex-direction: column; gap: 12px; }
+.cajas-vacio h2 { margin-bottom: 6px; }
+.cajas-historial { display: flex; flex-direction: column; gap: 14px; }
+.cajas-historial h2 { margin: 0; font-size: 18px; }
+
+/* Línea del día: una fila por caja, una barra por ingreso */
+.linea-dia { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 26px 0 4px; }
+.linea-horas { position: absolute; top: 0; left: 120px; right: 0; height: 20px; }
+.linea-horas span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
+.linea-fila { display: flex; align-items: center; gap: 12px; }
+.linea-caja { flex: 0 0 108px; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.linea-pista { position: relative; flex: 1; height: 30px; border-radius: 8px;
+  background: repeating-linear-gradient(90deg, #F3F5F9 0, #F3F5F9 calc(12.5% - 1px), #E1E6EF calc(12.5% - 1px), #E1E6EF 12.5%); }
+.linea-barra { position: absolute; top: 3px; bottom: 3px; min-width: 6px; border-radius: 6px; color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; overflow: hidden; transform-origin: left; animation: crecer-x .8s var(--ease) both; }
+.linea-barra.abierta { box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(22,163,74,.6); }

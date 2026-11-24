@@ -31,7 +31,7 @@ else
         <header class="fact-head">
             <div class="fact-titulo">
                 <h1>Factura @Letra</h1>
-                <span class="sub">@(sesion.Sucursal != null ? sesion.Sucursal.Nombre + " · " : "")Pto. Vta. @sesion.PuntoVenta.ToString("0000") · @(string.IsNullOrWhiteSpace(factura.ClienteNombre) ? "Consumidor final" : factura.ClienteNombre)</span>
+                <span class="sub">@(sesion.Sucursal != null ? sesion.Sucursal.Nombre + " · " : "")@(sesion.Caja != null ? sesion.Caja.TituloCaja + " · " : "")Pto. Vta. @sesion.PuntoVenta.ToString("0000") · @(string.IsNullOrWhiteSpace(factura.ClienteNombre) ? "Consumidor final" : factura.ClienteNombre)</span>
             </div>
             <div class="fila-btns">
                 @* También en la Factura C: ARCA pide la condición frente al IVA del receptor (RG 5616) *@
@@ -1027,15 +1027,28 @@ else
 
     private Guid? CajaMpElegida => Guid.TryParse(mpCajaElegida, out var id) ? id : null;
 
+    private Guid? cajaDeLasMp;   // caja del usuario con la que se cargó la lista (si cambia de caja, se vuelve a cargar)
+
     private async Task CargarCajasMpAsync()
     {
-        if (mpCajasSucursal != null) return;
+        if (mpCajasSucursal != null && cajaDeLasMp == sesion.Caja?.CajaId) return;
+        cajaDeLasMp = sesion.Caja?.CajaId;
         try
         {
             mpCajasSucursal = (await MpSrv.CajasAsync(sesion.Tenant.Id))
                 .Where(c => c.PuntoVenta == sesion.PuntoVenta && c.Creada).ToList();
         }
         catch (Exception) { mpCajasSucursal = new(); }
+
+        // Si el usuario eligió su caja al ingresar y esa caja está vinculada a una de Mercado Pago,
+        // cobra siempre con esa: no hay nada que elegir.
+        var vinculada = sesion.Caja?.MercadoPagoCajaId;
+        if (vinculada != null && mpCajasSucursal.Any(c => c.Id == vinculada))
+        {
+            mpCajasSucursal = mpCajasSucursal.Where(c => c.Id == vinculada).ToList();
+            mpCajaElegida = vinculada.ToString();
+            return;
+        }
 
         try { mpCajaElegida = await JS.InvokeAsync<string>("localStorage.getItem", ClaveCajaMp) ?? ""; }
         catch (Exception) { mpCajaElegida = ""; }
