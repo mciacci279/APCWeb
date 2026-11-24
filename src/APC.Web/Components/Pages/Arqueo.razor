@@ -65,12 +65,12 @@ else
             @if (PuedeSupervisar)
             {
                 @* Supervisor y administrador: su caja o todas las abiertas de la sucursal, un ticket por caja *@
-                <a class="btn" href="/imprimir/arqueo/@turno.Id?corte=@Guid.NewGuid()" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
+                <a class="btn" href="@($"/imprimir/arqueo/{turno.Id}?corte={Guid.NewGuid()}")" target="_blank">@(turno.EsDeCaja ? $"Imprimir {turno.Puesto}" : "Imprimir parcial")</a>
                 <a class="btn btn-primario" href="@UrlImprimirTodas(abiertas: true)" target="_blank">Imprimir todas las cajas</a>
             }
             else
             {
-                <a class="btn" href="/imprimir/arqueo/@turno.Id?corte=@Guid.NewGuid()" target="_blank">Imprimir parcial</a>
+                <a class="btn" href="@($"/imprimir/arqueo/{turno.Id}?corte={Guid.NewGuid()}")" target="_blank">Imprimir parcial</a>
             }
         </div>
     </header>
@@ -313,7 +313,7 @@ else
                         <td class="der @(c.Diferencia < 0 ? "negativo" : "")">@(c.Diferencia == null ? "—" : Pesos(c.Diferencia.Value))</td>
                         <td class="acciones">
                             <button type="button" class="btn btn-chico" @onclick="() => VerCaja(c)">Ver arqueo</button>
-                            <a class="btn btn-chico" href="/imprimir/arqueo/@c.Id@(c.Abierta ? "?corte=" + Guid.NewGuid() : "")" target="_blank">Imprimir</a>
+                            <a class="btn btn-chico" href="@($"/imprimir/arqueo/{c.Id}" + (c.Abierta ? "?corte=" + Guid.NewGuid() : ""))" target="_blank">Imprimir</a>
                         </td>
                     </tr>
                 }
