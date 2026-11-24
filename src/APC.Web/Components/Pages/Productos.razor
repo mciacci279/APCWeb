@@ -11,7 +11,7 @@
 
 <div class="page-pad">
     <header class="fact-head">
-        <div class="fact-titulo"><h1>Productos</h1><span class="sub">@lista.Count productos@(lista.Count >= 200 ? " (se muestran los primeros 200, refiná la búsqueda)" : "")</span></div>
+        <div class="fact-titulo"><h1>Productos</h1><span class="sub">@lista.Count productos@(lista.Count >= MaxProductos ? $" (se muestran los primeros {MaxProductos}, refiná la búsqueda)" : "")</span></div>
         @if (esAdmin)
         {
             <div class="fila-btns">
@@ -46,6 +46,7 @@
 
     <div class="arqueo-cols">
         <section class="panel crece tabla-scroll">
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="producto" Plural="productos" />
             <table class="tabla">
                 <thead>
                     <tr><th>Código</th><th>Descripción</th><th>Rubro</th><th class="der">Stock</th><th class="der">Costo</th><th class="der">@listas.Titulo1</th><th>IVA</th></tr>
@@ -59,7 +60,7 @@
                     {
                         <tr><td colspan="7" class="sub">No hay productos para mostrar.</td></tr>
                     }
-                    @foreach (var p in lista)
+                    @foreach (var p in Paginador.Cortar(lista, pagina))
                     {
                         <tr class="fila-click @(sel?.Id == p.Id ? "fila-sel" : "") @(p.Activo ? "" : "fila-baja")">
                             <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@(string.IsNullOrWhiteSpace(p.Codigo) ? "—" : p.Codigo)</button></td>
@@ -73,6 +74,7 @@
                     }
                 </tbody>
             </table>
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="producto" Plural="productos" />
         </section>
 
         @if (modo != Modo.Ninguno)
@@ -327,6 +329,7 @@
     private PorcentajesListas listas = new();
     private List<RubroItem> rubros = new();
     private List<ProductoDetalle> lista = new();
+    private int pagina = 1;   // página visible de la grilla
     private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private string texto;
     private Guid? filtroRubro;
@@ -376,7 +379,14 @@
 
     private async Task BuscarKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
 
-    private async Task Buscar() => lista = await ProductoSrv.ListarAsync(sesion.Cs, texto, filtroRubro, verInactivos);
+    /// <summary>Tope de productos que trae una búsqueda; la grilla los muestra de a páginas.</summary>
+    private const int MaxProductos = 1000;
+
+    private async Task Buscar()
+    {
+        lista = await ProductoSrv.ListarAsync(sesion.Cs, texto, filtroRubro, verInactivos, MaxProductos);
+        pagina = 1;
+    }
 
     private List<StockEnSucursal> stockSucursales = new();
 

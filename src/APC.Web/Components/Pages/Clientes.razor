@@ -29,6 +29,7 @@
 
     <div class="arqueo-cols">
         <section class="panel crece tabla-scroll">
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="cliente" Plural="clientes" />
             <table class="tabla">
                 <thead><tr><th>Cliente</th><th>Documento</th><th>Condición IVA</th><th>Domicilio</th><th>Teléfono</th></tr></thead>
                 <tbody>
@@ -40,7 +41,7 @@
                     {
                         <tr><td colspan="5" class="sub">No hay clientes que coincidan. Creá el primero con «Nuevo cliente».</td></tr>
                     }
-                    @foreach (var c in lista)
+                    @foreach (var c in Paginador.Cortar(lista, pagina))
                     {
                         <tr class="@(edit?.Id == c.Id ? "fila-sel" : "")">
                             <td><button type="button" class="link-fila" @onclick="() => Seleccionar(c)">@c.NombreCompleto</button></td>
@@ -52,6 +53,7 @@
                     }
                 </tbody>
             </table>
+            <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="cliente" Plural="clientes" />
         </section>
 
         @if (edit != null)
@@ -133,6 +135,7 @@
 @code {
     private SesionActual sesion;
     private List<ClienteItem> lista = new();
+    private int pagina = 1;   // página visible de la grilla
     private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private List<OpcionItem> tiposDocumento = new();
     private List<OpcionItem> condicionesIva = new();
@@ -171,7 +174,11 @@
         if (e.Key == "Enter") await Buscar();
     }
 
-    private async Task Buscar() => lista = await ClienteSrv.BuscarAsync(sesion.Cs, texto);
+    private async Task Buscar()
+    {
+        lista = await ClienteSrv.BuscarAsync(sesion.Cs, texto, max: 500);
+        pagina = 1;
+    }
 
     private void Nuevo()
     {

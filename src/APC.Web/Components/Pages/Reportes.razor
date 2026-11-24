@@ -6,38 +6,64 @@
 @inject NavigationManager Nav
 @inject ReporteService ReporteSrv
 @inject SucursalService SucursalSrv
+@inject CatalogoService Catalogo
 @inject IJSRuntime JS
 
 <PageTitle>Reportes · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
-        <div class="fact-titulo"><h1>Reportes</h1><span class="sub">@Periodo</span></div>
-        <div class="fila-campos">
-            <div class="campo"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" /></div>
-            <div class="campo"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" /></div>
-            @if (sucursales.Count > 1)
+        <div class="fact-titulo">
+            <h1>Reportes</h1>
+            <span class="sub">@Periodo</span>
+            @if (!cargando && resumen != null)
             {
-                <div class="campo">
-                    <label for="sucursal">Sucursal</label>
-                    <select id="sucursal" class="input" @bind="puntoVentaTexto">
-                        <option value="">Todas</option>
-                        @foreach (var s in sucursales)
-                        {
-                            <option value="@s.PuntoVenta">@s.Nombre</option>
-                        }
-                    </select>
+                <span class="sub rep-detalle">Facturado @Pesos(resumen.TotalFacturas) · Notas de crédito −@Pesos(resumen.TotalNotasCredito) · Notas de pedido @Pesos(resumen.TotalNotasPedido) (@resumen.CantidadNotasPedido)</span>
+            }
+        </div>
+        <div class="rep-chips">
+            @foreach (var k in Chips)
+            {
+                <div class="rep-chip">
+                    @if (cargando)
+                    {
+                        <span class="sk sk-oscuro sk-alto" style="width: 90px"></span>
+                    }
+                    else
+                    {
+                        <span class="rep-chip-num mono">@k.Valor</span>
+                    }
+                    <span class="rep-chip-txt">@k.Nombre</span>
                 </div>
             }
-            <button type="button" class="btn" @onclick="Buscar">Buscar</button>
         </div>
     </header>
 
-    <div class="fila-btns">
-        <button type="button" class="btn btn-chico" @onclick="() => Rango(0)">Hoy</button>
-        <button type="button" class="btn btn-chico" @onclick="() => Rango(1)">Esta semana</button>
-        <button type="button" class="btn btn-chico" @onclick="() => Rango(2)">Este mes</button>
-        <button type="button" class="btn btn-chico" @onclick="() => Rango(3)">Mes anterior</button>
+    <div class="rep-barra">
+        <div class="segmentos" role="group" aria-label="Período">
+            @foreach (var r in Rangos)
+            {
+                <button type="button" class="segmento @(rango == r.Key ? "activo" : "")" aria-pressed="@(rango == r.Key ? "true" : "false")"
+                        @onclick="() => Rango(r.Key)">@r.Value</button>
+            }
+        </div>
+        <div class="campo campo-fecha"><label for="desde">Desde</label><input id="desde" class="input" type="date" @bind="desde" @bind:after="ElegirFechas" /></div>
+        <div class="campo campo-fecha"><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" @bind="hasta" @bind:after="ElegirFechas" /></div>
+        @if (sucursales.Count > 1)
+        {
+            <div class="campo">
+                <label for="sucursal">Sucursal</label>
+                <select id="sucursal" class="input" @bind="puntoVentaTexto" @bind:after="Buscar">
+                    <option value="">Todas las sucursales</option>
+                    @foreach (var s in sucursales)
+                    {
+                        <option value="@s.PuntoVenta">@s.Nombre</option>
+                    }
+                </select>
+            </div>
+        }
+        <button type="button" class="btn rep-exportar" @onclick="Exportar" disabled="@(cargando || resumen == null)"
+                title="Descarga la tabla de la pestaña elegida abajo, en un archivo que Excel abre directamente">Exportar a Excel</button>
     </div>
 
     @if (error != null)
@@ -45,181 +71,286 @@
         <p class="alerta alerta-error">@error</p>
     }
 
-    @if (cargando)
-    {
-        @* Skeleton: las tarjetas y la tabla en gris mientras se calcula el período *@
-        <div class="kpis" aria-busy="true" aria-label="Cargando el reporte">
-            @for (var k = 0; k < 4; k++)
+    <div class="rep-graficos">
+        <section class="panel rep-dias" aria-labelledby="tit-dias">
+            <h2 id="tit-dias">Ventas por día</h2>
+            <p class="sub">@(porDia.Count > MaxDias ? $"Últimos {MaxDias} días con ventas" : "Días con ventas") del período, total facturado con IVA.</p>
+            @if (cargando)
             {
-                <div class="kpi"><span class="sk" style="width: 55%"></span><span class="sk sk-alto" style="width: 75%"></span><span class="sk" style="width: 40%"></span></div>
+                <div class="rep-columnas" aria-busy="true">
+                    @for (var i = 0; i < 12; i++)
+                    {
+                        <div class="rep-col"><span class="sk rep-sk-barra" style="height: @(40 + (i * 37) % 120)px"></span></div>
+                    }
+                </div>
             }
-        </div>
-        <section class="panel tabla-scroll">
-            <table class="tabla"><tbody><FilasEsqueleto Filas="6" Columnas="4" /></tbody></table>
+            else if (Dias.Count == 0)
+            {
+                <p class="vacio">Sin ventas en el período.</p>
+            }
+            else
+            {
+                <div class="rep-columnas" role="img" aria-label="Gráfico de barras de las ventas por día">
+                    @for (var i = 0; i < Dias.Count; i++)
+                    {
+                        var d = Dias[i];
+                        var ultimo = i == Dias.Count - 1;
+                        <div class="rep-col" title="@d.Etiqueta · @Pesos(d.Total) · @d.Cantidad comprobantes">
+                            <span class="rep-valor" style="animation-delay: @(i * 50 + 400)ms">@Corto(d.Total)</span>
+                            <span class="rep-barra-col @(ultimo ? "ultima" : "")" style="height: @(Alto(d.Total))%; animation-delay: @(i * 50)ms"></span>
+                            <span class="rep-dia">@DiaCorto(d.Etiqueta)</span>
+                        </div>
+                    }
+                </div>
+            }
         </section>
-    }
-    else if (resumen != null)
+
+        <section class="panel rep-pagos" aria-labelledby="tit-pagos">
+            <h2 id="tit-pagos">Por forma de pago</h2>
+            <p class="sub">Porcentaje sobre el total vendido en el período.</p>
+            @if (cargando)
+            {
+                for (var i = 0; i < 5; i++)
+                {
+                    <div class="rep-pago"><span class="sk" style="width: 60%"></span><span class="sk" style="width: 100%; height: 10px"></span></div>
+                }
+            }
+            else if (porFormaPago.Count == 0)
+            {
+                <p class="vacio">Sin ventas en el período.</p>
+            }
+            else
+            {
+                for (var i = 0; i < porFormaPago.Count; i++)
+                {
+                    var f = porFormaPago[i];
+                    var pct = Porcentaje(f.Total);
+                    <div class="rep-pago">
+                        <div class="rep-pago-fila">
+                            @if (EsMercadoPago(f.Etiqueta))
+                            {
+                                <span class="con-logo-mp"><img class="logo-mp" src="img/mercadopago-color.png" alt="Mercado Pago" /> QR</span>
+                            }
+                            else
+                            {
+                                <span class="fuerte">@f.Etiqueta</span>
+                            }
+                            <span class="mono">@Pesos(f.Total) <span class="sub">· @(pct.ToString("0", Ar)) %</span></span>
+                        </div>
+                        <div class="rep-pista"><span class="rep-relleno" style="width: @(pct.ToString("0.##", CultureInfo.InvariantCulture))%; background: @(ColorPago(f.Etiqueta, i)); animation-delay: @(i * 90)ms"></span></div>
+                    </div>
+                }
+            }
+        </section>
+    </div>
+
+    <section class="panel tabla-scroll rep-ultimos" aria-labelledby="tit-ultimos">
+        <div class="entre fila-btns">
+            <h2 id="tit-ultimos">Últimos comprobantes</h2>
+            <a class="fuerte" href="/comprobantes">Ver todos →</a>
+        </div>
+        <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Forma de pago</th><th>CAE</th><th class="der">Total</th></tr></thead>
+            <tbody>
+                @if (cargando)
+                {
+                    <FilasEsqueleto Filas="5" Columnas="6" />
+                }
+                else if (ultimos.Count == 0)
+                {
+                    <tr><td colspan="6" class="sub">Sin comprobantes en el período.</td></tr>
+                }
+                else
+                {
+                    foreach (var c in ultimos)
+                    {
+                        <tr>
+                            <td class="mono">@c.Fecha.ToString("dd/MM HH:mm")</td>
+                            <td class="fuerte">@(c.EsNotaPedido ? $"Nota de pedido {Nro(c.Terminal, c.NumeroInterno)}" : $"Factura {c.Tipo} {Nro(c.Terminal, c.Numero)}")</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.ClienteNombre) ? "Consumidor final" : c.ClienteNombre)</td>
+                            <td>
+                                @if (EsMercadoPago(c.FormaPago))
+                                {
+                                    <span class="etiqueta etiqueta-azul con-logo-mp"><img class="logo-mp" src="img/mercadopago-color.png" alt="Mercado Pago" /> QR</span>
+                                }
+                                else
+                                {
+                                    <span class="etiqueta etiqueta-azul">@(c.FormaPago ?? "—")</span>
+                                }
+                            </td>
+                            <td>
+                                @if (c.Anulada) { <span class="etiqueta etiqueta-rojo">Anulada</span> }
+                                else if (c.EsNotaPedido) { <span class="etiqueta etiqueta-gris">Sin CAE</span> }
+                                else { <span class="etiqueta etiqueta-ok">Autorizado</span> }
+                            </td>
+                            <td class="der fuerte mono">@Pesos(c.MontoTotal)</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </section>
+
+    @if (!cargando && resumen != null)
     {
-        <div class="kpis">
-            <div class="kpi">
-                <span class="sub">Facturado (con CAE)</span>
-                <span class="mono kpi-num">@Pesos(resumen.TotalFacturas)</span>
-                <span class="sub">@resumen.CantidadFacturas comprobantes</span>
-            </div>
-            <div class="kpi">
-                <span class="sub">Notas de crédito</span>
-                <span class="mono kpi-num">−@Pesos(resumen.TotalNotasCredito)</span>
-                <span class="sub">@resumen.CantidadNotasCredito comprobantes</span>
-            </div>
-            <div class="kpi kpi-fuerte">
-                <span class="sub">Ventas netas</span>
-                <span class="mono kpi-num">@Pesos(resumen.VentasNetas)</span>
-                <span class="sub">IVA @Pesos(resumen.IvaNeto)</span>
-            </div>
-            <div class="kpi">
-                <span class="sub">Notas de pedido</span>
-                <span class="mono kpi-num">@Pesos(resumen.TotalNotasPedido)</span>
-                <span class="sub">@resumen.CantidadNotasPedido comprobantes</span>
-            </div>
-        </div>
+        <section class="panel rep-detalles" aria-labelledby="tit-detalle">
+            <h2 id="tit-detalle">Detalle del período</h2>
+            <nav class="pestanias" aria-label="Tipo de reporte">
+                @foreach (var p in Pestanias)
+                {
+                    <button type="button" class="pestania @(pestania == p.Key ? "activa" : "")" @onclick="() => pestania = p.Key">@p.Value</button>
+                }
+            </nav>
 
-        <nav class="pestanias" aria-label="Tipo de reporte">
-            @foreach (var p in Pestanias)
-            {
-                <button type="button" class="pestania @(pestania == p.Key ? "activa" : "")" @onclick="() => pestania = p.Key">@p.Value</button>
-            }
-        </nav>
+            <div class="tabla-scroll">
+                @switch (pestania)
+                {
+                    case 0:
+                        <table class="tabla">
+                            <thead><tr><th>Día</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                            <tbody>
+                                @if (porDia.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
+                                @foreach (var f in porDia)
+                                {
+                                    <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                        break;
 
-        <div class="panel tabla-scroll">
-            @switch (pestania)
-            {
-                case 0:
-                    <table class="tabla">
-                        <thead><tr><th>Día</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
-                        <tbody>
-                            @if (porDia.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
-                            @foreach (var f in porDia)
-                            {
-                                <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    break;
+                    case 1:
+                        <table class="tabla">
+                            <thead><tr><th>Forma de pago</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                            <tbody>
+                                @if (porFormaPago.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
+                                @foreach (var f in porFormaPago)
+                                {
+                                    <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                        break;
 
-                case 1:
-                    <table class="tabla">
-                        <thead><tr><th>Forma de pago</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
-                        <tbody>
-                            @if (porFormaPago.Count == 0) { <tr><td colspan="3" class="sub">Sin ventas en el período.</td></tr> }
-                            @foreach (var f in porFormaPago)
-                            {
-                                <tr><td>@f.Etiqueta</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    break;
+                    case 2:
+                        <table class="tabla">
+                            <thead><tr><th>Usuario</th><th>Nombre</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
+                            <tbody>
+                                @if (porUsuario.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
+                                @foreach (var f in porUsuario)
+                                {
+                                    <tr><td class="mono">@f.Etiqueta</td><td>@f.Detalle</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                        break;
 
-                case 2:
-                    <table class="tabla">
-                        <thead><tr><th>Usuario</th><th>Nombre</th><th class="der">Comprobantes</th><th class="der">Total</th></tr></thead>
-                        <tbody>
-                            @if (porUsuario.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
-                            @foreach (var f in porUsuario)
-                            {
-                                <tr><td class="mono">@f.Etiqueta</td><td>@f.Detalle</td><td class="der">@f.Cantidad</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    break;
+                    case 3:
+                        <table class="tabla">
+                            <thead><tr><th>Código</th><th>Producto</th><th class="der">Cantidad</th><th class="der">Total</th></tr></thead>
+                            <tbody>
+                                @if (porProducto.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
+                                @foreach (var f in porProducto)
+                                {
+                                    <tr><td class="mono">@f.Codigo</td><td>@f.Producto</td><td class="der">@f.Cantidad.ToString("N3", Ar)</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                        break;
 
-                case 3:
-                    <table class="tabla">
-                        <thead><tr><th>Código</th><th>Producto</th><th class="der">Cantidad</th><th class="der">Total</th></tr></thead>
-                        <tbody>
-                            @if (porProducto.Count == 0) { <tr><td colspan="4" class="sub">Sin ventas en el período.</td></tr> }
-                            @foreach (var f in porProducto)
-                            {
-                                <tr><td class="mono">@f.Codigo</td><td>@f.Producto</td><td class="der">@f.Cantidad.ToString("N3", Ar)</td><td class="der fuerte">@Pesos(f.Total)</td></tr>
-                            }
-                        </tbody>
-                    </table>
-                    break;
-
-                default:
-                    <table class="tabla tabla-chica">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th><th>Comprobante</th><th>Número</th><th>Cliente</th><th>CUIT</th>
-                                <th class="der">Neto gravado</th><th class="der">IVA 21%</th><th class="der">IVA 10,5%</th>
-                                <th class="der">IVA 27%</th><th class="der">No gravado</th><th class="der">Exento</th>
-                                <th class="der">Total</th><th>CAE</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (libro.Count == 0) { <tr><td colspan="13" class="sub">Sin comprobantes fiscales en el período.</td></tr> }
-                            @foreach (var f in libro)
-                            {
+                    default:
+                        @* Libro IVA Ventas: la pestaña sólo aparece si la empresa es responsable inscripto *@
+                        <table class="tabla tabla-chica">
+                            <thead>
                                 <tr>
-                                    <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
-                                    <td>@f.Comprobante @f.Letra</td>
-                                    <td class="mono">@f.NumeroCompleto</td>
-                                    <td>@f.ClienteNombre</td>
-                                    <td class="mono">@f.ClienteCUIT</td>
-                                    <td class="der">@Numero(f.NetoGravado)</td>
-                                    <td class="der">@Numero(f.Iva21)</td>
-                                    <td class="der">@Numero(f.Iva105)</td>
-                                    <td class="der">@Numero(f.Iva27)</td>
-                                    <td class="der">@Numero(f.NoGravado)</td>
-                                    <td class="der">@Numero(f.Exento)</td>
-                                    <td class="der fuerte">@Numero(f.MontoTotal)</td>
-                                    <td class="mono sub">@f.CAE</td>
+                                    <th>Fecha</th><th>Comprobante</th><th>Número</th><th>Cliente</th><th>CUIT</th>
+                                    <th class="der">Neto gravado</th><th class="der">IVA 21%</th><th class="der">IVA 10,5%</th>
+                                    <th class="der">IVA 27%</th><th class="der">No gravado</th><th class="der">Exento</th>
+                                    <th class="der">Total</th><th>CAE</th>
                                 </tr>
+                            </thead>
+                            <tbody>
+                                @if (libro.Count == 0) { <tr><td colspan="13" class="sub">Sin comprobantes fiscales en el período.</td></tr> }
+                                @foreach (var f in libro)
+                                {
+                                    <tr>
+                                        <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
+                                        <td>@f.Comprobante @f.Letra</td>
+                                        <td class="mono">@f.NumeroCompleto</td>
+                                        <td>@f.ClienteNombre</td>
+                                        <td class="mono">@f.ClienteCUIT</td>
+                                        <td class="der">@Numero(f.NetoGravado)</td>
+                                        <td class="der">@Numero(f.Iva21)</td>
+                                        <td class="der">@Numero(f.Iva105)</td>
+                                        <td class="der">@Numero(f.Iva27)</td>
+                                        <td class="der">@Numero(f.NoGravado)</td>
+                                        <td class="der">@Numero(f.Exento)</td>
+                                        <td class="der fuerte">@Numero(f.MontoTotal)</td>
+                                        <td class="mono sub">@f.CAE</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            @if (libro.Count > 0)
+                            {
+                                <tfoot>
+                                    <tr class="fila-total">
+                                        <td colspan="5">Totales</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.NetoGravado))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.Iva21))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.Iva105))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.Iva27))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.NoGravado))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.Exento))</td>
+                                        <td class="der">@Numero(libro.Sum(x => x.MontoTotal))</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
                             }
-                        </tbody>
-                        @if (libro.Count > 0)
-                        {
-                            <tfoot>
-                                <tr class="fila-total">
-                                    <td colspan="5">Totales</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.NetoGravado))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.Iva21))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.Iva105))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.Iva27))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.NoGravado))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.Exento))</td>
-                                    <td class="der">@Numero(libro.Sum(x => x.MontoTotal))</td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        }
-                    </table>
-                    break;
-            }
-        </div>
-
-        <div class="fila-btns">
-            <button type="button" class="btn btn-primario" @onclick="Exportar">Exportar a Excel</button>
-            <span class="sub">Se descarga un archivo que Excel abre directamente.</span>
-        </div>
+                        </table>
+                        break;
+                }
+            </div>
+        </section>
     }
 </div>
 
 @code {
     private static readonly CultureInfo Ar = new("es-AR");
 
-    private static readonly Dictionary<int, string> Pestanias = new()
+    /// <summary>Cuántas barras entran en el gráfico de ventas por día.</summary>
+    private const int MaxDias = 31;
+
+    private static readonly Dictionary<int, string> Rangos = new()
     {
-        [0] = "Por día",
-        [1] = "Por forma de pago",
-        [2] = "Por usuario",
-        [3] = "Por producto",
-        [4] = "Libro IVA Ventas"
+        [0] = "Hoy",
+        [1] = "Esta semana",
+        [2] = "Este mes",
+        [3] = "Mes anterior"
     };
+
+    /// <summary>Pestañas del detalle. El Libro IVA Ventas sólo tiene sentido para un responsable inscripto.</summary>
+    private Dictionary<int, string> Pestanias
+    {
+        get
+        {
+            var p = new Dictionary<int, string>
+            {
+                [0] = "Por día",
+                [1] = "Por forma de pago",
+                [2] = "Por usuario",
+                [3] = "Por producto"
+            };
+            if (esResponsableInscripto) p[4] = "Libro IVA Ventas";
+            return p;
+        }
+    }
 
     private SesionActual sesion;
     private DateTime desde = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateTime hasta = DateTime.Today;
     private int pestania;
+    private int? rango = 2;   // el período arranca en "Este mes"; null = fechas elegidas a mano
+    private bool esResponsableInscripto;
+    private List<ComprobanteListado> ultimos = new();
     private bool cargando = true;
     private string error;
 
@@ -247,13 +378,22 @@
         sesion = await SesionSrv.ObtenerAsync();
         // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
         if (!sesion.TieneModulo(Modulo.Reportes)) { Nav.NavigateTo("/sin-permiso"); return; }
+        try { esResponsableInscripto = (await Catalogo.EmpresaAsync(sesion.Cs))?.EsResponsableInscripto == true; }
+        catch (Exception) { esResponsableInscripto = false; }
         try { sucursales = await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: false); }
         catch (Exception) { sucursales = new(); }   // la empresa todavía no corrió el script de sucursales
         await Buscar();
     }
 
+    private async Task ElegirFechas()
+    {
+        rango = null;
+        await Buscar();
+    }
+
     private async Task Rango(int cual)
     {
+        rango = cual;
         var hoy = DateTime.Today;
         switch (cual)
         {
@@ -282,7 +422,10 @@
             porFormaPago = await ReporteSrv.PorFormaPagoAsync(sesion.Cs, desde, hasta, puntoVenta);
             porUsuario = await ReporteSrv.PorUsuarioAsync(sesion.Cs, desde, hasta, puntoVenta);
             porProducto = await ReporteSrv.PorProductoAsync(sesion.Cs, desde, hasta, puntoVenta);
-            libro = await ReporteSrv.LibroIvaVentasAsync(sesion.Cs, desde, hasta, puntoVenta);
+            ultimos = await ReporteSrv.UltimosAsync(sesion.Cs, desde, hasta, puntoVenta);
+            libro = esResponsableInscripto
+                ? await ReporteSrv.LibroIvaVentasAsync(sesion.Cs, desde, hasta, puntoVenta)
+                : new();
         }
         catch (Exception ex)
         {
@@ -333,6 +476,64 @@
                     })));
         }
     }
+
+    // ---------- encabezado ----------
+    private record Chip(string Nombre, string Valor);
+
+    private IEnumerable<Chip> Chips
+    {
+        get
+        {
+            var r = resumen ?? new ResumenVentas();
+            var promedio = r.CantidadFacturas > 0 ? r.VentasNetas / r.CantidadFacturas : 0;
+            yield return new Chip("Vendido", PesosCorto(r.VentasNetas));
+            yield return new Chip("Comprobantes", r.CantidadFacturas.ToString("N0", Ar));
+            yield return new Chip("Ticket promedio", "$ " + promedio.ToString("N0", Ar));
+            yield return esResponsableInscripto
+                ? new Chip("IVA débito", PesosCorto(r.IvaNeto))
+                : new Chip("Notas de pedido", PesosCorto(r.TotalNotasPedido));
+        }
+    }
+
+    // ---------- gráfico de ventas por día ----------
+    private List<FilaReporte> Dias => porDia.Count > MaxDias ? porDia.Skip(porDia.Count - MaxDias).ToList() : porDia;
+
+    /// <summary>Alto de la barra en % del más alto del gráfico (mínimo 2 % para que se vea).</summary>
+    private decimal Alto(decimal total)
+    {
+        var max = Dias.Count == 0 ? 0 : Dias.Max(d => d.Total);
+        if (max <= 0) return 0;
+        return Math.Round(Math.Max(2m, total * 100m / max), 1);
+    }
+
+    /// <summary>"dd/MM/yyyy" → "dd/MM".</summary>
+    private static string DiaCorto(string etiqueta) => etiqueta?.Length >= 5 ? etiqueta[..5] : etiqueta;
+
+    /// <summary>Importe corto para arriba de cada barra: 318k, 1,2M.</summary>
+    private static string Corto(decimal v) =>
+        v >= 1_000_000m ? (v / 1_000_000m).ToString("0.#", Ar) + "M"
+        : v >= 1_000m ? (v / 1_000m).ToString("0", Ar) + "k"
+        : v.ToString("0", Ar);
+
+    private static string PesosCorto(decimal v) =>
+        v >= 1_000_000m ? "$ " + (v / 1_000_000m).ToString("0.00", Ar) + " M" : "$ " + v.ToString("N0", Ar);
+
+    // ---------- formas de pago ----------
+    private decimal Porcentaje(decimal total)
+    {
+        var suma = porFormaPago.Sum(f => f.Total);
+        return suma <= 0 ? 0 : Math.Round(total * 100m / suma, 2);
+    }
+
+    private static bool EsMercadoPago(string nombre) =>
+        nombre != null && nombre.Contains("mercado pago", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly string[] Colores = { "#16A34A", "#2F7BF5", "#7C3AED", "#F26B1D", "#0EA5E9", "#64748B" };
+
+    /// <summary>Mercado Pago va con su celeste; el resto toma un color de la paleta.</summary>
+    private static string ColorPago(string nombre, int i) => EsMercadoPago(nombre) ? "#00BCFF" : Colores[i % Colores.Length];
+
+    private static string Nro(int terminal, int? numero) => $"{terminal:0000}-{(numero ?? 0):00000000}";
 
     private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
     private static string Numero(decimal v) => v == 0 ? "—" : v.ToString("N2", Ar);

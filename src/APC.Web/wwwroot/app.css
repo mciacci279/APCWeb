@@ -879,3 +879,87 @@ h1 { font-weight: 800; }
 .btn-pago { gap: 4px; }
 .con-logo-mp { display: inline-flex; align-items: center; gap: 4px; }
 .con-logo-mp .logo-mp { height: 32px; }
+
+/* =====================================================================
+   Ajustes al rediseño (noviembre 2026)
+   ===================================================================== */
+
+/* ---------- Facturar: renglones más bajos y todo en una línea ---------- */
+.renglones { gap: 6px; }
+.renglon { flex-wrap: nowrap; gap: 10px; padding: 6px 10px 6px 14px; }
+.renglon.activo { padding: 5px 9px 5px 13px; }
+.r-info { flex: 1 1 160px; }
+.r-info .r-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.r-info .sub { font-size: 13px; }
+.btn-cant { width: 34px; height: 34px; font-size: 16px; }
+.input-cant { width: 64px; height: 34px; }
+.input-precio { height: 34px; }
+.btn-pu { padding: 4px 8px; white-space: nowrap; }
+.r-pu { min-width: 110px; }
+.r-total { min-width: 104px; white-space: nowrap; }
+.btn-ajuste { min-height: 34px; min-width: 56px; }
+.input-ajuste { height: 34px; }
+.btn-cesto { flex: none; display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; }
+@media (max-width: 1100px) {
+  .renglon { flex-wrap: wrap; }
+}
+
+/* ---------- Facturar: observaciones a todo el ancho y "Cancelar la venta" en rojo ---------- */
+.campo-obs { max-width: none; }
+.btn-cancelar { background: #FDECEC; border-color: #F1B5B0; color: #B42318; }
+.btn-cancelar:hover:not(:disabled) { background: #B42318; border-color: #B42318; color: #fff; }
+
+/* ---------- Menú: iniciales del usuario en naranja ---------- */
+.rail-avatar { background: var(--naranja); color: #fff; }
+
+/* ---------- Reportes: tablero con gráficos ---------- */
+.rep-detalle { font-size: 13px; opacity: .85; }
+.rep-chips { display: flex; flex-wrap: wrap; gap: 12px; }
+.rep-chip { min-width: 128px; padding: 12px 16px; border-radius: 14px; background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18); display: flex; flex-direction: column; gap: 2px; }
+.rep-chip-num { font-size: 22px; font-weight: 700; color: #fff; white-space: nowrap; }
+.rep-chip-txt { font-size: 13px; color: #D2DCF0; }
+.sk-oscuro { background-color: rgba(255,255,255,.12); background-image: linear-gradient(90deg, rgba(255,255,255,.10) 0, rgba(255,255,255,.28) 40%, rgba(255,255,255,.10) 80%); }
+.rep-barra { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.segmentos { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: #fff; border: 1px solid var(--borde); }
+.segmento { height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--texto-2); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color .2s, color .2s; }
+.segmento:hover { background: var(--fondo); }
+.segmento.activo { background: var(--azul); color: #fff; }
+.campo-fecha .input { width: 160px; }
+.rep-exportar { margin-left: auto; }
+.rep-graficos { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 20px; }
+@media (max-width: 1000px) { .rep-graficos { grid-template-columns: minmax(0, 1fr); } }
+.rep-graficos h2, .rep-ultimos h2, .rep-detalles h2 { font-size: 18px; margin: 0; }
+.rep-graficos .sub { margin: 4px 0 14px; }
+.rep-columnas { display: flex; align-items: flex-end; gap: 8px; height: 230px; padding-bottom: 2px; border-bottom: 1px solid var(--borde); overflow-x: auto; }
+.rep-col { flex: 1 1 0; min-width: 26px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; }
+.rep-valor { font-size: 11px; font-weight: 600; color: var(--texto-2); white-space: nowrap; animation: logo-aparece .4s ease both; }
+.rep-barra-col { width: 100%; max-width: 40px; border-radius: 8px 8px 3px 3px; background: var(--azul-vivo); transform-origin: bottom; animation: crecer-y .9s var(--ease) both; }
+.rep-barra-col.ultima { background: var(--naranja); }
+.rep-dia { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.rep-sk-barra { width: 100%; max-width: 40px; border-radius: 8px 8px 3px 3px; }
+.rep-pagos { display: flex; flex-direction: column; }
+.rep-pago { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.rep-pago-fila { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 30px; font-size: 15px; }
+.rep-pista { height: 10px; border-radius: 999px; background: #EEF1F6; overflow: hidden; }
+.rep-relleno { display: block; height: 100%; border-radius: 999px; transform-origin: left; animation: crecer-x 1s var(--ease) both; }
+.rep-ultimos .entre { margin-bottom: 10px; }
+.rep-detalles { display: flex; flex-direction: column; gap: 12px; }
+@keyframes crecer-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes crecer-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.etiqueta-azul { background: var(--sel); color: #12357A; }
+.etiqueta-ok { background: var(--ok-fondo); color: #0F6B33; }
+.etiqueta-rojo { background: var(--error-fondo); color: var(--rojo-osc); }
+.etiqueta-gris { background: #F1F3F7; color: var(--texto-2); }
+.etiqueta.con-logo-mp { padding: 0 10px 0 4px; }
+.etiqueta.con-logo-mp .logo-mp { height: 26px; }
+
+/* ---------- Grillas: paginación y filas más bajas ---------- */
+.paginador { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 4px 12px; }
+.tabla + .paginador { padding: 12px 4px 0; }
+.pag-total { font-size: 15px; color: var(--texto-2); }
+.pag-total strong { font-size: 18px; color: var(--texto); }
+.pag-btns { display: flex; gap: 8px; }
+.tabla td { padding: 8px 12px; }
+.tabla th { padding: 10px 12px; }
+.tabla .link-fila { padding-top: 2px; padding-bottom: 2px; }
+.tabla .btn-chico { min-height: 32px; }

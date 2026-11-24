@@ -1,0 +1,52 @@
+@* Barra de paginación de una grilla: total de filas, página actual y Anterior / Siguiente.
+   Uso: <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="producto" Plural="productos" />
+   y en el @foreach: Paginador.Cortar(lista, pagina) *@
+@if (Total > 0)
+{
+    <div class="paginador">
+        <span class="pag-total">
+            <strong>@Total.ToString("N0", Ar)</strong> @(Total == 1 ? Singular : Plural)
+            @if (Paginas > 1)
+            {
+                <span class="sub"> · página @Actual de @Paginas</span>
+            }
+        </span>
+        @if (Paginas > 1)
+        {
+            <div class="pag-btns">
+                <button type="button" class="btn btn-chico" disabled="@(Actual <= 1)" @onclick="() => Ir(Actual - 1)">Anterior</button>
+                <button type="button" class="btn btn-chico" disabled="@(Actual >= Paginas)" @onclick="() => Ir(Actual + 1)">Siguiente</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+
+    /// <summary>Filas por página en todas las grillas.</summary>
+    public const int TamPagina = 25;
+
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int Pagina { get; set; } = 1;
+    [Parameter] public EventCallback<int> PaginaChanged { get; set; }
+    [Parameter] public string Singular { get; set; } = "fila";
+    [Parameter] public string Plural { get; set; } = "filas";
+
+    private int Paginas => CantidadPaginas(Total);
+    private int Actual => Math.Clamp(Pagina, 1, Paginas);
+
+    private Task Ir(int pagina) => PaginaChanged.InvokeAsync(Math.Clamp(pagina, 1, Paginas));
+
+    private static int CantidadPaginas(int total) => Math.Max(1, (total + TamPagina - 1) / TamPagina);
+
+    /// <summary>
+    /// Las filas de la página pedida. Si la lista se achicó (por ejemplo al borrar una fila),
+    /// muestra la última página que existe en vez de una grilla vacía.
+    /// </summary>
+    public static IEnumerable<T> Cortar<T>(IReadOnlyCollection<T> lista, int pagina)
+    {
+        var actual = Math.Clamp(pagina, 1, CantidadPaginas(lista.Count));
+        return lista.Skip((actual - 1) * TamPagina).Take(TamPagina);
+    }
+}

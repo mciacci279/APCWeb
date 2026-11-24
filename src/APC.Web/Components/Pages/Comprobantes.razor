@@ -92,6 +92,7 @@
     }
 
     <div class="panel tabla-scroll">
+        <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="comprobante" Plural="comprobantes" />
         <table class="tabla">
             <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Forma de pago</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
@@ -103,7 +104,7 @@
                 {
                     <tr><td colspan="7" class="sub">No hay comprobantes en el período.</td></tr>
                 }
-                @foreach (var c in lista)
+                @foreach (var c in Paginador.Cortar(lista, pagina))
                 {
                     <tr class="@(c.Anulada ? "fila-baja" : "")">
                         <td>@c.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
@@ -170,6 +171,7 @@
                 }
             </tbody>
         </table>
+        <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="comprobante" Plural="comprobantes" />
     </div>
 </div>
 
@@ -181,6 +183,7 @@
     private string fCliente = "", fNumero = "", fEstado = "", fFormaPago = "";
     private List<FormaPagoItem> formasPago = new();
     private List<ComprobanteListado> lista = new();
+    private int pagina = 1;   // página visible de la grilla
     private bool cargando = true;   // muestra el skeleton hasta la primera carga
 
     private bool HayFiltros => soloMios || !string.IsNullOrWhiteSpace(fCliente) || !string.IsNullOrWhiteSpace(fNumero)
@@ -209,6 +212,7 @@
         var usuario = soloMios ? sesion.UsuarioId : (Guid?)null;
         Guid? formaPago = Guid.TryParse(fFormaPago, out var fp) ? fp : null;
         lista = await Facturacion.ListarAsync(sesion.Cs, desde, hasta, usuario, fCliente, fNumero, formaPago, fEstado);
+        pagina = 1;
     }
 
     private async Task BuscarKey(KeyboardEventArgs e)

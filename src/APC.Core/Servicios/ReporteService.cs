@@ -36,6 +36,21 @@ public class ReporteService
         return r;
     }
 
+    /// <summary>
+    /// Los últimos comprobantes del período (facturas con CAE y notas de pedido), para la tabla de la pantalla de reportes.
+    /// </summary>
+    public async Task<List<ComprobanteListado>> UltimosAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null, int top = 8)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return (await cn.QueryAsync<ComprobanteListado>(
+            $@"SELECT TOP (@top) f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, f.MontoTotal, f.CAE,
+                     fp.Nombre AS FormaPago, f.NumeroInterno, ISNULL(f.Impresa, 0) AS Impresa, ISNULL(f.Anulada, 0) AS MarcadaAnulada
+               FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
+               WHERE {Periodo} AND ({EsFiscal} OR {EsNotaPedido})
+               ORDER BY f.Fecha DESC",
+            new { desde = desde.Date, hasta = hasta.Date.AddDays(1), puntoVenta, top })).ToList();
+    }
+
     public async Task<List<FilaReporte>> PorDiaAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);

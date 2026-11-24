@@ -74,6 +74,8 @@ public class EmpresaDatos
     /// <summary>Fila de dbo.Iva que define la condición frente al IVA del emisor.</summary>
     public Guid? IvaId { get; set; }
     public bool EsMonotributo { get; set; }
+    /// <summary>Responsable inscripto: el único que lleva Libro IVA Ventas con IVA discriminado.</summary>
+    public bool EsResponsableInscripto { get; set; }
     public long CuitNumero => long.TryParse((Cuit ?? "").Replace("-", "").Trim(), out var c) ? c : 0;
 }
 
