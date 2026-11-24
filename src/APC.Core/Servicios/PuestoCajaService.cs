@@ -235,13 +235,32 @@ public class PuestoCajaService
                      CAST(t.EnUso AS BIT) AS EnUso,
                      (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
                       WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.Ini AND f.Fecha < t.Fin AND f.Terminal = @puntoVenta
-                        AND ISNULL(f.Anulada, 0) = 0
-                        AND ((f.CAE IS NOT NULL AND f.CAE <> '') OR ISNULL(f.Impresa, 0) = 1)) AS Ventas
+                        AND ISNULL(f.Anulada, 0) = 0) AS Ventas   -- con y sin CAE (como el arqueo)
               FROM t
               JOIN dbo.PuestoCaja c ON c.Id = t.CajaId
               LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
               ORDER BY t.Ini",
             new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId, puntoVenta, usuarioId })).ToList();
+        // Lo facturado sin estar en ninguna caja (p. ej. un administrador que entró "sin caja"):
+        // una fila "Sin caja" por usuario, para que no quede ningún comprobante afuera del arqueo.
+        var fuera = (await cn.QueryAsync<CajaTurno>(
+            $@"SELECT f.UsuarioId, u.NombreUsuario AS Usuario, SUM(f.MontoTotal) AS Ventas
+               FROM dbo.Factura f
+               LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
+               WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND f.Terminal = @puntoVenta AND ISNULL(f.Anulada, 0) = 0
+                 AND (@usuarioId IS NULL OR f.UsuarioId = @usuarioId)
+                 AND NOT {CajaService.EnAlgunaCaja("f")}
+               GROUP BY f.UsuarioId, u.NombreUsuario",
+            new { desde = dia.Date, hasta = dia.Date.AddDays(1), puntoVenta, usuarioId })).ToList();
+        foreach (var f in fuera)
+        {
+            f.FueraDeCaja = true;
+            f.Puesto = "Sin caja";
+            f.FechaApertura = dia.Date;
+            f.FechaCierre = dia.Date.AddDays(1);
+        }
+        filas.AddRange(fuera);
+
         foreach (var f in filas)
         {
             f.Id = Guid.Empty;

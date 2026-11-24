@@ -21,7 +21,7 @@ else if (tickets == null)
 }
 else if (tickets.Count == 0)
 {
-    <p class="page-pad">@(Abiertas ? "No hay cajas abiertas." : "No hay cajas para ese día.")</p>
+    <p class="page-pad">@(sucursal != null && !sucursal.ExigeCaja ? "No hubo comprobantes ese día." : Abiertas ? "No hay cajas abiertas." : "No hay cajas para ese día.")</p>
 }
 else
 {
@@ -95,7 +95,7 @@ else
             filas = varias
                 ? await Puestos.MovimientosPorIngresoAsync(sesion.Cs, dia, sucursal.Id, sucursal.PuntoVenta)
                 : await Caja.MovimientosSinCajaAsync(sesion.Cs, dia, sucursal.PuntoVenta);
-            if (Abiertas) filas = filas.Where(f => f.EnUso || f.PuestoCajaId == null).ToList();
+            // Acá no se abren cajas: "las abiertas" no aplica y siempre sale todo lo del día, con y sin CAE.
         }
         else
         {
@@ -112,7 +112,7 @@ else
                      .ThenBy(f => f.FechaApertura))
         {
             var a = await Caja.ArqueoAsync(sesion.Cs, f);
-            var titulo = f.Puesto ?? ("Cajero " + f.Usuario);
+            var titulo = f.FueraDeCaja ? $"Sin caja · {f.Usuario}" : f.Puesto ?? ("Cajero " + f.Usuario);
             if (sucursal == null && !string.IsNullOrEmpty(f.Sucursal)) titulo += " · " + f.Sucursal;
             var pie = f.EsDeCaja
                 ? $"Abrió: {f.Usuario}{(f.UsuarioCierre != null ? " · Cerró: " + f.UsuarioCierre : "")}"

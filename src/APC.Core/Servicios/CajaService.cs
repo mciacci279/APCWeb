@@ -106,6 +106,11 @@ public class CajaService
     /// Condición SQL "el movimiento (alias x) lo hizo alguien mientras estaba en la caja @p": así se reparte
     /// lo vendido entre cajas sin tocar las tablas del sistema de escritorio (un usuario está en una sola caja a la vez).
     /// </summary>
+    /// <summary>Condición SQL "el usuario del movimiento (alias x) estaba en alguna caja en ese momento".</summary>
+    internal static string EnAlgunaCaja(string x) =>
+        $@"EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion pcs WHERE pcs.UsuarioId = {x}.UsuarioId
+                   AND {x}.Fecha >= pcs.FechaIngreso AND (pcs.FechaSalida IS NULL OR {x}.Fecha < pcs.FechaSalida))";
+
     private static string EnLaCaja(string x) =>
         $@"EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion pcs WHERE pcs.CajaId = @p AND pcs.UsuarioId = {x}.UsuarioId
                    AND {x}.Fecha >= pcs.FechaIngreso AND (pcs.FechaSalida IS NULL OR {x}.Fecha < pcs.FechaSalida))";
@@ -131,14 +136,14 @@ public class CajaService
         var ventas = porCaja
             ? $@"CASE WHEN t.PuestoCajaId IS NULL THEN
                     (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
-                     WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()))
+                     WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()) AND ISNULL(f.Anulada, 0) = 0)
                  ELSE
                     (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
-                     WHERE f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()) AND {ventasDeCaja})
+                     WHERE f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()) AND ISNULL(f.Anulada, 0) = 0 AND {ventasDeCaja})
                  END"
             : @"(SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
                  WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura
-                   AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()))";
+                   AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()) AND ISNULL(f.Anulada, 0) = 0)";
         var columnasCaja = porCaja
             ? @", t.PuestoCajaId, t.UsuarioCierreId, uc.NombreUsuario AS UsuarioCierre,
                  CAST(CASE WHEN t.PuestoCajaId IS NULL THEN 0 ELSE 1 END AS BIT) AS EsDeCaja,
@@ -166,7 +171,7 @@ public class CajaService
     /// <summary>
     /// Para sucursales que no exigen abrir caja: lo vendido en el día por cada usuario, armado como una
     /// "caja" de todo el día (Id vacío, de 00:00 a 24:00, sin monto inicial) para poder ver su arqueo
-    /// con <see cref="ArqueoAsync"/>. Cuenta facturas con CAE y notas de pedido no anuladas.
+    /// con <see cref="ArqueoAsync"/>. Cuenta todo lo no anulado: con CAE, sin CAE y notas de pedido.
     /// </summary>
     public async Task<List<CajaTurno>> MovimientosSinCajaAsync(string cs, DateTime dia, int? puntoVenta, Guid? usuarioId = null)
     {
@@ -176,7 +181,6 @@ public class CajaService
                FROM dbo.Factura f
                LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
                WHERE f.Fecha >= @desde AND f.Fecha < @hasta AND ISNULL(f.Anulada, 0) = 0
-                 AND ((f.CAE IS NOT NULL AND f.CAE <> '') OR ISNULL(f.Impresa, 0) = 1)
                  {(puntoVenta != null ? "AND f.Terminal = @puntoVenta" : "")}
                  {(usuarioId != null ? "AND f.UsuarioId = @usuarioId" : "")}
                GROUP BY f.UsuarioId, u.NombreUsuario
@@ -225,7 +229,9 @@ public class CajaService
         // Turno de una caja (script 28): lo que hizo cualquier cajero mientras estuvo en esa caja.
         // Turno por usuario: lo que hizo ese usuario.
         var deCaja = turno.PuestoCajaId != null && turno.EsDeCaja;
-        string Quien(string x) => deCaja ? EnLaCaja(x) : $"{x}.UsuarioId = @u";
+        string Quien(string x) => deCaja ? EnLaCaja(x)
+            : turno.FueraDeCaja ? $"{x}.UsuarioId = @u AND NOT {EnAlgunaCaja(x)}"
+            : $"{x}.UsuarioId = @u";
         var movs = (await cn.QueryAsync<MovimientoCaja>(
             $@"SELECT CASE WHEN f.CAE IS NOT NULL AND f.CAE <> '' THEN 'F'
                           WHEN ISNULL(f.Impresa, 0) = 1 THEN 'P' ELSE 'S' END AS Tipo,

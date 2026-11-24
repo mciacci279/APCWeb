@@ -324,6 +324,11 @@ public class CajaTurno
     public string Puesto { get; set; }
     /// <summary>Fila armada desde un ingreso a una caja que todavía sigue en uso.</summary>
     public bool EnUso { get; set; }
+    /// <summary>
+    /// Sucursal sin apertura con varias cajas: lo que el usuario facturó en el día sin estar en ninguna caja
+    /// (por ejemplo, un administrador que entró "sin caja"). El arqueo toma solo esos comprobantes.
+    /// </summary>
+    public bool FueraDeCaja { get; set; }
 }
 
 public class ArqueoFormaPago
