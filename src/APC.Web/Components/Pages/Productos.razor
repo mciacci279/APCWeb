@@ -7,7 +7,7 @@
 @inject ImportadorProductosService ImportadorSrv
 @inject SucursalService SucursalSrv
 
-<PageTitle>Productos · APC Web</PageTitle>
+<PageTitle>Productos · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -51,7 +51,11 @@
                     <tr><th>Código</th><th>Descripción</th><th>Rubro</th><th class="der">Stock</th><th class="der">Costo</th><th class="der">@listas.Titulo1</th><th>IVA</th></tr>
                 </thead>
                 <tbody>
-                    @if (lista.Count == 0)
+                    @if (cargando)
+                    {
+                        <FilasEsqueleto Filas="8" Columnas="7" />
+                    }
+                    else if (lista.Count == 0)
                     {
                         <tr><td colspan="7" class="sub">No hay productos para mostrar.</td></tr>
                     }
@@ -323,6 +327,7 @@
     private PorcentajesListas listas = new();
     private List<RubroItem> rubros = new();
     private List<ProductoDetalle> lista = new();
+    private bool cargando = true;   // muestra el skeleton hasta la primera carga
     private string texto;
     private Guid? filtroRubro;
     private bool verInactivos;
@@ -366,6 +371,7 @@
         listas = await ProductoSrv.ListasAsync(sesion.Cs);
         rubros = await ProductoSrv.RubrosAsync(sesion.Cs);
         await Buscar();
+        cargando = false;
     }
 
     private async Task BuscarKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }

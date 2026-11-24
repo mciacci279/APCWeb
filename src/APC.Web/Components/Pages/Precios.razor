@@ -7,7 +7,7 @@
 @inject CatalogoService Catalogo
 @inject BalanzaService BalanzaSrv
 
-<PageTitle>Precios y formas de pago · APC Web</PageTitle>
+<PageTitle>Precios y formas de pago · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -104,7 +104,7 @@
                         <label for="fp-@f.Id">
                             <button type="button" class="link-fila" @onclick="() => SeleccionarForma(f)">@f.Nombre</button>
                             @if (f.EsCtaCte) { <span class="sub"> · cuenta corriente</span> }
-                            @if (f.EsMercadoPago) { <span class="sub"> · QR Mercado Pago</span> }
+                            @if (f.EsMercadoPago) { <span class="sub con-logo-mp"> · QR <img class="logo-mp" src="img/mercadopago-color.png" alt="Mercado Pago" /></span> }
                             @if (f.EsQrPropio) { <span class="sub"> · QR del comercio</span> }
                         </label>
                         <select id="fp-@f.Id" class="input" value="@(f.TipoPrecioId?.ToString() ?? "")"
@@ -143,7 +143,7 @@
                         <label class="check"><input type="checkbox" @bind="editF.EsCtaCte" /> Es cuenta corriente</label>
                         <p class="sub">La cuenta corriente no aparece en la pantalla de facturación.</p>
 
-                        <label class="check"><input type="checkbox" @bind="editF.EsMercadoPago" /> Cobra con el QR de Mercado Pago</label>
+                        <label class="check con-logo-mp"><input type="checkbox" @bind="editF.EsMercadoPago" /> Cobra con el QR de <img class="logo-mp" src="img/mercadopago-color.png" alt="Mercado Pago" /></label>
                         <p class="sub">Al facturar con esta forma de pago se muestra un QR y la factura se emite recién cuando el pago se acredita.</p>
 
                         <label class="check"><input type="checkbox" @bind="editF.EsQrPropio" /> Cobra con el QR del comercio</label>

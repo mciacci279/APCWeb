@@ -8,7 +8,7 @@
 @inject NavigationManager Nav
 @inject APC.Core.Tenants.TenantRegistry Tenants
 
-<PageTitle>Comprobantes · APC Web</PageTitle>
+<PageTitle>Comprobantes · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -95,7 +95,11 @@
         <table class="tabla">
             <thead><tr><th>Fecha</th><th>Comprobante</th><th>Cliente</th><th>Forma de pago</th><th class="der">Total</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
             <tbody>
-                @if (lista.Count == 0)
+                @if (cargando)
+                {
+                    <FilasEsqueleto Filas="8" Columnas="7" />
+                }
+                else if (lista.Count == 0)
                 {
                     <tr><td colspan="7" class="sub">No hay comprobantes en el período.</td></tr>
                 }
@@ -177,6 +181,7 @@
     private string fCliente = "", fNumero = "", fEstado = "", fFormaPago = "";
     private List<FormaPagoItem> formasPago = new();
     private List<ComprobanteListado> lista = new();
+    private bool cargando = true;   // muestra el skeleton hasta la primera carga
 
     private bool HayFiltros => soloMios || !string.IsNullOrWhiteSpace(fCliente) || !string.IsNullOrWhiteSpace(fNumero)
                                || !string.IsNullOrEmpty(fEstado) || !string.IsNullOrEmpty(fFormaPago);
@@ -196,6 +201,7 @@
         try { formasPago = await Catalogo.FormasPagoAsync(sesion.Cs); }
         catch (Exception) { formasPago = new(); }
         await Buscar();
+        cargando = false;
     }
 
     private async Task Buscar()

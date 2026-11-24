@@ -14,7 +14,7 @@
 @inject MercadoPagoService MpSrv
 @inject SucursalService SucursalSrv
 
-<PageTitle>Facturar · APC Web</PageTitle>
+<PageTitle>Facturar · Factu360</PageTitle>
 
 @if (cargando)
 {
@@ -232,7 +232,19 @@ else
             <div class="t-pagos">
                 @foreach (var fp in formasPago)
                 {
-                    <button type="button" class="btn-pago @(formaPago?.Id == fp.Id ? "activo" : "")" title="@(string.IsNullOrWhiteSpace(fp.TipoPrecio) ? "Precio de lista" : fp.TipoPrecio)" @onclick="() => ElegirPago(fp)">@fp.Nombre@(fp.PorcentajeRecargo > 0 ? $" (+{fp.PorcentajeRecargo.ToString("0.##", Ar)} %)" : fp.PorcentajeDescuento > 0 ? $" (−{fp.PorcentajeDescuento.ToString("0.##", Ar)} %)" : "")</button>
+                    <button type="button" class="btn-pago @(formaPago?.Id == fp.Id ? "activo" : "")" title="@(string.IsNullOrWhiteSpace(fp.TipoPrecio) ? "Precio de lista" : fp.TipoPrecio)" @onclick="() => ElegirPago(fp)">
+                        @if (fp.EsMercadoPago)
+                        {
+                            @* Logo oficial: blanco sobre el botón oscuro, a color cuando está elegido (fondo blanco) *@
+                            <img class="logo-mp logo-mp-blanco" src="img/mercadopago-blanco.png" alt="Mercado Pago" />
+                            <img class="logo-mp logo-mp-color" src="img/mercadopago-color.png" alt="Mercado Pago" />
+                            <span>QR</span>
+                        }
+                        else
+                        {
+                            @fp.Nombre
+                        }
+                        @(fp.PorcentajeRecargo > 0 ? $" (+{fp.PorcentajeRecargo.ToString("0.##", Ar)} %)" : fp.PorcentajeDescuento > 0 ? $" (−{fp.PorcentajeDescuento.ToString("0.##", Ar)} %)" : "")</button>
                 }
             </div>
 

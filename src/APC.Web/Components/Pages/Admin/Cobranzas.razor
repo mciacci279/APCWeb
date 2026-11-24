@@ -9,7 +9,7 @@
 @inject NavigationManager Nav
 @inject APC.Core.Tenants.TenantRegistry Tenants
 
-<PageTitle>Cobranzas · APC Web</PageTitle>
+<PageTitle>Cobranzas · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
@@ -495,8 +495,8 @@
         var facturador = facturadores.FirstOrDefault(f => f.Id == c.FacturadorId);
         var hola = $"Hola{(string.IsNullOrWhiteSpace(c.ContactoNombre) ? "" : " " + c.ContactoNombre.Split(' ')[0])}! ";
         var texto = c.Abonado
-            ? hola + $"Te reenvío la factura del abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}."
-            : hola + $"Te paso el abono de APC Web de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
+            ? hola + $"Te reenvío la factura del abono de Factu360 de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}."
+            : hola + $"Te paso el abono de Factu360 de {c.PeriodoTexto} para {c.Comercio}: {Pesos(c.Monto)}.";
 
         if (c.Facturado)
         {

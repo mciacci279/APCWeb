@@ -1,0 +1,21 @@
+@* Filas grises con brillo mientras la grilla carga sus datos (skeleton). Va dentro de un <tbody>. *@
+@for (var f = 0; f < Filas; f++)
+{
+    <tr class="fila-esqueleto" aria-hidden="true">
+        @for (var c = 0; c < Columnas; c++)
+        {
+            <td><span class="sk" style="width: @(Anchos[(f + c) % Anchos.Length])%"></span></td>
+        }
+    </tr>
+}
+
+@code {
+    /// <summary>Cantidad de filas grises a mostrar.</summary>
+    [Parameter] public int Filas { get; set; } = 6;
+
+    /// <summary>Cantidad de columnas de la tabla, para que el esqueleto ocupe el mismo ancho.</summary>
+    [Parameter] public int Columnas { get; set; } = 4;
+
+    // Anchos variados para que no parezca una grilla de rectángulos iguales.
+    private static readonly int[] Anchos = { 72, 45, 88, 60, 38, 80, 54 };
+}
