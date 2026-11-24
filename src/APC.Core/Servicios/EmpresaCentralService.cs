@@ -28,11 +28,24 @@ public class EmpresaCentralService
         var tipo = TipoImagen(datos);
         if (tipo == null) return "El logo tiene que ser una imagen PNG o JPG.";
 
+        if (empresaId == Guid.Empty) return "Guardá la empresa antes de subir el logo.";
+
         using var cn = await Db.AbrirAsync(Central);
-        await cn.ExecuteAsync("UPDATE dbo.Empresa SET Logo = @datos, LogoTipo = @tipo WHERE Id = @id",
-            new { datos, tipo, id = empresaId });
+        // El parámetro va como VARBINARY(MAX) explícito: así no depende de cómo infiera el tamaño el proveedor.
+        var p = new DynamicParameters();
+        p.Add("datos", datos, System.Data.DbType.Binary, size: -1);
+        p.Add("tipo", tipo);
+        p.Add("id", empresaId);
+        var filas = await cn.ExecuteAsync("UPDATE dbo.Empresa SET Logo = @datos, LogoTipo = @tipo WHERE Id = @id", p);
         _logos.TryRemove(empresaId, out _);
-        return null;
+        if (filas == 0) return "No se encontró la empresa en la base central: el logo no se guardó.";
+
+        // Se relee de la base para confirmar que quedó entero (y no solo en la pantalla).
+        var guardado = await cn.ExecuteScalarAsync<long?>(
+            "SELECT DATALENGTH(Logo) FROM dbo.Empresa WHERE Id = @id", new { id = empresaId });
+        return guardado == datos.Length
+            ? null
+            : $"La base no guardó el logo completo ({guardado ?? 0} de {datos.Length} bytes). Revisá que la columna Logo de dbo.Empresa sea VARBINARY(MAX).";
     }
 
     public async Task QuitarLogoAsync(Guid empresaId)

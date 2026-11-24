@@ -963,3 +963,34 @@ h1 { font-weight: 800; }
 .tabla th { padding: 10px 12px; }
 .tabla .link-fila { padding-top: 2px; padding-bottom: 2px; }
 .tabla .btn-chico { min-height: 32px; }
+
+/* ---------- Comprobantes: grilla más compacta, el total siempre en un renglón ---------- */
+.tabla-comprobantes { font-size: 14px; }
+.tabla-comprobantes th { font-size: 11px; }
+.tabla-comprobantes td { padding: 6px 10px; vertical-align: middle; }
+.tabla-comprobantes .col-fecha, .tabla-comprobantes .col-total, .tabla-comprobantes td.mono { white-space: nowrap; }
+.tabla-comprobantes .etiqueta { font-size: 11px; }
+.tabla-comprobantes .acciones { white-space: nowrap; }
+.tabla-comprobantes .acciones .btn-chico { min-height: 30px; padding: 0 8px; font-size: 13px; }
+
+/* ---------- Menú lateral: aviso de que hay más opciones abajo ---------- */
+.rail-nav-caja { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.rail-nav-caja > .rail-nav { flex: 1 1 auto; min-height: 0; }
+.rail-mas { display: none; position: absolute; left: 50%; bottom: 6px; width: 34px; height: 34px; margin-left: -17px; z-index: 3;
+  border: 0; border-radius: 50%; background: var(--naranja); color: #fff; cursor: pointer; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.35); animation: rail-mas-late 1.6s ease-out infinite; }
+.rail-mas:hover { background: var(--naranja-osc); }
+.rail-hay-mas .rail-mas { display: flex; }
+/* Un degradé sobre las últimas opciones para que se note que el menú sigue */
+.rail-hay-mas .rail-nav-caja::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(14,36,82,0), #0E2452 85%); z-index: 2; }
+@keyframes rail-mas-late {
+  0% { box-shadow: 0 4px 14px rgba(0,0,0,.35), 0 0 0 0 rgba(242,107,29,.7); }
+  70% { box-shadow: 0 4px 14px rgba(0,0,0,.35), 0 0 0 12px rgba(242,107,29,0); }
+  100% { box-shadow: 0 4px 14px rgba(0,0,0,.35), 0 0 0 0 rgba(242,107,29,0); }
+}
+@media (max-width: 760px) { .rail-mas, .rail-hay-mas .rail-nav-caja::after { display: none; } .rail-nav-caja { flex-direction: row; } }
+
+/* ---------- Mercado Pago: varias cajas por sucursal ---------- */
+.mp-agregar { align-items: flex-end; margin: 12px 0 4px; }
+.qr-caja-mp { margin-top: 8px; max-width: 280px; }

@@ -21,6 +21,7 @@
         </div>
 
         @* El menú va en su propio bloque: si no entra se desplaza, pero la barra nunca muestra scroll. *@
+        <div class="rail-nav-caja">
         <div class="rail-nav">
         <AuthorizeView Roles="@SesionService.RolEmpleado">
             @if (Hay(Modulo.Facturar) || Hay(Modulo.Caja) || Hay(Modulo.Presupuestos))
@@ -135,6 +136,11 @@
             </NavLink>
         </AuthorizeView>
 
+        </div>
+        @* Aviso de que el menú sigue más abajo: lo muestra app.js sólo cuando no entra en la pantalla *@
+        <button type="button" class="rail-mas" aria-label="Ver más opciones del menú" title="Hay más opciones abajo">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
         </div>
 
         @if (sesion != null)

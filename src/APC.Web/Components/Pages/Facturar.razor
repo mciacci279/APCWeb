@@ -455,6 +455,19 @@ else
                 <div>
                     <h2>Cobrar con QR</h2>
                     <span class="sub">@formaPago?.Nombre · @Pesos(totales.Total)</span>
+                    @if (qrPaso == null && mpCajasSucursal?.Count > 1)
+                    {
+                        @* La sucursal tiene varias cajas de Mercado Pago: cada computadora elige la suya y queda recordada *@
+                        <div class="campo qr-caja-mp">
+                            <label for="caja-mp">Cobrar con</label>
+                            <select id="caja-mp" class="input" disabled="@qrOcupado" @bind="mpCajaElegida" @bind:after="CambiarCajaMp">
+                                @foreach (var c in mpCajasSucursal)
+                                {
+                                    <option value="@c.Id">@c.Titulo</option>
+                                }
+                            </select>
+                        </div>
+                    }
                 </div>
                 @if (qrPaso == null)
                 {
@@ -1006,6 +1019,38 @@ else
 
     // ------------------------------------------------------------------ cobro con QR
 
+    // ---- caja de Mercado Pago de esta computadora (si la sucursal tiene varias) ----
+    private List<MercadoPagoCaja> mpCajasSucursal;
+    private string mpCajaElegida = "";
+
+    private string ClaveCajaMp => $"factu360.cajaMp.{sesion.Tenant.Id}.{sesion.PuntoVenta}";
+
+    private Guid? CajaMpElegida => Guid.TryParse(mpCajaElegida, out var id) ? id : null;
+
+    private async Task CargarCajasMpAsync()
+    {
+        if (mpCajasSucursal != null) return;
+        try
+        {
+            mpCajasSucursal = (await MpSrv.CajasAsync(sesion.Tenant.Id))
+                .Where(c => c.PuntoVenta == sesion.PuntoVenta && c.Creada).ToList();
+        }
+        catch (Exception) { mpCajasSucursal = new(); }
+
+        try { mpCajaElegida = await JS.InvokeAsync<string>("localStorage.getItem", ClaveCajaMp) ?? ""; }
+        catch (Exception) { mpCajaElegida = ""; }
+        if (!mpCajasSucursal.Any(c => c.Id.ToString() == mpCajaElegida))
+            mpCajaElegida = mpCajasSucursal.FirstOrDefault()?.Id.ToString() ?? "";
+    }
+
+    /// <summary>Cambió la caja: se recuerda en esta computadora y se vuelve a generar el cobro en la nueva.</summary>
+    private async Task CambiarCajaMp()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveCajaMp, mpCajaElegida); } catch (Exception) { }
+        await CerrarQr();   // cancela la order que quedó en la otra caja
+        await IniciarCobroQr(qrFormato, qrFiscal);
+    }
+
     private async Task IniciarCobroQr(string formato, bool fiscal)
     {
         qrFormato = formato;
@@ -1019,8 +1064,9 @@ else
         StateHasChanged();
         try
         {
+            await CargarCajasMpAsync();
             var (orden, pago) = await MpSrv.CobrarAsync(
-                sesion.Tenant, sesion.Sucursal, sesion.UsuarioId, totales.Total, DescripcionCobro());
+                sesion.Tenant, sesion.Sucursal, sesion.UsuarioId, totales.Total, DescripcionCobro(), CajaMpElegida);
             pagoQr = pago;
             if (!orden.Ok) { qrError = orden.Mensaje; return; }
 

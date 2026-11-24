@@ -74,7 +74,7 @@
     <div class="rep-graficos">
         <section class="panel rep-dias" aria-labelledby="tit-dias">
             <h2 id="tit-dias">Ventas por día</h2>
-            <p class="sub">@(porDia.Count > MaxDias ? $"Últimos {MaxDias} días con ventas" : "Días con ventas") del período, total facturado con IVA.</p>
+            <p class="sub">@(porDia.Count > MaxDias ? $"Últimos {MaxDias} días con ventas" : "Días con ventas") del período: facturas con CAE y notas de pedido, con IVA.</p>
             @if (cargando)
             {
                 <div class="rep-columnas" aria-busy="true">

@@ -362,13 +362,14 @@
                     {
                         <h3 class="sub-titulo">Cajas</h3>
                         <table class="tabla tabla-chica">
-                            <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Id en Mercado Pago</th><th>Cómo cobra</th><th>Estado</th></tr></thead>
+                            <thead><tr><th class="der">Pto. Vta.</th><th>Sucursal</th><th>Caja</th><th>Id en Mercado Pago</th><th>Cómo cobra</th><th>QR</th><th>Estado</th></tr></thead>
                             <tbody>
                                 @foreach (var c in mpCajas)
                                 {
                                     <tr>
                                         <td class="der mono">@c.PuntoVenta.ToString("0000")</td>
                                         <td>@c.Sucursal</td>
+                                        <td>@c.Titulo</td>
                                         <td class="mono">@c.ExternalPosId</td>
                                         <td>
                                             <select class="input" value="@(c.UsaQrFijo ? "fijo" : "pantalla")"
@@ -389,13 +390,39 @@
                                                 }
                                             }
                                         </td>
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(c.QrEstatico))
+                                            {
+                                                <a class="btn btn-chico" href="@c.QrEstatico" target="_blank" rel="noopener" title="Abre el QR de esta caja para imprimirlo y pegarlo en el mostrador">Ver e imprimir QR</a>
+                                            }
+                                            else if (c.Creada)
+                                            {
+                                                <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => GenerarQrMp(c)">Generar QR</button>
+                                            }
+                                        </td>
                                         <td>@(c.Creada ? "Lista" : "Falta crearla")</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
+                        @if (mpCuenta?.StoreId != null && mpSucursales.Count > 0)
+                        {
+                            <div class="fila-campos mp-agregar">
+                                <div class="campo">
+                                    <label for="mp-suc-nueva">Agregar otra caja a la sucursal</label>
+                                    <select id="mp-suc-nueva" class="input" @bind="mpSucursalNueva">
+                                        @foreach (var s in mpSucursales)
+                                        {
+                                            <option value="@s.Id">@s.Nombre · Pto. Vta. @s.PuntoVenta.ToString("0000")</option>
+                                        }
+                                    </select>
+                                </div>
+                                <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="AgregarCajaMp">+ Agregar caja</button>
+                            </div>
+                        }
                         <p class="sub">
-                            Se crea una caja por sucursal: el QR sale siempre de la caja del punto de venta donde se factura.
+                            Cada sucursal arranca con la Caja 1 y se le pueden sumar más, cada una con su propio QR para imprimir.
+                            Si una sucursal tiene varias, en Facturar cada computadora elige con qué caja cobra y la recuerda.
                             Con <strong>el QR pegado en el mostrador</strong> el cliente escanea siempre el mismo sticker y la
                             billetera le muestra el importe de la venta recién cargada, como en el surtidor de una estación de servicio.
                         </p>
@@ -614,6 +641,8 @@
     private List<CondicionIvaItem> condicionesIva = new();
     private MercadoPagoCuenta mpCuenta;
     private List<MercadoPagoCaja> mpCajas = new();
+    private List<Sucursal> mpSucursales = new();   // sucursales activas, para agregarles cajas
+    private string mpSucursalNueva = "";
     private string mpToken = "";
     private string mpAmbiente = "TEST";
     private string mpCalle = "";
@@ -786,6 +815,11 @@
             Aviso(true, "Logo guardado. Ya sale en las facturas nuevas y en las reimpresiones.");
             await Recargar();
         }
+        catch (Exception ex)
+        {
+            // Antes un error acá cortaba la pantalla sin decir nada y el logo no quedaba guardado.
+            Aviso(false, "No se pudo guardar el logo: " + ex.GetBaseException().Message);
+        }
         finally { ocupado = false; }
     }
 
@@ -841,6 +875,9 @@
             var sucursales = await SucursalSrv.ListarAsync(edit.ConnectionString);
             foreach (var c in mpCajas)
                 c.Sucursal = sucursales.FirstOrDefault(s => s.PuntoVenta == c.PuntoVenta)?.Nombre ?? "";
+            mpSucursales = sucursales.Where(x => x.Activa).ToList();
+            if (!mpSucursales.Any(x => x.Id.ToString() == mpSucursalNueva))
+                mpSucursalNueva = mpSucursales.FirstOrDefault()?.Id.ToString() ?? "";
 
             if (string.IsNullOrWhiteSpace(mpCalle))
             {
@@ -890,6 +927,36 @@
                 ? $"{c.Sucursal}: ahora cobra con el QR pegado en el mostrador."
                 : $"{c.Sucursal}: ahora cobra con un QR nuevo en pantalla por cada venta.");
         }
+        finally { ocupado = false; }
+    }
+
+    private async Task AgregarCajaMp()
+    {
+        var sucursal = mpSucursales.FirstOrDefault(x => x.Id.ToString() == mpSucursalNueva);
+        if (sucursal == null) { Aviso(false, "Elegí la sucursal."); return; }
+        ocupado = true;
+        try
+        {
+            var error = await MpSrv.AgregarCajaAsync(edit, sucursal);
+            await CargarMpAsync();
+            if (error != null) { Aviso(false, error); return; }
+            var cuantas = mpCajas.Count(c => c.PuntoVenta == sucursal.PuntoVenta);
+            Aviso(true, $"{sucursal.Nombre}: caja {cuantas} creada en Mercado Pago. Ya podés imprimir su QR.");
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo agregar la caja: " + ex.GetBaseException().Message); }
+        finally { ocupado = false; }
+    }
+
+    private async Task GenerarQrMp(MercadoPagoCaja c)
+    {
+        ocupado = true;
+        try
+        {
+            var error = await MpSrv.GenerarQrAsync(c.Id);
+            await CargarMpAsync();
+            Aviso(error == null, error ?? $"{c.Sucursal} · {c.Titulo}: QR listo para imprimir.");
+        }
+        catch (Exception ex) { Aviso(false, "No se pudo generar el QR: " + ex.GetBaseException().Message); }
         finally { ocupado = false; }
     }
 

@@ -55,9 +55,11 @@ public class ReporteService
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
+            // Facturas con CAE y notas de pedido (sin CAE) no anuladas: el mismo criterio que "Por forma de pago",
+            // así los dos totales del período coinciden.
             $@"SELECT CONVERT(VARCHAR(10), f.Fecha, 103) AS Etiqueta, COUNT(*) AS Cantidad, SUM(f.MontoTotal) AS Total
                FROM dbo.Factura f
-               WHERE {Periodo} AND {EsFiscal}
+               WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
                GROUP BY CONVERT(VARCHAR(10), f.Fecha, 103), CAST(f.Fecha AS DATE)
                ORDER BY CAST(f.Fecha AS DATE)", Rango(desde, hasta, puntoVenta))).ToList();
     }
