@@ -260,6 +260,7 @@ public class PuestoCajaService
         var sesiones = await HistorialAsync(cs, dia.AddDays(-1), dia, sucursalId);
         foreach (var t in turnos)
         {
+            if (t.PuestoCajaId != null) continue;   // turno de la caja (script 28): ya sabe cuál es
             var s = sesiones
                 .Where(x => x.UsuarioId == t.UsuarioId && x.FechaIngreso <= t.FechaApertura.AddMinutes(5)
                             && (x.FechaSalida ?? DateTime.MaxValue) >= t.FechaApertura)

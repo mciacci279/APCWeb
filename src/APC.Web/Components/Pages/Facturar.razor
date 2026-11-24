@@ -48,7 +48,7 @@ else
 
         @if (turno == null && ExigeCaja)
         {
-            <p class="alerta alerta-aviso">La caja está cerrada. <a href="/arqueo">Abrí la caja</a> para poder facturar.</p>
+            <p class="alerta alerta-aviso">@(sesion.Caja != null ? sesion.Caja.TituloCaja + " está cerrada" : "La caja está cerrada"). <a href="/arqueo">Abrí la caja</a> para poder facturar.</p>
         }
 
         @if (presupuestoOrigen != null && resultado == null)
@@ -646,7 +646,7 @@ else
     private bool ExigeCaja => sesion?.Sucursal?.ExigeCaja ?? true;
 
     private string EstadoCaja =>
-        turno != null ? "Caja abierta " + turno.FechaApertura.ToString("HH:mm")
+        turno != null ? (turno.EsDeCaja && turno.FechaApertura.Date != DateTime.Today ? "Caja abierta " + turno.FechaApertura.ToString("dd/MM HH:mm") : "Caja abierta " + turno.FechaApertura.ToString("HH:mm"))
         : ExigeCaja ? "Caja cerrada" : "Sin caja";
 
     private bool PuedeEmitir => !emitiendo && (turno != null || !ExigeCaja) && factura.Renglones.Count > 0 && formaPago != null && !FaltanPrecios
@@ -665,7 +665,8 @@ else
             param = await Facturacion.ParametrosAsync(sesion.Cs);
             formasPago = (await Catalogo.FormasPagoAsync(sesion.Cs)).Where(f => !f.EsCtaCte).ToList();
             AplicarFormaPago(formasPago.FirstOrDefault(f => f.EsEfectivo) ?? formasPago.FirstOrDefault());
-            turno = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId);
+            // Si la sucursal tiene varias cajas, el turno es el de la caja en la que está el usuario.
+            turno = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId, sesion.Caja?.CajaId);
             if (PresupuestoId != null) await CargarPresupuesto(PresupuestoId.Value);
         }
         catch (Exception ex)
@@ -834,7 +835,7 @@ else
     /// <summary>Por qué el botón de emitir está deshabilitado (null si se puede emitir o no hay nada cargado).</summary>
     private string MotivoNoEmitir =>
         emitiendo || factura.Renglones.Count == 0 ? null :
-        turno == null && ExigeCaja ? "La caja está cerrada: abrila en Arqueo para poder facturar." :
+        turno == null && ExigeCaja ? (sesion.Caja != null ? sesion.Caja.TituloCaja + " está cerrada" : "La caja está cerrada") + ": abrila en Arqueo para poder facturar." :
         formasPago.Count == 0 ? "No hay formas de pago cargadas en esta empresa. Pedile a CM Tech que las configure." :
         formaPago == null ? "Elegí la forma de pago." :
         FaltanPrecios ? "Hay renglones sin precio. Escribilo en el renglón marcado." :
@@ -904,6 +905,13 @@ else
         StateHasChanged();
         try
         {
+            // La caja puede ser compartida: otro cajero pudo haberla cerrado mientras se cargaba el comprobante.
+            if (ExigeCaja && turno?.EsDeCaja == true)
+            {
+                turno = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId, sesion.Caja?.CajaId);
+                // Sin turno aparece el aviso "caja cerrada" y el botón de emitir queda deshabilitado.
+                if (turno == null) return;
+            }
             factura.FormaPagoId = formaPago.Id;
             resultado = await Facturacion.EmitirAsync(sesion.Tenant, sesion.UsuarioId, factura, fiscal, sesion.Sucursal);
             if (resultado.FacturaId != null && presupuestoOrigenId != null)

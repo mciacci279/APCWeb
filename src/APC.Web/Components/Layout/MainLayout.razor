@@ -196,6 +196,11 @@
                           PuedeSeguirSinCaja="sesion.EsAdmin" PuedeVolver="sesion.Caja != null"
                           OnElegida="CajaElegida" OnSinCaja="EntrarSinCaja" OnCancelar="() => pideCaja = false" />
         }
+        else if (!listo)
+        {
+            @* Hasta saber en qué caja está el usuario, la página no arranca: abriría el turno equivocado *@
+            <div class="page-pad" aria-busy="true"><table class="tabla"><tbody><FilasEsqueleto /></tbody></table></div>
+        }
         else
         {
             @Body
@@ -250,7 +255,16 @@
         $"{sesion.Nombre} · {(sesion.EsSuperAdmin ? "CM Tech" : Comercio)}" +
         (sesion.Sucursal == null ? "" : " · " + sesion.Sucursal.Nombre);
 
+    /// <summary>Ya se sabe en qué caja está el usuario (o que no hay cajas): recién ahí se muestra la página.</summary>
+    private bool listo;
+
     protected override async Task OnInitializedAsync()
+    {
+        try { await IniciarAsync(); }
+        finally { listo = true; }
+    }
+
+    private async Task IniciarAsync()
     {
         // Si la empresa fue suspendida con el usuario adentro, se cierra la sesión
         var user = (await Auth.GetAuthenticationStateAsync()).User;

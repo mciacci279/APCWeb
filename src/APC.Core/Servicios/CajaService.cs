@@ -10,24 +10,71 @@ namespace APC.Core.Servicios;
 /// </summary>
 public class CajaService
 {
-    public async Task<CajaTurno> TurnoAbiertoAsync(string cs, Guid usuarioId)
+    /// <summary>
+    /// Turno abierto de quien factura. Si el usuario está en una caja de la sucursal (puestoCajaId) y ya se
+    /// corrió el script 28, el turno es el de esa caja, lo haya abierto quien sea. Si no, el del usuario
+    /// (como antes). Un turno por usuario que quedó abierto de antes se sigue devolviendo para poder cerrarlo.
+    /// </summary>
+    public async Task<CajaTurno> TurnoAbiertoAsync(string cs, Guid usuarioId, Guid? puestoCajaId = null)
     {
         using var cn = await Db.AbrirAsync(cs);
+        var porCaja = await ExisteColumnaPuestoAsync(cn);
+        if (porCaja && puestoCajaId != null)
+        {
+            var deCaja = await TurnoAbiertoDeCajaAsync(cn, puestoCajaId.Value);
+            if (deCaja != null) return deCaja;
+        }
         return await cn.QueryFirstOrDefaultAsync<CajaTurno>(
-            "SELECT TOP 1 * FROM dbo.CajaTurno WHERE UsuarioId = @u AND FechaCierre IS NULL ORDER BY FechaApertura DESC",
+            $@"SELECT TOP 1 * FROM dbo.CajaTurno WHERE UsuarioId = @u AND FechaCierre IS NULL
+               {(porCaja ? "AND PuestoCajaId IS NULL" : "")} ORDER BY FechaApertura DESC",
             new { u = usuarioId });
     }
 
-    public async Task<CajaTurno> AbrirAsync(string cs, Guid usuarioId, decimal montoInicial, Guid? sucursalId = null)
+    private static async Task<CajaTurno> TurnoAbiertoDeCajaAsync(System.Data.IDbConnection cn, Guid puestoCajaId)
     {
-        var abierto = await TurnoAbiertoAsync(cs, usuarioId);
+        var t = await cn.QueryFirstOrDefaultAsync<CajaTurno>(
+            @"SELECT TOP 1 t.*, u.NombreUsuario AS Usuario,
+                     ISNULL(NULLIF(pc.Nombre, ''), 'Caja ' + CAST(pc.Numero AS VARCHAR(10))) AS Puesto
+              FROM dbo.CajaTurno t
+              LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
+              LEFT JOIN dbo.PuestoCaja pc ON pc.Id = t.PuestoCajaId
+              WHERE t.PuestoCajaId = @p AND t.FechaCierre IS NULL ORDER BY t.FechaApertura DESC",
+            new { p = puestoCajaId });
+        if (t != null) t.EsDeCaja = true;
+        return t;
+    }
+
+    /// <summary>
+    /// Abre la caja. Con puestoCajaId (y el script 28) se abre esa caja de la sucursal: el turno queda a
+    /// nombre de quien la abrió pero es de la caja. Si otro la abrió un instante antes, devuelve ese turno.
+    /// </summary>
+    public async Task<CajaTurno> AbrirAsync(string cs, Guid usuarioId, decimal montoInicial, Guid? sucursalId = null, Guid? puestoCajaId = null)
+    {
+        var abierto = await TurnoAbiertoAsync(cs, usuarioId, puestoCajaId);
         if (abierto != null) return abierto;
         using var cn = await Db.AbrirAsync(cs);
+        var porCaja = puestoCajaId != null && await ExisteColumnaPuestoAsync(cn);
         var t = new CajaTurno
         {
             Id = Guid.NewGuid(), UsuarioId = usuarioId, FechaApertura = DateTime.Now,
-            MontoInicial = montoInicial, SucursalId = sucursalId
+            MontoInicial = montoInicial, SucursalId = sucursalId,
+            PuestoCajaId = porCaja ? puestoCajaId : null, EsDeCaja = porCaja
         };
+        if (porCaja)
+        {
+            try
+            {
+                await cn.ExecuteAsync(
+                    @"INSERT INTO dbo.CajaTurno (Id, UsuarioId, FechaApertura, MontoInicial, SucursalId, PuestoCajaId)
+                      VALUES (@Id, @UsuarioId, @FechaApertura, @MontoInicial, @SucursalId, @PuestoCajaId)", t);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+            {
+                // Otro cajero abrió la misma caja al mismo tiempo: se usa la suya.
+                return await TurnoAbiertoDeCajaAsync(cn, puestoCajaId.Value);
+            }
+            return await TurnoAbiertoDeCajaAsync(cn, puestoCajaId.Value) ?? t;
+        }
         try
         {
             await cn.ExecuteAsync(
@@ -44,6 +91,25 @@ public class CajaService
         return t;
     }
 
+    /// <summary>Ya se corrió el script 28 (apertura por caja).</summary>
+    public async Task<bool> AperturaPorCajaAsync(string cs)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        return await ExisteColumnaPuestoAsync(cn);
+    }
+
+    private static async Task<bool> ExisteColumnaPuestoAsync(System.Data.IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'PuestoCajaId') IS NULL OR OBJECT_ID('dbo.PuestoCajaSesion', 'U') IS NULL THEN 0 ELSE 1 END") == 1;
+
+    /// <summary>
+    /// Condición SQL "el movimiento (alias x) lo hizo alguien mientras estaba en la caja @p": así se reparte
+    /// lo vendido entre cajas sin tocar las tablas del sistema de escritorio (un usuario está en una sola caja a la vez).
+    /// </summary>
+    private static string EnLaCaja(string x) =>
+        $@"EXISTS (SELECT 1 FROM dbo.PuestoCajaSesion pcs WHERE pcs.CajaId = @p AND pcs.UsuarioId = {x}.UsuarioId
+                   AND {x}.Fecha >= pcs.FechaIngreso AND (pcs.FechaSalida IS NULL OR {x}.Fecha < pcs.FechaSalida))";
+
     /// <summary>
     /// Cajas de un día para la supervisión. Con sucursalId se limita a esa sucursal
     /// (lo que ve un supervisor); sin sucursalId se ven todas (el administrador).
@@ -59,16 +125,39 @@ public class CajaService
             if (sucursalId != null) filtroSucursal = "AND t.SucursalId = @sucursalId";
         }
 
+        // Con el script 28, el turno de una caja suma lo vendido por cualquiera mientras estuvo en ella.
+        var porCaja = await ExisteColumnaPuestoAsync(cn);
+        var ventasDeCaja = EnLaCaja("f").Replace("@p", "t.PuestoCajaId");
+        var ventas = porCaja
+            ? $@"CASE WHEN t.PuestoCajaId IS NULL THEN
+                    (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                     WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()))
+                 ELSE
+                    (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                     WHERE f.Fecha >= t.FechaApertura AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()) AND {ventasDeCaja})
+                 END"
+            : @"(SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
+                 WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura
+                   AND f.Fecha < ISNULL(t.FechaCierre, GETDATE()))";
+        var columnasCaja = porCaja
+            ? @", t.PuestoCajaId, t.UsuarioCierreId, uc.NombreUsuario AS UsuarioCierre,
+                 CAST(CASE WHEN t.PuestoCajaId IS NULL THEN 0 ELSE 1 END AS BIT) AS EsDeCaja,
+                 ISNULL(NULLIF(pc.Nombre, ''), 'Caja ' + CAST(pc.Numero AS VARCHAR(10))) AS Puesto"
+            : "";
+        var joinsCaja = porCaja
+            ? @"LEFT JOIN dbo.PuestoCaja pc ON pc.Id = t.PuestoCajaId
+               LEFT JOIN dbo.Usuario uc ON uc.Id = t.UsuarioCierreId"
+            : "";
+
         return (await cn.QueryAsync<CajaTurno>(
             $@"SELECT t.Id, t.UsuarioId, t.FechaApertura, t.MontoInicial, t.FechaCierre,
                       t.EfectivoEsperado, t.EfectivoContado, t.Diferencia, t.Observaciones,
                       {columnaSucursal}, u.NombreUsuario AS Usuario,
-                      (SELECT ISNULL(SUM(f.MontoTotal), 0) FROM dbo.Factura f
-                       WHERE f.UsuarioId = t.UsuarioId AND f.Fecha >= t.FechaApertura
-                         AND f.Fecha < ISNULL(t.FechaCierre, GETDATE())) AS Ventas
+                      {ventas} AS Ventas {columnasCaja}
                FROM dbo.CajaTurno t
                LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
                {(columnaSucursal.StartsWith("NULL") ? "" : "LEFT JOIN dbo.Sucursal s ON s.Id = t.SucursalId")}
+               {joinsCaja}
                WHERE t.FechaApertura >= @desde AND t.FechaApertura < @hasta {filtroSucursal}
                ORDER BY t.FechaApertura DESC",
             new { desde = dia.Date, hasta = dia.Date.AddDays(1), sucursalId })).ToList();
@@ -133,24 +222,28 @@ public class CajaService
     {
         var hasta = turno.FechaCierre ?? DateTime.Now.AddMinutes(1);
         using var cn = await Db.AbrirAsync(cs);
+        // Turno de una caja (script 28): lo que hizo cualquier cajero mientras estuvo en esa caja.
+        // Turno por usuario: lo que hizo ese usuario.
+        var deCaja = turno.PuestoCajaId != null && turno.EsDeCaja;
+        string Quien(string x) => deCaja ? EnLaCaja(x) : $"{x}.UsuarioId = @u";
         var movs = (await cn.QueryAsync<MovimientoCaja>(
-            @"SELECT CASE WHEN f.CAE IS NOT NULL AND f.CAE <> '' THEN 'F'
+            $@"SELECT CASE WHEN f.CAE IS NOT NULL AND f.CAE <> '' THEN 'F'
                           WHEN ISNULL(f.Impresa, 0) = 1 THEN 'P' ELSE 'S' END AS Tipo,
                      ISNULL(fp.Nombre, '(sin forma de pago)') AS FormaPago, f.MontoTotal AS Monto
               FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
-              WHERE f.UsuarioId = @u AND f.Fecha >= @desde AND f.Fecha < @hasta AND ISNULL(f.Anulada, 0) = 0
+              WHERE {Quien("f")} AND f.Fecha >= @desde AND f.Fecha < @hasta AND ISNULL(f.Anulada, 0) = 0
               UNION ALL
               SELECT 'N', ISNULL(fp.Nombre, '(sin forma de pago)'), -n.MontoTotal
               FROM dbo.NotaCredito n LEFT JOIN dbo.FormaPago fp ON fp.Id = n.FormaPagoId
-              WHERE n.UsuarioId = @u AND n.Fecha >= @desde AND n.Fecha < @hasta
+              WHERE {Quien("n")} AND n.Fecha >= @desde AND n.Fecha < @hasta
                 AND n.CAE IS NOT NULL AND n.CAE <> '' AND ISNULL(n.Anulada, 0) = 0
               UNION ALL
-              SELECT 'C', 'Ingreso de efectivo', Monto FROM dbo.CajaIngreso
-              WHERE UsuarioId = @u AND Fecha >= @desde AND Fecha < @hasta
+              SELECT 'C', 'Ingreso de efectivo', ci.Monto FROM dbo.CajaIngreso ci
+              WHERE {Quien("ci")} AND ci.Fecha >= @desde AND ci.Fecha < @hasta
               UNION ALL
-              SELECT 'C', 'Retiro de efectivo', -Monto FROM dbo.EgresoCaja
-              WHERE UsuarioId = @u AND Fecha >= @desde AND Fecha < @hasta",
-            new { u = turno.UsuarioId, desde = turno.FechaApertura, hasta })).ToList();
+              SELECT 'C', 'Retiro de efectivo', -ec.Monto FROM dbo.EgresoCaja ec
+              WHERE {Quien("ec")} AND ec.Fecha >= @desde AND ec.Fecha < @hasta",
+            new { u = turno.UsuarioId, p = turno.PuestoCajaId, desde = turno.FechaApertura, hasta })).ToList();
 
         var r = new ArqueoResumen { Turno = turno };
         foreach (var (codigo, titulo) in TiposArqueo)
@@ -198,19 +291,33 @@ public class CajaService
             new { u = usuarioId, m = monto, c = concepto });
     }
 
-    public async Task<ArqueoResumen> CerrarAsync(string cs, CajaTurno turno, decimal efectivoContado, string observaciones)
+    /// <summary>
+    /// Cierra el turno. En una caja compartida puede pasar que otro cajero la cierre un instante antes:
+    /// en ese caso no se pisa su cierre y se devuelve el que quedó guardado.
+    /// </summary>
+    public async Task<ArqueoResumen> CerrarAsync(string cs, CajaTurno turno, decimal efectivoContado, string observaciones, Guid? usuarioCierreId = null)
     {
         var arqueo = await ArqueoAsync(cs, turno);
         using var cn = await Db.AbrirAsync(cs);
+        var conCierre = await cn.ExecuteScalarAsync<int>(
+            "SELECT CASE WHEN COL_LENGTH('dbo.CajaTurno', 'UsuarioCierreId') IS NULL THEN 0 ELSE 1 END") == 1;
         turno.FechaCierre = DateTime.Now;
         turno.EfectivoEsperado = arqueo.EfectivoEsperado;
         turno.EfectivoContado = efectivoContado;
         turno.Diferencia = efectivoContado - arqueo.EfectivoEsperado;
         turno.Observaciones = observaciones;
-        await cn.ExecuteAsync(
-            @"UPDATE dbo.CajaTurno SET FechaCierre = @FechaCierre, EfectivoEsperado = @EfectivoEsperado,
+        turno.UsuarioCierreId = usuarioCierreId;
+        var filas = await cn.ExecuteAsync(
+            $@"UPDATE dbo.CajaTurno SET FechaCierre = @FechaCierre, EfectivoEsperado = @EfectivoEsperado,
                      EfectivoContado = @EfectivoContado, Diferencia = @Diferencia, Observaciones = @Observaciones
-              WHERE Id = @Id", turno);
+                     {(conCierre ? ", UsuarioCierreId = @UsuarioCierreId" : "")}
+              WHERE Id = @Id AND FechaCierre IS NULL", turno);
+        if (filas == 0)
+        {
+            var guardado = await ObtenerTurnoAsync(cs, turno.Id);
+            if (guardado != null) arqueo = await ArqueoAsync(cs, guardado);
+            return arqueo;
+        }
         arqueo.Turno = turno;
         return arqueo;
     }
@@ -218,6 +325,17 @@ public class CajaService
     public async Task<CajaTurno> ObtenerTurnoAsync(string cs, Guid id)
     {
         using var cn = await Db.AbrirAsync(cs);
-        return await cn.QueryFirstOrDefaultAsync<CajaTurno>("SELECT * FROM dbo.CajaTurno WHERE Id = @id", new { id });
+        if (!await ExisteColumnaPuestoAsync(cn))
+            return await cn.QueryFirstOrDefaultAsync<CajaTurno>("SELECT * FROM dbo.CajaTurno WHERE Id = @id", new { id });
+        var t = await cn.QueryFirstOrDefaultAsync<CajaTurno>(
+            @"SELECT t.*, u.NombreUsuario AS Usuario, uc.NombreUsuario AS UsuarioCierre,
+                     ISNULL(NULLIF(pc.Nombre, ''), 'Caja ' + CAST(pc.Numero AS VARCHAR(10))) AS Puesto
+              FROM dbo.CajaTurno t
+              LEFT JOIN dbo.Usuario u ON u.Id = t.UsuarioId
+              LEFT JOIN dbo.Usuario uc ON uc.Id = t.UsuarioCierreId
+              LEFT JOIN dbo.PuestoCaja pc ON pc.Id = t.PuestoCajaId
+              WHERE t.Id = @id", new { id });
+        if (t != null) t.EsDeCaja = t.PuestoCajaId != null;
+        return t;
     }
 }

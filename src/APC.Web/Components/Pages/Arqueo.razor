@@ -19,7 +19,8 @@ else if (turno == null)
     <header class="fact-head">
         <div class="fact-titulo">
             <h1>Arqueo de caja</h1>
-            <span class="sub">@(ExigeCaja ? "No tenés un turno abierto" : "Esta sucursal no pide abrir caja: abajo están todos los movimientos del día")</span>
+            <span class="sub">@(!ExigeCaja ? "Esta sucursal no pide abrir caja: abajo están todos los movimientos del día"
+                                : PorCaja ? $"{sesion.Caja.TituloCaja} está cerrada" : "No tenés un turno abierto")</span>
         </div>
     </header>
 
@@ -39,25 +40,36 @@ else if (turno == null)
     @if (ExigeCaja)
     {
     <section class="panel apertura">
-        <h2>Abrir caja</h2>
+        <h2>@(PorCaja ? $"Abrir {sesion.Caja.TituloCaja}" : "Abrir caja")</h2>
+        @if (PorCaja)
+        {
+            <p class="sub">Cada caja se abre y se cierra por separado, con su propio monto para el cambio. Queda abierta aunque cambie el cajero, hasta que alguien la cierre.</p>
+        }
         <div class="campo">
             <label for="monto-inicial">Monto inicial en efectivo</label>
             <input id="monto-inicial" class="input mono" type="number" step="0.01" min="0" @bind="montoInicial" />
         </div>
-        <button type="button" class="btn btn-primario btn-grande" @onclick="Abrir">Abrir caja</button>
+        <button type="button" class="btn btn-primario btn-grande" disabled="@abriendo" @onclick="Abrir">@(PorCaja ? $"Abrir {sesion.Caja.TituloCaja}" : "Abrir caja")</button>
     </section>
     }
 }
 else
 {
     <header class="fact-head">
-        <div class="fact-titulo"><h1>Arqueo de caja</h1><span class="sub">Turno abierto por @sesion.Nombre · @turno.FechaApertura.ToString("dd/MM HH:mm")</span></div>
+        <div class="fact-titulo">
+            <h1>Arqueo de caja@(turno.EsDeCaja ? " · " + turno.Puesto : "")</h1>
+            <span class="sub">@(turno.EsDeCaja ? $"Abierta por {turno.Usuario} · {turno.FechaApertura:dd/MM HH:mm}" : $"Turno abierto por {sesion.Nombre} · {turno.FechaApertura:dd/MM HH:mm}")</span>
+        </div>
         <div class="fila-btns">
             <button type="button" class="btn" @onclick="Refrescar">Actualizar</button>
             <a class="btn" href="/imprimir/arqueo/@turno.Id" target="_blank">Imprimir parcial</a>
         </div>
     </header>
 
+    @if (PorCaja && !turno.EsDeCaja)
+    {
+        <p class="alerta alerta-aviso">Este turno se abrió antes de que la apertura fuera por caja. Cerralo como siempre: la próxima apertura ya va a ser de @sesion.Caja.TituloCaja.</p>
+    }
     <div class="kpis">
         <div class="kpi"><span class="sub">Monto inicial</span><span class="mono kpi-num">@Pesos(turno.MontoInicial)</span></div>
         <div class="kpi"><span class="sub">Facturas</span><span class="mono kpi-num">@Pesos(arqueo.VentasFiscales)</span><span class="sub">@arqueo.CantidadFiscales comprobantes</span></div>
@@ -125,7 +137,9 @@ else
             </div>
             @if (confirmarCierre)
             {
-                <p class="alerta alerta-aviso">¿Cerrar el turno? Después de cerrar no se puede seguir facturando hasta abrir otro.</p>
+                <p class="alerta alerta-aviso">@(turno.EsDeCaja
+                    ? $"¿Cerrar {turno.Puesto}? Nadie va a poder facturar en esta caja hasta que se vuelva a abrir."
+                    : "¿Cerrar el turno? Después de cerrar no se puede seguir facturando hasta abrir otro.")</p>
                 <div class="fila-btns">
                     <button type="button" class="btn" @onclick="() => confirmarCierre = false">Cancelar</button>
                     <button type="button" class="btn btn-rojo" @onclick="Cerrar">Sí, cerrar</button>
@@ -133,7 +147,7 @@ else
             }
             else
             {
-                <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarCierre = true">Cerrar turno</button>
+                <button type="button" class="btn btn-rojo btn-grande" @onclick="() => confirmarCierre = true">@(turno.EsDeCaja ? $"Cerrar {turno.Puesto}" : "Cerrar turno")</button>
             }
         </aside>
     </div>
@@ -265,7 +279,10 @@ else
                 {
                     <tr class="@(cajaVista?.Id == c.Id ? "fila-sel" : "")">
                         @if (VariosPuestos) { <td class="fuerte">@(c.Puesto ?? "—")</td> }
-                        <td class="mono">@c.Usuario</td>
+                        <td class="mono" title="@(c.EsDeCaja ? "Abrió" + (c.UsuarioCierre != null ? " / cerró" : "") : "")">
+                            @c.Usuario
+                            @if (c.EsDeCaja && c.UsuarioCierre != null && c.UsuarioCierre != c.Usuario) { <span class="sub"> → @c.UsuarioCierre</span> }
+                        </td>
                         <td>@c.Sucursal</td>
                         <td>@c.FechaApertura.ToString("HH:mm")</td>
                         <td>
@@ -372,6 +389,11 @@ else
     private decimal movMonto;
     private string movConcepto;
     private bool confirmarCierre;
+    private bool abriendo;
+
+    /// <summary>Ya se corrió el script 28: si el usuario está en una caja de la sucursal, se abre y cierra esa caja.</summary>
+    private bool aperturaPorCaja;
+    private bool PorCaja => aperturaPorCaja && ExigeCaja && sesion?.Caja != null;
 
     // ---- Supervisión: el supervisor ve las cajas de su sucursal; el administrador, todas ----
     private List<CajaTurno> cajas = new();
@@ -528,6 +550,7 @@ else
         sesion = await SesionSrv.ObtenerAsync();
         // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
         if (!sesion.TieneModulo(Modulo.Caja)) { Nav.NavigateTo("/sin-permiso"); return; }
+        try { aperturaPorCaja = await Caja.AperturaPorCajaAsync(sesion.Cs); } catch (Exception) { aperturaPorCaja = false; }
         await Refrescar();
 
         if (sesion.EsAdmin)
@@ -547,7 +570,7 @@ else
     {
         // Se calculan primero y se asignan juntos: Blazor redibuja entre cada await,
         // y la pantalla no debe ver un turno abierto sin su arqueo.
-        var t = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId);
+        var t = await Caja.TurnoAbiertoAsync(sesion.Cs, sesion.UsuarioId, PorCaja ? sesion.Caja.CajaId : null);
         var a = t == null ? null : await Caja.ArqueoAsync(sesion.Cs, t);
         turno = t;
         arqueo = a;
@@ -555,9 +578,17 @@ else
 
     private async Task Abrir()
     {
-        await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
-        cerrado = null;
-        await Refrescar();
+        if (abriendo) return;
+        abriendo = true;
+        try
+        {
+            await Caja.AbrirAsync(sesion.Cs, sesion.UsuarioId, montoInicial, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId,
+                PorCaja ? sesion.Caja.CajaId : null);
+            cerrado = null;
+            await Refrescar();
+            if (PuedeSupervisar) await CargarCajas();
+        }
+        finally { abriendo = false; }
     }
 
     private async Task Movimiento(bool ingreso)
@@ -572,7 +603,7 @@ else
 
     private async Task Cerrar()
     {
-        cerrado = await Caja.CerrarAsync(sesion.Cs, turno, contado, observaciones);
+        cerrado = await Caja.CerrarAsync(sesion.Cs, turno, contado, observaciones, sesion.UsuarioId);
         confirmarCierre = false;
         contado = 0;
         observaciones = null;

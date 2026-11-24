@@ -15,6 +15,7 @@ else
     <div class="impresion ticket-80" data-autoprint="true">
         <header class="imp-emisor">
             <strong class="imp-razon">ARQUEO DE CAJA</strong>
+            @if (a.Turno.EsDeCaja) { <strong>@a.Turno.Puesto</strong> }
             <span>@sesion.Tenant.Nombre · Pto. Vta. @sesion.Tenant.PuntoVenta.ToString("0000")</span>
             <span>Apertura @a.Turno.FechaApertura.ToString("dd/MM/yyyy HH:mm")</span>
             <span>@(a.Turno.FechaCierre != null ? "Cierre " + a.Turno.FechaCierre.Value.ToString("dd/MM/yyyy HH:mm") : "PARCIAL — turno abierto")</span>
@@ -46,7 +47,14 @@ else
             }
             @if (!string.IsNullOrWhiteSpace(a.Turno.Observaciones)) { <p>Obs.: @a.Turno.Observaciones</p> }
         </section>
-        <p class="imp-chico">Cajero: @sesion.Nombre</p>
+        @if (a.Turno.EsDeCaja)
+        {
+            <p class="imp-chico">Abrió: @a.Turno.Usuario@(a.Turno.UsuarioCierre != null ? " · Cerró: " + a.Turno.UsuarioCierre : "") · Imprimió: @sesion.Nombre</p>
+        }
+        else
+        {
+            <p class="imp-chico">Cajero: @sesion.Nombre</p>
+        }
         <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
     </div>
 }
@@ -61,7 +69,10 @@ else
     {
         sesion = await SesionSrv.ObtenerAsync();
         var turno = await Caja.ObtenerTurnoAsync(sesion.Cs, Id);
-        if (turno == null || turno.UsuarioId != sesion.UsuarioId && !sesion.EsAdmin) return;
+        // La caja de la sucursal la puede imprimir quien esté en ella; un supervisor o administrador, cualquiera.
+        var puede = turno != null && (turno.UsuarioId == sesion.UsuarioId || sesion.EsAdmin || sesion.EsSupervisor
+                    || (turno.EsDeCaja && sesion.Caja?.CajaId == turno.PuestoCajaId));
+        if (!puede) return;
         a = await Caja.ArqueoAsync(sesion.Cs, turno);
     }
 }

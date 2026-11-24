@@ -311,8 +311,16 @@ public class CajaTurno
     public decimal Ventas { get; set; }
     public bool Abierta => FechaCierre == null;
 
-    /// <summary>Caja de la sucursal (PuestoCaja) en la que estaba el usuario, si la sucursal tiene varias.</summary>
+    /// <summary>
+    /// Caja de la sucursal (PuestoCaja). Con el script 28, si está cargada en la tabla el turno es de la caja
+    /// (no del usuario): se abre y cierra por caja y suma lo que hizo cualquier cajero mientras estuvo en ella.
+    /// </summary>
     public Guid? PuestoCajaId { get; set; }
+    /// <summary>Quién cerró la caja (script 28).</summary>
+    public Guid? UsuarioCierreId { get; set; }
+    public string UsuarioCierre { get; set; }
+    /// <summary>El turno es de una caja de la sucursal (tiene PuestoCajaId guardado), no de un usuario.</summary>
+    public bool EsDeCaja { get; set; }
     public string Puesto { get; set; }
     /// <summary>Fila armada desde un ingreso a una caja que todavía sigue en uso.</summary>
     public bool EnUso { get; set; }
