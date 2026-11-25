@@ -104,7 +104,10 @@ public class FacturacionService
         var cfg = await _catalogo.ConfiguracionAsync(cs);
         var p = new ParametrosIva();
         if (cfg.TryGetValue("PROD_IVA_DIF", out var dif) && dif.Numero > 0d) p.Diferenciada = (decimal)dif.Numero.Value;
-        if (cfg.TryGetValue("FACT_DECREMENTA", out var dec)) p.DecrementaStock = dec.Bit == true;
+        // En la web el stock se controla por producto: siempre se descuenta al facturar (factura o nota de pedido)
+        // si el producto no tiene marcado "No controlar stock", y se devuelve al anular. No se mira FACT_DECREMENTA
+        // del sistema de escritorio, que en muchas bases quedó apagado y hacía que el stock no bajara nunca.
+        p.DecrementaStock = true;
         return p;
     }
 
@@ -213,13 +216,15 @@ public class FacturacionService
                 foreach (var g in f.Renglones.Where(r => !r.Producto.OmitirControlStock).GroupBy(r => r.Producto.Id))
                 {
                     var cantidad = g.Sum(x => x.Cantidad);
+                    if (cantidad <= 0) continue;
+                    // El stock nunca queda negativo: si había menos de lo vendido, queda en 0.
                     if (sucursal != null)
                         await SucursalService.DescontarVentaAsync(cn, tx, sucursal.Id, g.Key, cantidad);
                     else
                         await cn.ExecuteAsync(
                             @"UPDATE dbo.Producto
-                              SET Stock = CASE WHEN Stock - @c <= 0 THEN 0 ELSE Stock - @c END
-                              WHERE Id = @id", new { id = g.Key, c = cantidad }, tx);
+                              SET Stock = CASE WHEN ISNULL(Stock, 0) - @c <= 0 THEN 0 ELSE Stock - @c END
+                              WHERE Id = @id AND ISNULL(OmitirControlStock, 0) = 0", new { id = g.Key, c = cantidad }, tx);
                 }
             }
 
