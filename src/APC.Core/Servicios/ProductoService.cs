@@ -152,8 +152,57 @@ public class ProductoService
         return null;
     }
 
+    /// <summary>Filtro SQL de los productos que toca un aumento masivo (todos, o las familias elegidas).</summary>
+    private static (string Sql, object Param) FiltroMasivo(AumentoMasivo a)
+    {
+        var ids = a.RubroIds?.Count > 0 ? a.RubroIds : a.RubroId != null ? new List<Guid> { a.RubroId.Value } : new List<Guid>();
+        var todos = ids.Count == 0 && !a.IncluirSinFamilia;
+        var sql = todos ? "1 = 1"
+            : "(" + (ids.Count > 0 ? "p.RubroId IN @ids" : "1 = 0") + (a.IncluirSinFamilia ? " OR p.RubroId IS NULL" : "") + ")";
+        return (sql, new { ids });
+    }
+
+    /// <summary>Precios nuevos de un producto con el aumento; null si el producto no se toca (precio libre).</summary>
+    private static (decimal Costo, decimal Pv1, decimal? Pv2, decimal? Pv3)? Aumentar(AumentoMasivo a, ProductoDetalle p)
+    {
+        if (p.PrecioVenta1 == 0) return null; // precio libre ("varios"): no se toca
+        decimal Aplicar(decimal v) => Math.Max(0, Math.Round(a.Tipo == TipoAumento.Porcentaje ? v + v * (a.Valor / 100m) : v + a.Valor, 2));
+        decimal? AplicarN(decimal? v) => v.HasValue && v.Value != 0 ? Aplicar(v.Value) : v;
+        // Igual que APC: en aumento en pesos, un costo en 0 no se toca
+        var costo = !a.IncluirCosto ? p.PrecioCosto
+                  : (a.Tipo == TipoAumento.Pesos && p.PrecioCosto == 0 ? 0 : Aplicar(p.PrecioCosto));
+        return (costo, Aplicar(p.PrecioVenta1), AplicarN(p.PrecioVenta2), AplicarN(p.PrecioVenta3));
+    }
+
     /// <summary>
-    /// Aumento (o baja) de precios por rubro o de todos los productos, en % o en $,
+    /// Vista previa del aumento masivo: cuántos productos se van a actualizar y cómo quedan los primeros.
+    /// </summary>
+    public async Task<(int Cantidad, List<PreciosPrevia> Muestra)> PreviaMasivoAsync(string cs, AumentoMasivo a, int muestra = 8)
+    {
+        var (filtro, prm) = FiltroMasivo(a);
+        using var cn = await Db.AbrirAsync(cs);
+        var productos = (await cn.QueryAsync<ProductoDetalle>(
+            $@"SELECT p.Id, p.Codigo, p.Nombre, r.Nombre AS Rubro, p.PrecioCosto, p.PrecioVenta1, p.PrecioVenta2, p.PrecioVenta3
+               FROM dbo.Producto p LEFT JOIN dbo.Rubro r ON r.Id = p.RubroId
+               WHERE ISNULL(p.Activo,1) = 1 AND ISNULL(p.PrecioVenta1, 0) <> 0 AND {filtro}
+               ORDER BY p.Nombre", prm)).ToList();
+        var lista = new List<PreciosPrevia>();
+        foreach (var p in productos.Take(muestra))
+        {
+            var n = a.Valor == 0 ? ((decimal Costo, decimal Pv1, decimal? Pv2, decimal? Pv3)?)(p.PrecioCosto, p.PrecioVenta1, p.PrecioVenta2, p.PrecioVenta3) : Aumentar(a, p);
+            if (n == null) continue;
+            lista.Add(new PreciosPrevia
+            {
+                Codigo = p.Codigo, Nombre = p.Nombre, Familia = p.Rubro,
+                CostoAntes = p.PrecioCosto, CostoDespues = n.Value.Costo,
+                Precio1Antes = p.PrecioVenta1, Precio1Despues = n.Value.Pv1
+            });
+        }
+        return (productos.Count, lista);
+    }
+
+    /// <summary>
+    /// Aumento (o baja) de precios por familia (una o varias) o de todos los productos, en % o en $,
     /// como la "Actualización de Familia / de TODOS los Productos" de APC.
     /// Devuelve la cantidad de productos actualizados.
     /// </summary>
@@ -162,32 +211,26 @@ public class ProductoService
         if (a.Valor == 0) return (0, "Indicá el porcentaje o el monto del aumento.");
         if (a.Tipo == TipoAumento.Porcentaje && a.Valor <= -100) return (0, "El porcentaje no puede ser -100 % o menor.");
 
+        var (filtro, prm) = FiltroMasivo(a);
         using var cn = await Db.AbrirAsync(cs);
         using var tx = cn.BeginTransaction();
         var productos = (await cn.QueryAsync<ProductoDetalle>(
-            @"SELECT Id, PrecioCosto, PrecioVenta1, PrecioVenta2, PrecioVenta3 FROM dbo.Producto
-              WHERE ISNULL(Activo,1) = 1 AND (@rubro IS NULL OR RubroId = @rubro)",
-            new { rubro = a.RubroId }, tx)).ToList();
+            $@"SELECT p.Id, p.PrecioCosto, p.PrecioVenta1, p.PrecioVenta2, p.PrecioVenta3 FROM dbo.Producto p
+               WHERE ISNULL(p.Activo,1) = 1 AND {filtro}", prm, tx)).ToList();
 
-        decimal Aplicar(decimal v) => Math.Max(0, Math.Round(a.Tipo == TipoAumento.Porcentaje ? v + v * (a.Valor / 100m) : v + a.Valor, 2));
-        decimal? AplicarN(decimal? v) => v.HasValue && v.Value != 0 ? Aplicar(v.Value) : v;
-
-        string prefijo = a.RubroId == null ? "[Actualización de TODOS los Productos] " : "[Actualización de Familia] ";
+        var porFamilia = a.RubroIds?.Count > 0 || a.RubroId != null || a.IncluirSinFamilia;
+        string prefijo = !porFamilia ? "[Actualización de TODOS los Productos] "
+            : $"[Actualización de Familia{(string.IsNullOrWhiteSpace(a.NombresFamilias) ? "" : ": " + a.NombresFamilias)}] ";
         string detalle = a.Tipo == TipoAumento.Porcentaje ? $"{a.Valor:0.##}%" : $"${a.Valor:0.##}";
         string obs = (prefijo + detalle + " " + (a.Observaciones ?? "")).Trim();
+        if (obs.Length > 300) obs = obs[..300];
 
         int n = 0;
         foreach (var p in productos)
         {
-            if (p.PrecioVenta1 == 0) continue; // precio libre ("varios"): no se toca
-
-            // Igual que APC: en aumento en pesos, un costo en 0 no se toca
-            var costo = !a.IncluirCosto ? p.PrecioCosto
-                      : (a.Tipo == TipoAumento.Pesos && p.PrecioCosto == 0 ? 0 : Aplicar(p.PrecioCosto));
-            var pv1 = Aplicar(p.PrecioVenta1);
-            var pv2 = AplicarN(p.PrecioVenta2);
-            var pv3 = AplicarN(p.PrecioVenta3);
-
+            var nuevo = Aumentar(a, p);
+            if (nuevo == null) continue;
+            var (costo, pv1, pv2, pv3) = nuevo.Value;
             await cn.ExecuteAsync(
                 "UPDATE dbo.Producto SET PrecioCosto = @costo, PrecioVenta1 = @pv1, PrecioVenta2 = @pv2, PrecioVenta3 = @pv3 WHERE Id = @id",
                 new { id = p.Id, costo, pv1, pv2, pv3 }, tx);
@@ -197,6 +240,53 @@ public class ProductoService
         tx.Commit();
         return (n, null);
     }
+
+    // ------------------------------------------------------------ bajo stock
+
+    /// <summary>
+    /// Productos con stock en el mínimo o por debajo. Solo los que controlan stock (no tienen "No controlar
+    /// stock") y tienen un stock mínimo mayor a 0. Con sucursal (y sucursales activadas) se mira el stock de
+    /// esa sucursal y su mínimo propio si lo tiene; sin sucursal, el stock total del producto.
+    /// </summary>
+    public async Task<List<ProductoBajoStock>> BajoStockAsync(string cs, Guid? sucursalId, Guid? rubroId = null)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var porSucursal = sucursalId != null && await HayStockPorSucursalAsync(cn);
+        var stock = porSucursal ? "ISNULL(ss.Stock, 0)" : "ISNULL(p.Stock, 0)";
+        var minimo = porSucursal ? "ISNULL(ss.StockMinimo, ISNULL(p.StockMinimo, 0))" : "ISNULL(p.StockMinimo, 0)";
+        return (await cn.QueryAsync<ProductoBajoStock>(
+            $@"SELECT p.Id, p.Codigo, p.Nombre, r.Nombre AS Familia, {stock} AS Stock, {minimo} AS StockMinimo,
+                      ISNULL(p.StockMaximo, 0) AS StockMaximo, ISNULL(p.PrecioCosto, 0) AS PrecioCosto
+               FROM dbo.Producto p
+               LEFT JOIN dbo.Rubro r ON r.Id = p.RubroId
+               {(porSucursal ? "LEFT JOIN dbo.StockSucursal ss ON ss.ProductoId = p.Id AND ss.SucursalId = @sucursalId" : "")}
+               WHERE ISNULL(p.Activo, 1) = 1
+                 AND ISNULL(p.OmitirControlStock, 0) = 0
+                 AND ISNULL(p.StockMinimo, 0) > 0
+                 AND {minimo} > 0
+                 AND {stock} <= {minimo}
+                 AND (@rubroId IS NULL OR p.RubroId = @rubroId)
+               ORDER BY CASE WHEN {stock} <= 0 THEN 0 ELSE 1 END, r.Nombre, p.Nombre",
+            new { sucursalId, rubroId })).ToList();
+    }
+
+    /// <summary>Cuántos productos hay con bajo stock (para el aviso del menú).</summary>
+    public async Task<int> ContarBajoStockAsync(string cs, Guid? sucursalId)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var porSucursal = sucursalId != null && await HayStockPorSucursalAsync(cn);
+        var stock = porSucursal ? "ISNULL(ss.Stock, 0)" : "ISNULL(p.Stock, 0)";
+        var minimo = porSucursal ? "ISNULL(ss.StockMinimo, ISNULL(p.StockMinimo, 0))" : "ISNULL(p.StockMinimo, 0)";
+        return await cn.ExecuteScalarAsync<int>(
+            $@"SELECT COUNT(*) FROM dbo.Producto p
+               {(porSucursal ? "LEFT JOIN dbo.StockSucursal ss ON ss.ProductoId = p.Id AND ss.SucursalId = @sucursalId" : "")}
+               WHERE ISNULL(p.Activo, 1) = 1 AND ISNULL(p.OmitirControlStock, 0) = 0
+                 AND ISNULL(p.StockMinimo, 0) > 0 AND {minimo} > 0 AND {stock} <= {minimo}",
+            new { sucursalId });
+    }
+
+    private static async Task<bool> HayStockPorSucursalAsync(IDbConnection cn) =>
+        await cn.ExecuteScalarAsync<int>("SELECT CASE WHEN OBJECT_ID('dbo.StockSucursal', 'U') IS NULL THEN 0 ELSE 1 END") == 1;
 
     public async Task<List<CambioProductoHistorial>> HistorialAsync(string cs, Guid? productoId, DateTime? desde, DateTime? hasta, int max = 300)
     {

@@ -1,0 +1,204 @@
+@page "/productos/familias"
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject NavigationManager Nav
+@inject FamiliaService FamiliaSrv
+
+@* ABM de familias de productos (tabla dbo.Rubro, el "Rubro" del sistema de escritorio). *@
+
+<PageTitle>Familias · Factu360</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Familias</h1>
+            <span class="sub">@familias.Count familias · agrupan productos para filtrar, listar y aumentar precios</span>
+        </div>
+        <div class="fila-btns">
+            <a class="btn" href="/productos">← Productos</a>
+            @if (esAdmin)
+            {
+                <button type="button" class="btn btn-primario" @onclick="Nueva">+ Nueva familia</button>
+            }
+        </div>
+    </header>
+
+    <div class="fila-campos">
+        <div class="campo crece">
+            <label for="fam-buscar">Buscar</label>
+            <input id="fam-buscar" class="input" placeholder="Nombre de la familia" @bind="texto" @bind:event="oninput" />
+        </div>
+    </div>
+
+    @if (mensaje != null)
+    {
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+    }
+
+    <div class="arqueo-cols">
+        <section class="panel crece tabla-scroll">
+            <table class="tabla">
+                <thead><tr><th>Familia</th><th>Observaciones</th><th class="der">Productos</th><th></th></tr></thead>
+                <tbody>
+                    @if (cargando)
+                    {
+                        <FilasEsqueleto Filas="6" Columnas="4" />
+                    }
+                    else if (!Visibles.Any())
+                    {
+                        <tr><td colspan="4" class="sub">@(familias.Count == 0 ? "Todavía no hay familias. Creá la primera con “+ Nueva familia”." : "Ninguna familia coincide con la búsqueda.")</td></tr>
+                    }
+                    @foreach (var f in Visibles)
+                    {
+                        <tr class="@(edit?.Id == f.Id ? "fila-sel" : "")">
+                            <td class="fuerte">@f.Nombre</td>
+                            <td class="sub">@f.Observaciones</td>
+                            <td class="der mono">
+                                <a href="/productos?familia=@f.Id" title="Ver sus productos">@f.Productos</a>
+                                @if (f.ProductosBaja > 0) { <span class="sub"> (+@f.ProductosBaja de baja)</span> }
+                            </td>
+                            <td class="der">
+                                @if (esAdmin)
+                                {
+                                    <div class="fila-btns fin">
+                                        <button type="button" class="btn btn-chico" @onclick="() => Editar(f)">Editar</button>
+                                        <button type="button" class="btn btn-chico btn-rojo" @onclick="() => PedirBorrar(f)">Eliminar</button>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @if (!cargando && sinFamilia > 0)
+                    {
+                        <tr class="fila-baja">
+                            <td class="sub">(sin familia)</td><td></td>
+                            <td class="der mono">@sinFamilia</td><td></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (edit != null)
+        {
+            <aside class="panel cierre panel-producto">
+                <div class="fila-btns entre">
+                    <h2>@(edit.Id == Guid.Empty ? "Nueva familia" : "Editar familia")</h2>
+                    <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
+                </div>
+                <div class="campo">
+                    <label for="f-nombre">Nombre</label>
+                    <input id="f-nombre" class="input" maxlength="50" @bind="edit.Nombre" @onkeydown="EnterGuarda" />
+                </div>
+                <div class="campo">
+                    <label for="f-obs">Observaciones</label>
+                    <input id="f-obs" class="input" maxlength="200" @bind="edit.Observaciones" />
+                </div>
+                <button type="button" class="btn btn-primario btn-grande" disabled="@ocupado" @onclick="Guardar">Guardar</button>
+            </aside>
+        }
+        else if (borrar != null)
+        {
+            <aside class="panel cierre panel-producto">
+                <div class="fila-btns entre">
+                    <h2>Eliminar “@borrar.Nombre”</h2>
+                    <button type="button" class="btn-quitar" aria-label="Cerrar panel" @onclick="Cerrar">×</button>
+                </div>
+                @if (borrar.Productos + borrar.ProductosBaja > 0)
+                {
+                    <p>Tiene <strong>@(borrar.Productos + borrar.ProductosBaja) productos</strong>. ¿A qué familia pasan?</p>
+                    <div class="campo">
+                        <label for="f-mover">Mover los productos a</label>
+                        <select id="f-mover" class="input" @bind="moverA">
+                            <option value="">Dejarlos sin familia</option>
+                            @foreach (var f in familias.Where(x => x.Id != borrar.Id))
+                            {
+                                <option value="@f.Id">@f.Nombre</option>
+                            }
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <p>No tiene productos.</p>
+                }
+                <p class="alerta alerta-aviso">La familia se borra definitivamente.</p>
+                <div class="fila-btns">
+                    <button type="button" class="btn" @onclick="Cerrar">Cancelar</button>
+                    <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="Borrar">Sí, eliminar</button>
+                </div>
+            </aside>
+        }
+    </div>
+</div>
+
+@code {
+    private SesionActual sesion;
+    private bool esAdmin;
+    private bool cargando = true;
+    private bool ocupado;
+    private List<Familia> familias = new();
+    private int sinFamilia;
+    private string texto;
+    private Familia edit;
+    private Familia borrar;
+    private Guid? moverA;
+    private string mensaje;
+    private bool mensajeOk;
+
+    private IEnumerable<Familia> Visibles => string.IsNullOrWhiteSpace(texto)
+        ? familias
+        : familias.Where(f => f.Nombre?.Contains(texto.Trim(), StringComparison.OrdinalIgnoreCase) == true);
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (!sesion.TieneModulo(Modulo.Productos)) { Nav.NavigateTo("/sin-permiso"); return; }
+        esAdmin = sesion.EsAdmin;
+        await Cargar();
+        cargando = false;
+    }
+
+    private async Task Cargar()
+    {
+        familias = await FamiliaSrv.ListarAsync(sesion.Cs);
+        sinFamilia = await FamiliaSrv.SinFamiliaAsync(sesion.Cs);
+    }
+
+    private void Nueva() { borrar = null; edit = new Familia(); mensaje = null; }
+    private void Editar(Familia f) { borrar = null; edit = new Familia { Id = f.Id, Nombre = f.Nombre, Observaciones = f.Observaciones }; mensaje = null; }
+    private void PedirBorrar(Familia f) { edit = null; borrar = f; moverA = null; mensaje = null; }
+    private void Cerrar() { edit = null; borrar = null; }
+
+    private async Task EnterGuarda(KeyboardEventArgs e) { if (e.Key == "Enter") await Guardar(); }
+
+    private async Task Guardar()
+    {
+        if (ocupado || edit == null) return;
+        ocupado = true;
+        try
+        {
+            var nueva = edit.Id == Guid.Empty;
+            var err = await FamiliaSrv.GuardarAsync(sesion.Cs, edit);
+            Aviso(err == null, err ?? (nueva ? $"Familia “{edit.Nombre.Trim()}” creada." : "Familia guardada."));
+            if (err == null) { edit = null; await Cargar(); }
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Borrar()
+    {
+        if (ocupado || borrar == null) return;
+        ocupado = true;
+        try
+        {
+            var err = await FamiliaSrv.EliminarAsync(sesion.Cs, borrar.Id, moverA);
+            Aviso(err == null, err ?? $"Familia “{borrar.Nombre}” eliminada.");
+            if (err == null) { borrar = null; await Cargar(); }
+        }
+        finally { ocupado = false; }
+    }
+
+    private void Aviso(bool ok, string t) { mensajeOk = ok; mensaje = t; }
+}
