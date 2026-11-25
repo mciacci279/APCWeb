@@ -124,7 +124,7 @@
                         <div class="campo">
                             <label for="p-rubro">Familia</label>
                             <select id="p-rubro" class="input" @bind="edit.RubroId" disabled="@(!esAdmin)">
-                                <option value="">Sin rubro</option>
+                                <option value="">Sin familia</option>
                                 @foreach (var r in rubros) { <option value="@r.Id">@r.Nombre</option> }
                             </select>
                         </div>
@@ -318,7 +318,7 @@
                         <a class="btn btn-chico" href="/plantillas/plantilla_productos.xlsx" download>Descargar plantilla vacía</a>
                         <ul class="sub lista-reglas">
                             <li>Busca cada producto por <strong>CODIGOBARRA</strong>: si existe lo actualiza, si no lo crea.</li>
-                            <li><strong>FAMILIA</strong> es el rubro; si no existe, se crea.</li>
+                            <li><strong>FAMILIA</strong>: si no existe, se crea.</li>
                             <li>Los precios en 0 no reemplazan los precios actuales.</li>
                             <li><strong>IVADIFERENCIADO</strong> y <strong>ACTIVO</strong>: 1/0, Sí/No o Verdadero/Falso.</li>
                         </ul>
@@ -334,7 +334,7 @@
                             <div class="kpi"><span class="sub">Productos en el archivo</span><span class="mono kpi-num">@lectura.Filas.Count</span></div>
                             <div class="kpi"><span class="sub">Nuevos</span><span class="mono kpi-num">@lectura.Nuevos</span></div>
                             <div class="kpi"><span class="sub">Se actualizan</span><span class="mono kpi-num">@lectura.Existentes</span></div>
-                            <div class="kpi"><span class="sub">Rubros nuevos</span><span class="mono kpi-num">@lectura.RubrosNuevos.Count</span></div>
+                            <div class="kpi"><span class="sub">Familias nuevas</span><span class="mono kpi-num">@lectura.RubrosNuevos.Count</span></div>
                         </div>
                         @if (lectura.FilasSinCodigo > 0 || lectura.CodigosRepetidos > 0 || lectura.Avisos.Count > 0)
                         {
@@ -346,7 +346,7 @@
                         }
                         @if (lectura.RubrosNuevos.Count > 0)
                         {
-                            <p class="sub">Rubros a crear: @string.Join(", ", lectura.RubrosNuevos.Take(15))@(lectura.RubrosNuevos.Count > 15 ? "…" : "")</p>
+                            <p class="sub">Familias a crear: @string.Join(", ", lectura.RubrosNuevos.Take(15))@(lectura.RubrosNuevos.Count > 15 ? "…" : "")</p>
                         }
 
                         <div class="tabla-scroll">
