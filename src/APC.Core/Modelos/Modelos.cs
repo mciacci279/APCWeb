@@ -287,7 +287,9 @@ public class ComprobanteListado
     public int? NumeroInterno { get; set; }
     public bool Impresa { get; set; }
     public bool MarcadaAnulada { get; set; }
-    public bool EsNotaPedido => Impresa && string.IsNullOrEmpty(CAE);
+    /// <summary>La fila es una nota de crédito (en la tabla de reportes; su importe viene en negativo).</summary>
+    public bool EsNotaCredito { get; set; }
+    public bool EsNotaPedido => !EsNotaCredito && Impresa && string.IsNullOrEmpty(CAE);
     public bool Anulada => MarcadaAnulada || (NcId != null && !string.IsNullOrEmpty(NcCAE));
 }
 
