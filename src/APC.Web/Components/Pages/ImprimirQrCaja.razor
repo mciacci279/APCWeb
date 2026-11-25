@@ -1,0 +1,140 @@
+@page "/cajas/qr/{Id:guid}"
+@layout VacioLayout
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject PuestoCajaService Puestos
+@inject SucursalService SucursalSrv
+@inject MercadoPagoService MpSrv
+@inject EmpresaCentralService EmpresaSrv
+
+@* Cartel A4 para el mostrador: QR de Mercado Pago de la caja, con el nombre de la caja y el logo del comercio.
+   Se puede imprimir las veces que haga falta: el QR es siempre el mismo (el de la caja en Mercado Pago). *@
+
+<PageTitle>QR de @(caja?.Titulo ?? "la caja")</PageTitle>
+
+@if (error != null)
+{
+    <p class="page-pad">@error</p>
+}
+else if (caja == null)
+{
+    <p class="page-pad">Cargando…</p>
+}
+else
+{
+    <div class="qr-a4-pantalla">
+        <div class="no-imprimir qr-a4-acciones">
+            <button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button>
+            <span class="sub">Hoja A4 vertical. Podés imprimirla las veces que quieras: el QR de la caja no cambia.</span>
+        </div>
+
+        <article class="qr-a4" data-autoprint="true">
+            <div class="qr-a4-arco" aria-hidden="true"></div>
+            <div class="qr-a4-franja" aria-hidden="true"><i></i><i></i><i></i></div>
+
+            <header class="qr-a4-comercio">
+                @if (logo != null)
+                {
+                    <img class="qr-a4-logo" src="@logo" alt="@comercio" />
+                }
+                else
+                {
+                    <span class="qr-a4-iniciales" aria-hidden="true">@Iniciales(comercio)</span>
+                }
+                <span class="qr-a4-nombre">@comercio</span>
+            </header>
+
+            <h1 class="qr-a4-titulo">Pagá con QR</h1>
+            <p class="qr-a4-bajada">Rápido, seguro y sin efectivo</p>
+
+            <div class="qr-a4-marco">
+                <i class="qr-a4-esq e1" aria-hidden="true"></i><i class="qr-a4-esq e2" aria-hidden="true"></i>
+                <i class="qr-a4-esq e3" aria-hidden="true"></i><i class="qr-a4-esq e4" aria-hidden="true"></i>
+                <img class="qr-a4-qr" src="@mp.QrEstatico" alt="Código QR de Mercado Pago de @caja.Titulo" />
+            </div>
+
+            <div class="qr-a4-caja">
+                <span class="qr-a4-caja-num">CAJA @caja.Numero</span>
+                <span class="qr-a4-caja-nombre">@NombreCaja</span>
+            </div>
+
+            <div class="qr-a4-pasos">
+                <div>
+                    <span class="qr-a4-paso-ico"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M10.5 18.5h3"></path></svg></span>
+                    <strong>1. Abrí la app</strong>
+                    <span>Mercado Pago o la de tu banco</span>
+                </div>
+                <div>
+                    <span class="qr-a4-paso-ico"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"></path><path d="M7 12h10"></path></svg></span>
+                    <strong>2. Escaneá el QR</strong>
+                    <span>Apuntá la cámara a este código</span>
+                </div>
+                <div>
+                    <span class="qr-a4-paso-ico"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="m8 12.5 2.8 2.8L16.5 9.5"></path></svg></span>
+                    <strong>3. Ingresá o verificá el monto</strong>
+                    <span>Y confirmá el pago en la app</span>
+                </div>
+            </div>
+
+            <footer class="qr-a4-pie">
+                <div>
+                    <img src="img/mercadopago-color.png" alt="Mercado Pago" />
+                    <span>Aceptamos dinero en cuenta,<br />tarjetas de débito y crédito</span>
+                </div>
+                <span class="qr-a4-pie-der">@(sucursal != null ? "Sucursal " + sucursal + " · " : "")QR fijo de la caja</span>
+            </footer>
+        </article>
+    </div>
+}
+
+@code {
+    /// <summary>La caja de la sucursal (PuestoCaja).</summary>
+    [Parameter] public Guid Id { get; set; }
+
+    private SesionActual sesion;
+    private PuestoCaja caja;
+    private MercadoPagoCaja mp;
+    private string comercio;
+    private string logo;
+    private string sucursal;
+    private string error;
+
+    /// <summary>El nombre propio de la caja ("Mostrador"); si no tiene, "Caja N".</summary>
+    private string NombreCaja => string.IsNullOrWhiteSpace(caja.Nombre) ? $"Caja {caja.Numero}" : caja.Nombre;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (!(sesion.EsSupervisor || sesion.EsAdmin) || !sesion.TieneModulo(Modulo.Caja)) { error = "No tenés permiso para imprimir los QR de las cajas."; return; }
+
+        var c = (await Puestos.ListarAsync(sesion.Cs, null, incluirInactivas: true)).FirstOrDefault(x => x.Id == Id);
+        if (c == null) { error = "No se encontró la caja."; return; }
+        if (c.MercadoPagoCajaId == null) { error = $"{c.Titulo} no tiene una caja de Mercado Pago vinculada. Vinculala en Cajas → Editar."; return; }
+
+        try { mp = (await MpSrv.CajasAsync(sesion.Tenant.Id)).FirstOrDefault(m => m.Id == c.MercadoPagoCajaId); }
+        catch (Exception) { mp = null; }
+        if (mp == null || string.IsNullOrWhiteSpace(mp.QrEstatico))
+        {
+            error = "La caja de Mercado Pago vinculada todavía no tiene su QR. Generalo desde Empresas → Mercado Pago.";
+            return;
+        }
+
+        comercio = string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
+        logo = await EmpresaSrv.LogoDataUriAsync(sesion.Tenant.Id);
+        try { sucursal = (await SucursalSrv.ListarAsync(sesion.Cs)).FirstOrDefault(s => s.Id == c.SucursalId)?.Nombre; }
+        catch (Exception) { sucursal = null; }
+        caja = c;
+    }
+
+    private static string Iniciales(string nombre)
+    {
+        var partes = (nombre ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return partes.Length switch
+        {
+            0 => "?",
+            1 => partes[0][..Math.Min(2, partes[0].Length)].ToUpperInvariant(),
+            _ => (partes[0][..1] + partes[1][..1]).ToUpperInvariant()
+        };
+    }
+}

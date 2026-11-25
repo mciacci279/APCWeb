@@ -147,6 +147,14 @@
                                 }
                             }
                             <button type="button" class="btn btn-chico" @onclick="() => VerHistorialDe(c)">Historial</button>
+                            @if (c.MercadoPagoCajaId != null && TieneQr(c.MercadoPagoCajaId))
+                            {
+                                @* Cartel A4 con el QR de Mercado Pago de esta caja: se puede imprimir las veces que haga falta *@
+                                <a class="btn btn-chico btn-qr" href="/cajas/qr/@c.Id" target="_blank" title="Cartel A4 con el QR de Mercado Pago de @c.Titulo">
+                                    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"></path></svg>
+                                    Imprimir QR
+                                </a>
+                            }
                             @if (sesion.EsAdmin)
                             {
                                 <button type="button" class="btn btn-chico" @onclick="() => Editar(c)">Editar</button>
@@ -411,6 +419,9 @@
     }
 
     private void Aviso(bool ok, string texto) { mensajeOk = ok; mensaje = texto; }
+
+    /// <summary>La caja de Mercado Pago vinculada ya tiene su QR (se puede imprimir el cartel).</summary>
+    private bool TieneQr(Guid? id) => cajasMp.Any(m => m.Id == id && !string.IsNullOrWhiteSpace(m.QrEstatico));
 
     private string NombreMp(Guid? id) => cajasMp.FirstOrDefault(m => m.Id == id)?.Titulo ?? "Mercado Pago";
 
