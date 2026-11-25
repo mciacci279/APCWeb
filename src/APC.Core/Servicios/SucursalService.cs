@@ -388,13 +388,14 @@ public class SucursalService
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<StockEnSucursal>(
             @"SELECT s.Id AS SucursalId, s.Nombre AS Sucursal, s.PuntoVenta, ss.Stock,
-                     ISNULL(ss.StockMinimo, p.StockMinimo) AS StockMinimo
+                     p.StockMinimo AS StockMinimo
               FROM dbo.StockSucursal ss
               JOIN dbo.Sucursal s ON s.Id = ss.SucursalId
               JOIN dbo.Producto p ON p.Id = ss.ProductoId
               WHERE ss.SucursalId = @sucursalId
-                AND ISNULL(ss.StockMinimo, p.StockMinimo) > 0
-                AND ss.Stock <= ISNULL(ss.StockMinimo, p.StockMinimo)
+                AND ISNULL(p.OmitirControlStock, 0) = 0
+                AND ISNULL(p.StockMinimo, 0) > 0
+                AND ss.Stock <= p.StockMinimo
               ORDER BY ss.Stock", new { sucursalId })).ToList();
     }
 }
