@@ -246,14 +246,16 @@ public class ProductoService
     /// <summary>
     /// Productos con stock en el mínimo o por debajo. Solo los que controlan stock (no tienen "No controlar
     /// stock") y tienen un stock mínimo mayor a 0. Con sucursal (y sucursales activadas) se mira el stock de
-    /// esa sucursal y su mínimo propio si lo tiene; sin sucursal, el stock total del producto.
+    /// esa sucursal (con el mínimo de la ficha del producto); sin sucursal, el stock total del producto.
     /// </summary>
     public async Task<List<ProductoBajoStock>> BajoStockAsync(string cs, Guid? sucursalId, Guid? rubroId = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         var porSucursal = sucursalId != null && await HayStockPorSucursalAsync(cn);
         var stock = porSucursal ? "ISNULL(ss.Stock, 0)" : "ISNULL(p.Stock, 0)";
-        var minimo = porSucursal ? "ISNULL(ss.StockMinimo, ISNULL(p.StockMinimo, 0))" : "ISNULL(p.StockMinimo, 0)";
+        // El mínimo es siempre el de la ficha del producto: StockSucursal.StockMinimo es una copia que se tomó
+        // al crear la sucursal o el producto y no se actualiza al editarlo (no hay pantalla para cambiarlo).
+        var minimo = "ISNULL(p.StockMinimo, 0)";
         return (await cn.QueryAsync<ProductoBajoStock>(
             $@"SELECT p.Id, p.Codigo, p.Nombre, r.Nombre AS Familia, {stock} AS Stock, {minimo} AS StockMinimo,
                       ISNULL(p.StockMaximo, 0) AS StockMaximo, ISNULL(p.PrecioCosto, 0) AS PrecioCosto
@@ -262,7 +264,6 @@ public class ProductoService
                {(porSucursal ? "LEFT JOIN dbo.StockSucursal ss ON ss.ProductoId = p.Id AND ss.SucursalId = @sucursalId" : "")}
                WHERE ISNULL(p.Activo, 1) = 1
                  AND ISNULL(p.OmitirControlStock, 0) = 0
-                 AND ISNULL(p.StockMinimo, 0) > 0
                  AND {minimo} > 0
                  AND {stock} <= {minimo}
                  AND (@rubroId IS NULL OR p.RubroId = @rubroId)
@@ -276,12 +277,14 @@ public class ProductoService
         using var cn = await Db.AbrirAsync(cs);
         var porSucursal = sucursalId != null && await HayStockPorSucursalAsync(cn);
         var stock = porSucursal ? "ISNULL(ss.Stock, 0)" : "ISNULL(p.Stock, 0)";
-        var minimo = porSucursal ? "ISNULL(ss.StockMinimo, ISNULL(p.StockMinimo, 0))" : "ISNULL(p.StockMinimo, 0)";
+        // El mínimo es siempre el de la ficha del producto: StockSucursal.StockMinimo es una copia que se tomó
+        // al crear la sucursal o el producto y no se actualiza al editarlo (no hay pantalla para cambiarlo).
+        var minimo = "ISNULL(p.StockMinimo, 0)";
         return await cn.ExecuteScalarAsync<int>(
             $@"SELECT COUNT(*) FROM dbo.Producto p
                {(porSucursal ? "LEFT JOIN dbo.StockSucursal ss ON ss.ProductoId = p.Id AND ss.SucursalId = @sucursalId" : "")}
                WHERE ISNULL(p.Activo, 1) = 1 AND ISNULL(p.OmitirControlStock, 0) = 0
-                 AND ISNULL(p.StockMinimo, 0) > 0 AND {minimo} > 0 AND {stock} <= {minimo}",
+                 AND {minimo} > 0 AND {stock} <= {minimo}",
             new { sucursalId });
     }
 
