@@ -1149,3 +1149,8 @@ h1 { font-weight: 800; }
 
 /* Arqueo parcial: secciones "desde el parcial anterior" y "acumulado" */
 .imp-seccion { margin: 8px 0 4px; padding-top: 6px; border-top: 1px dashed #000; text-align: center; font-weight: 700; font-size: 12px; }
+
+/* Reportes: notas de crédito y facturas anuladas en "Últimos comprobantes" */
+.etiqueta-naranja { background: #FFF1E8; color: #B4470B; }
+.rep-ultimos .fila-nc td.der { color: #B4470B; }
+.rep-ultimos .fila-anulada td.der { color: var(--texto-2); text-decoration: line-through; }

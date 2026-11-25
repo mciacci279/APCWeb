@@ -164,9 +164,11 @@
                 {
                     foreach (var c in ultimos)
                     {
-                        <tr>
+                        <tr class="@(c.EsNotaCredito ? "fila-nc" : c.Anulada ? "fila-anulada" : "")">
                             <td class="mono">@c.Fecha.ToString("dd/MM HH:mm")</td>
-                            <td class="fuerte">@(c.EsNotaPedido ? $"Nota de pedido {Nro(c.Terminal, c.NumeroInterno)}" : $"Factura {c.Tipo} {Nro(c.Terminal, c.Numero)}")</td>
+                            <td class="fuerte">@(c.EsNotaCredito ? $"Nota de crédito {c.Tipo} {Nro(c.Terminal, c.Numero)}"
+                                               : c.EsNotaPedido ? $"Nota de pedido {Nro(c.Terminal, c.NumeroInterno)}"
+                                               : $"Factura {c.Tipo} {Nro(c.Terminal, c.Numero)}")</td>
                             <td>@(string.IsNullOrWhiteSpace(c.ClienteNombre) ? "Consumidor final" : c.ClienteNombre)</td>
                             <td>
                                 @if (EsMercadoPago(c.FormaPago))
@@ -179,7 +181,8 @@
                                 }
                             </td>
                             <td>
-                                @if (c.Anulada) { <span class="etiqueta etiqueta-rojo">Anulada</span> }
+                                @if (c.EsNotaCredito) { <span class="etiqueta etiqueta-naranja">Nota de crédito</span> }
+                                else if (c.Anulada) { <span class="etiqueta etiqueta-rojo" title="@(c.NcNumero != null ? $"Anulada con la nota de crédito {c.NcTipo} {Nro(c.NcTerminal ?? 0, c.NcNumero)}" : "Anulada")">Anulada</span> }
                                 else if (c.EsNotaPedido) { <span class="etiqueta etiqueta-gris">Sin CAE</span> }
                                 else { <span class="etiqueta etiqueta-ok">Autorizado</span> }
                             </td>

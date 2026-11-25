@@ -16,6 +16,20 @@ public class ReporteService
     private const string Periodo =
         "f.Fecha >= @desde AND f.Fecha < @hasta AND (@puntoVenta IS NULL OR f.Terminal = @puntoVenta)";
 
+    /// <summary>
+    /// Ventas netas del período para los gráficos: facturas con CAE y notas de pedido suman (+1 comprobante),
+    /// las notas de crédito con CAE restan (−1 y su importe en negativo). Así una factura anulada con nota de
+    /// crédito no infla los números. <paramref name="clave"/> es la columna por la que se agrupa (forma de pago, usuario) o NULL.
+    /// </summary>
+    private static string Ventas(string clave) =>
+        $@"SELECT f.Fecha, {clave} AS Clave, 1 AS Cant, f.MontoTotal AS Monto
+           FROM dbo.Factura f
+           WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
+           UNION ALL
+           SELECT f.Fecha, {clave}, -1, -f.MontoTotal
+           FROM dbo.NotaCredito f
+           WHERE {Periodo} AND {EsFiscal}";
+
     private static object Rango(DateTime desde, DateTime hasta, int? puntoVenta) =>
         new { desde = desde.Date, hasta = hasta.Date.AddDays(1), puntoVenta };
 
@@ -37,17 +51,33 @@ public class ReporteService
     }
 
     /// <summary>
-    /// Los últimos comprobantes del período (facturas con CAE y notas de pedido), para la tabla de la pantalla de reportes.
+    /// Los últimos comprobantes del período (facturas con CAE, notas de pedido y notas de crédito con CAE),
+    /// para la tabla de la pantalla de reportes. Las facturas anuladas con nota de crédito vienen marcadas.
     /// </summary>
     public async Task<List<ComprobanteListado>> UltimosAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null, int top = 8)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<ComprobanteListado>(
-            $@"SELECT TOP (@top) f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, f.MontoTotal, f.CAE,
-                     fp.Nombre AS FormaPago, f.NumeroInterno, ISNULL(f.Impresa, 0) AS Impresa, ISNULL(f.Anulada, 0) AS MarcadaAnulada
-               FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
-               WHERE {Periodo} AND ({EsFiscal} OR {EsNotaPedido})
-               ORDER BY f.Fecha DESC",
+            $@"SELECT TOP (@top) * FROM (
+                 SELECT f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, f.MontoTotal, f.CAE,
+                        fp.Nombre AS FormaPago, nc.NcId, nc.NcTipo, nc.NcTerminal, nc.NcNumero, nc.NcCAE,
+                        f.NumeroInterno, ISNULL(f.Impresa, 0) AS Impresa, ISNULL(f.Anulada, 0) AS MarcadaAnulada,
+                        CAST(0 AS BIT) AS EsNotaCredito
+                 FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
+                 OUTER APPLY (SELECT TOP 1 n.Id AS NcId, n.Tipo AS NcTipo, n.Terminal AS NcTerminal, n.Numero AS NcNumero, n.CAE AS NcCAE
+                              FROM dbo.NotaCredito n
+                              WHERE n.TipoFacturaRelacionada = f.Tipo AND n.TerminalFacturaRelacionada = f.Terminal
+                                AND n.NroFacturaRelacionada = f.Numero AND ISNULL(n.Anulada, 0) = 0
+                              ORDER BY n.Fecha DESC) nc
+                 WHERE {Periodo} AND ({EsFiscal} OR {EsNotaPedido})
+                 UNION ALL
+                 SELECT f.Id, f.Fecha, f.Tipo, f.Terminal, f.Numero, f.ClienteNombre, -f.MontoTotal, f.CAE,
+                        fp.Nombre, NULL, NULL, NULL, NULL, NULL,
+                        NULL, ISNULL(f.Impresa, 0), ISNULL(f.Anulada, 0), CAST(1 AS BIT)
+                 FROM dbo.NotaCredito f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
+                 WHERE {Periodo} AND {EsFiscal}
+               ) x
+               ORDER BY x.Fecha DESC",
             new { desde = desde.Date, hasta = hasta.Date.AddDays(1), puntoVenta, top })).ToList();
     }
 
@@ -57,22 +87,22 @@ public class ReporteService
         return (await cn.QueryAsync<FilaReporte>(
             // Facturas con CAE y notas de pedido (sin CAE) no anuladas: el mismo criterio que "Por forma de pago",
             // así los dos totales del período coinciden.
-            $@"SELECT CONVERT(VARCHAR(10), f.Fecha, 103) AS Etiqueta, COUNT(*) AS Cantidad, SUM(f.MontoTotal) AS Total
-               FROM dbo.Factura f
-               WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
-               GROUP BY CONVERT(VARCHAR(10), f.Fecha, 103), CAST(f.Fecha AS DATE)
-               ORDER BY CAST(f.Fecha AS DATE)", Rango(desde, hasta, puntoVenta))).ToList();
+            // Las notas de crédito restan el día en que se emitieron (una factura anulada el mismo día da 0).
+            $@"SELECT CONVERT(VARCHAR(10), v.Fecha, 103) AS Etiqueta, SUM(v.Cant) AS Cantidad, SUM(v.Monto) AS Total
+               FROM ({Ventas("NULL")}) v
+               GROUP BY CONVERT(VARCHAR(10), v.Fecha, 103), CAST(v.Fecha AS DATE)
+               ORDER BY CAST(v.Fecha AS DATE)", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
     public async Task<List<FilaReporte>> PorFormaPagoAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
     {
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
-            $@"SELECT ISNULL(fp.Nombre, '(sin forma de pago)') AS Etiqueta, COUNT(*) AS Cantidad, SUM(f.MontoTotal) AS Total
-               FROM dbo.Factura f LEFT JOIN dbo.FormaPago fp ON fp.Id = f.FormaPagoId
-               WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
+            $@"SELECT ISNULL(fp.Nombre, '(sin forma de pago)') AS Etiqueta, SUM(v.Cant) AS Cantidad, SUM(v.Monto) AS Total
+               FROM ({Ventas("f.FormaPagoId")}) v LEFT JOIN dbo.FormaPago fp ON fp.Id = v.Clave
                GROUP BY fp.Nombre
-               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta, puntoVenta))).ToList();
+               HAVING SUM(v.Cant) <> 0 OR SUM(v.Monto) <> 0
+               ORDER BY SUM(v.Monto) DESC", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
     public async Task<List<FilaReporte>> PorUsuarioAsync(string cs, DateTime desde, DateTime hasta, int? puntoVenta = null)
@@ -80,11 +110,11 @@ public class ReporteService
         using var cn = await Db.AbrirAsync(cs);
         return (await cn.QueryAsync<FilaReporte>(
             $@"SELECT ISNULL(u.NombreUsuario, '(sin usuario)') AS Etiqueta, ISNULL(u.Nombre, '') AS Detalle,
-                      COUNT(*) AS Cantidad, SUM(f.MontoTotal) AS Total
-               FROM dbo.Factura f LEFT JOIN dbo.Usuario u ON u.Id = f.UsuarioId
-               WHERE {Periodo} AND ({EsFiscal} OR ({EsNotaPedido} AND ISNULL(f.Anulada, 0) = 0))
+                      SUM(v.Cant) AS Cantidad, SUM(v.Monto) AS Total
+               FROM ({Ventas("f.UsuarioId")}) v LEFT JOIN dbo.Usuario u ON u.Id = v.Clave
                GROUP BY u.NombreUsuario, u.Nombre
-               ORDER BY SUM(f.MontoTotal) DESC", Rango(desde, hasta, puntoVenta))).ToList();
+               HAVING SUM(v.Cant) <> 0 OR SUM(v.Monto) <> 0
+               ORDER BY SUM(v.Monto) DESC", Rango(desde, hasta, puntoVenta))).ToList();
     }
 
     /// <summary>Lo vendido por producto. Lo devuelto con nota de crédito se resta.</summary>
