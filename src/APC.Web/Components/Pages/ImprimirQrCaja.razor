@@ -46,7 +46,11 @@ else
             </header>
 
             <h1 class="qr-a4-titulo">Pagá con QR</h1>
-            <p class="qr-a4-bajada">Rápido, seguro y sin efectivo</p>
+            @* Resalta que es para pagar con la app de Mercado Pago *@
+            <p class="qr-a4-con-mp">
+                <span>con la app de</span>
+                <img src="img/mercadopago-color.png" alt="Mercado Pago" />
+            </p>
 
             <div class="qr-a4-marco">
                 <i class="qr-a4-esq e1" aria-hidden="true"></i><i class="qr-a4-esq e2" aria-hidden="true"></i>
@@ -62,8 +66,8 @@ else
             <div class="qr-a4-pasos">
                 <div>
                     <span class="qr-a4-paso-ico"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M10.5 18.5h3"></path></svg></span>
-                    <strong>1. Abrí la app</strong>
-                    <span>Mercado Pago o la de tu banco</span>
+                    <strong>1. Abrí Mercado Pago</strong>
+                    <span>La app en tu celular</span>
                 </div>
                 <div>
                     <span class="qr-a4-paso-ico"><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"></path><path d="M7 12h10"></path></svg></span>
@@ -120,7 +124,8 @@ else
             return;
         }
 
-        comercio = string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
+        // Debajo del logo va la razón social (si no está cargada, el nombre de fantasía).
+        comercio = string.IsNullOrWhiteSpace(sesion.Tenant.Nombre) ? sesion.Tenant.NombreFantasia : sesion.Tenant.Nombre;
         logo = await EmpresaSrv.LogoDataUriAsync(sesion.Tenant.Id);
         try { sucursal = (await SucursalSrv.ListarAsync(sesion.Cs)).FirstOrDefault(s => s.Id == c.SucursalId)?.Nombre; }
         catch (Exception) { sucursal = null; }
