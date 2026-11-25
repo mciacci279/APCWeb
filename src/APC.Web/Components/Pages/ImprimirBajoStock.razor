@@ -1,0 +1,81 @@
+@page "/productos/bajo-stock/imprimir"
+@layout VacioLayout
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject ProductoService ProductoSrv
+@inject SucursalService SucursalSrv
+
+<PageTitle>Productos con bajo stock</PageTitle>
+
+@if (lista == null)
+{
+    <p class="page-pad">@(error ?? "Cargando…")</p>
+}
+else
+{
+    <div class="impresion hoja-a4 listado-a4" data-autoprint="true">
+        <header class="listado-cab">
+            <div>
+                <strong class="imp-razon">PRODUCTOS CON BAJO STOCK</strong>
+                <span>@sesion.Tenant.Nombre · @(sucursal != null ? "Sucursal " + sucursal.Nombre : "Stock total")@(familia != null ? " · Familia " + familia : "")</span>
+            </div>
+            <span>@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
+        </header>
+        <table class="imp-renglones listado-tabla">
+            <thead><tr><th>Código</th><th>Producto</th><th>Familia</th><th class="der">Stock</th><th class="der">Mínimo</th><th class="der">Máximo</th><th class="der">A pedir</th><th class="der">Pedido</th></tr></thead>
+            <tbody>
+                @if (lista.Count == 0)
+                {
+                    <tr><td colspan="8">No hay productos con bajo stock.</td></tr>
+                }
+                @foreach (var p in lista)
+                {
+                    <tr>
+                        <td>@p.Codigo</td>
+                        <td>@p.Nombre@(p.SinStock ? " (SIN STOCK)" : "")</td>
+                        <td>@p.Familia</td>
+                        <td class="der">@p.Stock.ToString("0.###", Ar)</td>
+                        <td class="der">@p.StockMinimo.ToString("0.###", Ar)</td>
+                        <td class="der">@(p.StockMaximo > 0 ? p.StockMaximo.ToString("0.###", Ar) : "—")</td>
+                        <td class="der"><strong>@p.APedir.ToString("0.###", Ar)</strong></td>
+                        <td class="der listado-pedido"></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <section class="imp-totales">
+            <div><span>Productos</span><span>@lista.Count (@lista.Count(p => p.SinStock) sin stock)</span></div>
+            <div><span>Costo estimado de reposición</span><span>$ @lista.Sum(p => p.APedir * p.PrecioCosto).ToString("N2", Ar)</span></div>
+        </section>
+        <p class="imp-chico">Solo productos que controlan stock y tienen stock mínimo mayor a 0. “A pedir” completa hasta el stock máximo (o el mínimo si no tiene máximo). Imprimió: @sesion.Nombre</p>
+        <div class="no-imprimir imp-acciones"><button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button></div>
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    [SupplyParameterFromQuery(Name = "sucursal")] public Guid? SucursalId { get; set; }
+    [SupplyParameterFromQuery(Name = "familia")] public Guid? FamiliaId { get; set; }
+
+    private SesionActual sesion;
+    private List<ProductoBajoStock> lista;
+    private Sucursal sucursal;
+    private string familia;
+    private string error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (!sesion.TieneModulo(Modulo.Productos)) { error = "No tenés acceso a Productos."; return; }
+        // Los que no son administradores, solo su sucursal.
+        var sucId = sesion.EsAdmin ? SucursalId : (sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId);
+        if (sucId != null)
+        {
+            try { sucursal = (await SucursalSrv.ListarAsync(sesion.Cs)).FirstOrDefault(s => s.Id == sucId); }
+            catch (Exception) { sucursal = null; }
+        }
+        if (FamiliaId != null) familia = (await ProductoSrv.RubrosAsync(sesion.Cs)).FirstOrDefault(r => r.Id == FamiliaId)?.Nombre;
+        lista = await ProductoSrv.BajoStockAsync(sesion.Cs, sucursal?.Id, FamiliaId);
+    }
+}

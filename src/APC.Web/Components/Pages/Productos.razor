@@ -6,15 +6,25 @@
 @inject ProductoService ProductoSrv
 @inject ImportadorProductosService ImportadorSrv
 @inject SucursalService SucursalSrv
+@inject FamiliaService FamiliaSrv
 
 <PageTitle>Productos · Factu360</PageTitle>
 
 <div class="page-pad">
     <header class="fact-head">
         <div class="fact-titulo"><h1>Productos</h1><span class="sub">@lista.Count productos@(lista.Count >= MaxProductos ? $" (se muestran los primeros {MaxProductos}, refiná la búsqueda)" : "")</span></div>
+        @if (!esAdmin)
+        {
+            <div class="fila-btns">
+                <a class="btn" href="/productos/familias">Familias</a>
+                <a class="btn" href="/productos/bajo-stock">Bajo stock@(bajoStock > 0 ? $" ({bajoStock})" : "")</a>
+            </div>
+        }
         @if (esAdmin)
         {
             <div class="fila-btns">
+                <a class="btn" href="/productos/familias">Familias</a>
+                <a class="btn" href="/productos/bajo-stock">Bajo stock@(bajoStock > 0 ? $" ({bajoStock})" : "")</a>
                 <button type="button" class="btn" @onclick="VerHistorialGeneral">Historial de cambios</button>
                 <button type="button" class="btn" @onclick="AbrirMasivo">Aumento masivo</button>
                 <button type="button" class="btn" @onclick="AbrirImportar">Importar Excel</button>
@@ -29,15 +39,26 @@
             <input id="prod-buscar" class="input" placeholder="Código o descripción" @bind="texto" @bind:event="oninput" @onkeydown="BuscarKey" />
         </div>
         <div class="campo">
-            <label for="prod-rubro">Rubro</label>
+            <label for="prod-rubro">Familia</label>
             <select id="prod-rubro" class="input" @bind="filtroRubro" @bind:after="Buscar">
-                <option value="">Todos</option>
+                <option value="">Todas</option>
                 @foreach (var r in rubros) { <option value="@r.Id">@r.Nombre</option> }
             </select>
         </div>
         <label class="check"><input type="checkbox" @bind="verInactivos" @bind:after="Buscar" /> Ver dados de baja</label>
         <button type="button" class="btn" @onclick="Buscar">Buscar</button>
     </div>
+
+    @if (bajoStock > 0)
+    {
+        @* Alerta de bajo stock: productos que controlan stock, con mínimo > 0 y stock en el mínimo o menos *@
+        <a class="aviso-stock" href="/productos/bajo-stock">
+            <span class="aviso-stock-ico" aria-hidden="true">!</span>
+            <span><strong>@bajoStock @(bajoStock == 1 ? "producto con bajo stock" : "productos con bajo stock")</strong>
+                  <span class="sub">@(Sucursal != null && sesion.Sucursal != null ? "en " + sesion.Sucursal.Nombre + " · " : "")están en el stock mínimo o por debajo.</span></span>
+            <span class="aviso-stock-ir">Ver listado →</span>
+        </a>
+    }
 
     @if (mensaje != null)
     {
@@ -49,7 +70,7 @@
             <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="producto" Plural="productos" />
             <table class="tabla">
                 <thead>
-                    <tr><th>Código</th><th>Descripción</th><th>Rubro</th><th class="der">Stock</th><th class="der">Costo</th><th class="der">@listas.Titulo1</th><th>IVA</th></tr>
+                    <tr><th>Código</th><th>Descripción</th><th>Familia</th><th class="der">Stock</th><th class="der">Costo</th><th class="der">@listas.Titulo1</th><th>IVA</th></tr>
                 </thead>
                 <tbody>
                     @if (cargando)
@@ -66,7 +87,7 @@
                             <td class="mono"><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@(string.IsNullOrWhiteSpace(p.Codigo) ? "—" : p.Codigo)</button></td>
                             <td><button type="button" class="link-fila" @onclick="() => Seleccionar(p.Id)">@p.Nombre</button>@(p.Activo ? "" : " (baja)")</td>
                             <td>@p.Rubro</td>
-                            <td class="der @(p.Stock <= p.StockMinimo && !p.OmitirControlStock ? "stock-bajo" : "")">@p.Stock.ToString("0.###", Ar)</td>
+                            <td class="der @(p.StockMinimo > 0 && p.Stock <= p.StockMinimo && !p.OmitirControlStock ? "stock-bajo" : "")">@p.Stock.ToString("0.###", Ar)</td>
                             <td class="der">@Pesos(p.PrecioCosto)</td>
                             <td class="der fuerte">@(p.PrecioVenta1 <= 0 ? "Libre" : Pesos(p.PrecioVenta1))</td>
                             <td>@EtiquetaIva(p)</td>
@@ -101,7 +122,7 @@
                         <div class="campo"><label for="p-nombre">Descripción</label><input id="p-nombre" class="input" maxlength="100" @bind="edit.Nombre" disabled="@(!esAdmin)" /></div>
                         <div class="campo"><label for="p-codigo">Código</label><input id="p-codigo" class="input mono" maxlength="100" @bind="edit.Codigo" disabled="@(!esAdmin)" /></div>
                         <div class="campo">
-                            <label for="p-rubro">Rubro</label>
+                            <label for="p-rubro">Familia</label>
                             <select id="p-rubro" class="input" @bind="edit.RubroId" disabled="@(!esAdmin)">
                                 <option value="">Sin rubro</option>
                                 @foreach (var r in rubros) { <option value="@r.Id">@r.Nombre</option> }
@@ -183,27 +204,92 @@
                 }
                 else if (modo == Modo.Masivo)
                 {
-                    <div class="campo">
-                        <label for="m-rubro">Aplicar a</label>
-                        <select id="m-rubro" class="input" @bind="masivoRubro">
-                            <option value="">Todos los productos activos</option>
-                            @foreach (var r in rubros) { <option value="@r.Id">Rubro: @r.Nombre</option> }
-                        </select>
-                    </div>
+                    <fieldset class="campo masivo-familias">
+                        <legend>Aplicar a</legend>
+                        <div class="pestanias" role="radiogroup" aria-label="Productos a actualizar">
+                            <button type="button" role="radio" aria-checked="@(!masivoPorFamilia ? "true" : "false")" class="pestania @(!masivoPorFamilia ? "activa" : "")" @onclick="() => CambiarAlcance(false)">Todos los productos</button>
+                            <button type="button" role="radio" aria-checked="@(masivoPorFamilia ? "true" : "false")" class="pestania @(masivoPorFamilia ? "activa" : "")" @onclick="() => CambiarAlcance(true)">Por familia</button>
+                        </div>
+                        @if (masivoPorFamilia)
+                        {
+                            <div class="chips-familias">
+                                @foreach (var r in familiasMasivo)
+                                {
+                                    var elegida = masivoFamilias.Contains(r.Id);
+                                    <button type="button" class="chip-familia @(elegida ? "activo" : "")" aria-pressed="@(elegida ? "true" : "false")" @onclick="() => AlternarFamilia(r.Id)">
+                                        @r.Nombre <span class="chip-familia-cant">@r.Productos</span>
+                                    </button>
+                                }
+                                @if (sinFamiliaMasivo > 0)
+                                {
+                                    <button type="button" class="chip-familia @(masivoSinFamilia ? "activo" : "")" aria-pressed="@(masivoSinFamilia ? "true" : "false")" @onclick="AlternarSinFamilia">
+                                        (sin familia) <span class="chip-familia-cant">@sinFamiliaMasivo</span>
+                                    </button>
+                                }
+                            </div>
+                            @if (familiasMasivo.Count == 0)
+                            {
+                                <p class="sub">No hay familias. Crealas en <a href="/productos/familias">Familias</a>.</p>
+                            }
+                        }
+                    </fieldset>
                     <div class="pestanias" role="radiogroup" aria-label="Tipo de aumento">
                         <button type="button" role="radio" aria-checked="@((masivo.Tipo == TipoAumento.Porcentaje) ? "true" : "false")" class="pestania @(masivo.Tipo == TipoAumento.Porcentaje ? "activa" : "")" @onclick="() => masivo.Tipo = TipoAumento.Porcentaje">Porcentaje</button>
                         <button type="button" role="radio" aria-checked="@((masivo.Tipo == TipoAumento.Pesos) ? "true" : "false")" class="pestania @(masivo.Tipo == TipoAumento.Pesos ? "activa" : "")" @onclick="() => masivo.Tipo = TipoAumento.Pesos">Monto fijo $</button>
                     </div>
                     <div class="campo">
                         <label for="m-valor">@(masivo.Tipo == TipoAumento.Porcentaje ? "Porcentaje (negativo para bajar)" : "Monto en $ (negativo para bajar)")</label>
-                        <input id="m-valor" class="input input-buscar mono" type="number" step="0.01" @bind="masivo.Valor" />
+                        <input id="m-valor" class="input input-buscar mono" type="number" step="0.01" @bind="masivo.Valor" @bind:after="Previa" />
                     </div>
-                    <label class="check"><input type="checkbox" @bind="masivo.IncluirCosto" /> Aplicar también al costo</label>
+                    <label class="check"><input type="checkbox" @bind="masivo.IncluirCosto" @bind:after="Previa" /> Aplicar también al costo</label>
                     <div class="campo"><label for="m-obs">Observaciones</label><input id="m-obs" class="input" maxlength="300" @bind="masivo.Observaciones" /></div>
                     <p class="sub">Los productos con precio libre (0) no se modifican. Cada producto queda en el historial.</p>
+                    @* Vista previa: cuántos y cómo quedan los primeros *@
+                    <div class="masivo-previa" aria-live="polite">
+                        @if (previa == null)
+                        {
+                            <span class="sk" style="width:60%;height:14px"></span>
+                        }
+                        else if (masivoPorFamilia && masivoFamilias.Count == 0 && !masivoSinFamilia)
+                        {
+                            <p class="sub">Elegí una o más familias.</p>
+                        }
+                        else
+                        {
+                            <p><strong>@previa.Value.Cantidad @(previa.Value.Cantidad == 1 ? "producto" : "productos")</strong> se van a actualizar.</p>
+                            @if (previa.Value.Muestra.Count > 0)
+                            {
+                                <table class="tabla tabla-chica">
+                                    <thead><tr><th>Producto</th><th class="der">@listas.Titulo1</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var m in previa.Value.Muestra)
+                                        {
+                                            <tr>
+                                                <td>@m.Nombre<br /><span class="sub">@m.Familia</span></td>
+                                                <td class="der mono">
+                                                    @if (masivo.Valor != 0 && m.Precio1Despues != m.Precio1Antes)
+                                                    {
+                                                        <span class="sub tachado">@Pesos(m.Precio1Antes)</span><br /><strong>@Pesos(m.Precio1Despues)</strong>
+                                                    }
+                                                    else
+                                                    {
+                                                        @Pesos(m.Precio1Antes)
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                @if (previa.Value.Cantidad > previa.Value.Muestra.Count)
+                                {
+                                    <p class="sub">y @(previa.Value.Cantidad - previa.Value.Muestra.Count) más.</p>
+                                }
+                            }
+                        }
+                    </div>
                     @if (confirmarMasivo)
                     {
-                        <p class="alerta alerta-aviso">¿Aplicar @(masivo.Tipo == TipoAumento.Porcentaje ? masivo.Valor.ToString("0.##", Ar) + " %" : Pesos(masivo.Valor)) a @(masivoRubro == null ? "TODOS los productos" : "el rubro elegido")? No se puede deshacer automáticamente.</p>
+                        <p class="alerta alerta-aviso">¿Aplicar @(masivo.Tipo == TipoAumento.Porcentaje ? masivo.Valor.ToString("0.##", Ar) + " %" : Pesos(masivo.Valor)) a @(!masivoPorFamilia ? "TODOS los productos" : $"{previa?.Cantidad ?? 0} productos de {DescripcionFamilias}")? No se puede deshacer automáticamente.</p>
                         <div class="fila-btns">
                             <button type="button" class="btn" @onclick="() => confirmarMasivo = false">Cancelar</button>
                             <button type="button" class="btn btn-rojo" disabled="@ocupado" @onclick="AplicarMasivo">Sí, aplicar</button>
@@ -211,7 +297,7 @@
                     }
                     else
                     {
-                        <button type="button" class="btn btn-rojo btn-grande" disabled="@(masivo.Valor == 0)" @onclick="() => confirmarMasivo = true">Aplicar aumento</button>
+                        <button type="button" class="btn btn-rojo btn-grande" disabled="@(masivo.Valor == 0 || (previa?.Cantidad ?? 0) == 0)" @onclick="() => confirmarMasivo = true">Aplicar aumento</button>
                     }
                 }
                 else if (modo == Modo.Importar)
@@ -220,7 +306,7 @@
                     {
                         <div class="cert-info ok">
                             <strong>Importación terminada</strong>
-                            <span>@resultadoImp.Nuevos productos nuevos · @resultadoImp.Actualizados actualizados · @resultadoImp.RubrosCreados rubros creados</span>
+                            <span>@resultadoImp.Nuevos productos nuevos · @resultadoImp.Actualizados actualizados · @resultadoImp.RubrosCreados familias creadas</span>
                             <span>Cada producto quedó registrado en el historial de cambios.</span>
                         </div>
                         <button type="button" class="btn" @onclick="AbrirImportar">Importar otro archivo</button>
@@ -342,8 +428,18 @@
     private CambioProducto cambio = new();
     private List<CambioProductoHistorial> historial = new();
     private AumentoMasivo masivo = new();
-    private Guid? masivoRubro;
+    private bool masivoPorFamilia;
+    private HashSet<Guid> masivoFamilias = new();
+    private bool masivoSinFamilia;
+    private List<Familia> familiasMasivo = new();
+    private int sinFamiliaMasivo;
+    private (int Cantidad, List<PreciosPrevia> Muestra)? previa;
     private bool confirmarMasivo;
+    /// <summary>Productos con bajo stock (alerta).</summary>
+    private int bajoStock;
+
+    /// <summary>Familia que viene en el link (desde la pantalla Familias).</summary>
+    [SupplyParameterFromQuery(Name = "familia")] public Guid? FamiliaInicial { get; set; }
     private bool ocupado;
     private DateTime hDesde = DateTime.Today.AddDays(-30), hHasta = DateTime.Today;
     private string mensaje;
@@ -373,8 +469,10 @@
         esAdmin = sesion.EsAdmin;
         listas = await ProductoSrv.ListasAsync(sesion.Cs);
         rubros = await ProductoSrv.RubrosAsync(sesion.Cs);
+        if (FamiliaInicial != null && rubros.Any(r => r.Id == FamiliaInicial)) filtroRubro = FamiliaInicial;
         await Buscar();
         cargando = false;
+        try { bajoStock = await ProductoSrv.ContarBajoStockAsync(sesion.Cs, Sucursal); } catch (Exception) { bajoStock = 0; }
     }
 
     private async Task BuscarKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
@@ -475,7 +573,46 @@
         finally { ocupado = false; }
     }
 
-    private void AbrirMasivo() { masivo = new AumentoMasivo(); masivoRubro = null; confirmarMasivo = false; modo = Modo.Masivo; mensaje = null; }
+    private async Task AbrirMasivo()
+    {
+        masivo = new AumentoMasivo(); masivoPorFamilia = false; masivoFamilias.Clear(); masivoSinFamilia = false;
+        confirmarMasivo = false; modo = Modo.Masivo; mensaje = null;
+        familiasMasivo = await FamiliaSrv.ListarAsync(sesion.Cs);
+        sinFamiliaMasivo = await FamiliaSrv.SinFamiliaAsync(sesion.Cs);
+        await Previa();
+    }
+
+    private async Task CambiarAlcance(bool porFamilia) { masivoPorFamilia = porFamilia; confirmarMasivo = false; await Previa(); }
+    private async Task AlternarFamilia(Guid id) { if (!masivoFamilias.Remove(id)) masivoFamilias.Add(id); confirmarMasivo = false; await Previa(); }
+    private async Task AlternarSinFamilia() { masivoSinFamilia = !masivoSinFamilia; confirmarMasivo = false; await Previa(); }
+
+    private string DescripcionFamilias
+    {
+        get
+        {
+            var nombres = familiasMasivo.Where(f => masivoFamilias.Contains(f.Id)).Select(f => f.Nombre).ToList();
+            if (masivoSinFamilia) nombres.Add("(sin familia)");
+            return nombres.Count <= 3 ? string.Join(", ", nombres) : $"{nombres.Count} familias";
+        }
+    }
+
+    /// <summary>Arma el pedido de aumento con lo elegido en pantalla.</summary>
+    private void ArmarMasivo()
+    {
+        masivo.RubroId = null;
+        masivo.RubroIds = masivoPorFamilia ? masivoFamilias.ToList() : new();
+        masivo.IncluirSinFamilia = masivoPorFamilia && masivoSinFamilia;
+        masivo.NombresFamilias = masivoPorFamilia ? DescripcionFamilias : null;
+    }
+
+    private async Task Previa()
+    {
+        if (masivoPorFamilia && masivoFamilias.Count == 0 && !masivoSinFamilia) { previa = (0, new()); return; }
+        previa = null;
+        ArmarMasivo();
+        try { previa = await ProductoSrv.PreviaMasivoAsync(sesion.Cs, masivo); }
+        catch (Exception) { previa = (0, new()); }
+    }
 
     private async Task VerHistorialGeneral() { modo = Modo.Historial; await CargarHistorialGeneral(); }
 
@@ -527,7 +664,7 @@
         ocupado = true;
         try
         {
-            masivo.RubroId = masivoRubro;
+            ArmarMasivo();
             var (n, err) = await ProductoSrv.AumentoMasivoAsync(sesion.Cs, sesion.UsuarioId, masivo);
             Aviso(err == null, err ?? $"Se actualizaron {n} productos.");
             confirmarMasivo = false;

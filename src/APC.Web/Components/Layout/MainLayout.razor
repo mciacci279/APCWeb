@@ -5,6 +5,7 @@
 @inject AuthenticationStateProvider Auth
 @inject IJSRuntime JS
 @inject PuestoCajaService Puestos
+@inject ProductoService ProductosSrv
 @implements IDisposable
 
 <div class="app @(plegada ? "rail-plegada" : "")">
@@ -71,6 +72,10 @@
                 <NavLink class="rail-btn" href="/productos" title="Productos" aria-label="Productos">
                     <span class="rail-ico"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4-9 4-9-4z"></path><path d="M3 7v10l9 4 9-4V7"></path><path d="M12 11v10"></path></svg></span>
                     <span>Productos</span>
+                    @if (bajoStockMenu > 0)
+                    {
+                        <span class="rail-badge" title="@bajoStockMenu productos con bajo stock">@(bajoStockMenu > 99 ? "99+" : bajoStockMenu.ToString())</span>
+                    }
                 </NavLink>
             }
             @if (Hay(Modulo.Clientes))
@@ -275,6 +280,7 @@
         // Abono vencido, dentro de los días de gracia: aviso para el administrador del comercio.
         var t = sesion.Tenant;
         await RevisarCajaAsync();
+        await MirarBajoStockAsync();
 
         if (t != null && sesion.EsAdmin && t.AbonoVencido && !t.SuspendidaPorAbono)
             avisoAbono = $"El abono del sistema venció el {t.AbonoPagoHasta:dd/MM/yyyy}. " +
@@ -292,6 +298,24 @@
         var ruta = new Uri(Nav.Uri).AbsolutePath;
         var modulo = Modulo.DeRuta(ruta);
         if (modulo != null && !sesion.TieneModulo(modulo)) Nav.NavigateTo("/sin-permiso");
+    }
+
+    // ------------------------------------------------------------------ alerta de bajo stock (menú)
+
+    /// <summary>Productos con bajo stock en la sucursal del usuario: número en el botón Productos del menú.</summary>
+    private int bajoStockMenu;
+    private DateTime bajoStockMirado;
+
+    protected override async Task OnParametersSetAsync() => await MirarBajoStockAsync();
+
+    /// <summary>Se vuelve a contar al navegar, como mucho una vez por minuto.</summary>
+    private async Task MirarBajoStockAsync()
+    {
+        if (sesion == null || sesion.EsSuperAdmin || string.IsNullOrEmpty(sesion.Cs) || !sesion.TieneModulo(Modulo.Productos)) return;
+        if ((DateTime.Now - bajoStockMirado).TotalSeconds < 60) return;
+        bajoStockMirado = DateTime.Now;
+        try { bajoStockMenu = await ProductosSrv.ContarBajoStockAsync(sesion.Cs, sesion.SucursalId == Guid.Empty ? null : sesion.SucursalId); }
+        catch (Exception) { bajoStockMenu = 0; }
     }
 
     // ------------------------------------------------------------------ caja del usuario

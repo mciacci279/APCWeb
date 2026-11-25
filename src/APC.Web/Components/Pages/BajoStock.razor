@@ -1,0 +1,145 @@
+@page "/productos/bajo-stock"
+@attribute [Authorize(Roles = SesionService.RolEmpleado)]
+@using APC.Core.Tenants
+@inject SesionService SesionSrv
+@inject NavigationManager Nav
+@inject ProductoService ProductoSrv
+@inject SucursalService SucursalSrv
+
+@* Productos con bajo stock: controlan stock ("No controlar stock" sin marcar), tienen stock mínimo > 0
+   y su stock está en el mínimo o por debajo. *@
+
+<PageTitle>Bajo stock · Factu360</PageTitle>
+
+<div class="page-pad">
+    <header class="fact-head">
+        <div class="fact-titulo">
+            <h1>Productos con bajo stock</h1>
+            <span class="sub">Solo productos que controlan stock y tienen stock mínimo mayor a 0</span>
+        </div>
+        <div class="fila-btns">
+            <a class="btn" href="/productos">← Productos</a>
+            @if (lista.Count > 0)
+            {
+                <a class="btn" href="@Csv" download="@($"bajo-stock-{DateTime.Today:yyyy-MM-dd}.csv")">Exportar a Excel (CSV)</a>
+                <a class="btn btn-primario" href="@UrlImprimir" target="_blank">Imprimir listado</a>
+            }
+        </div>
+    </header>
+
+    <div class="fila-campos">
+        @if (sucursales.Count > 1)
+        {
+            <div class="campo">
+                <label for="bs-suc">Sucursal</label>
+                <select id="bs-suc" class="input" @bind="sucursalFiltro" @bind:after="Cargar" disabled="@(!sesion.EsAdmin)">
+                    @if (sesion.EsAdmin) { <option value="">Stock total (todas)</option> }
+                    @foreach (var s in sucursales) { <option value="@s.Id">@s.Nombre</option> }
+                </select>
+            </div>
+        }
+        <div class="campo">
+            <label for="bs-fam">Familia</label>
+            <select id="bs-fam" class="input" @bind="familiaFiltro" @bind:after="Cargar">
+                <option value="">Todas</option>
+                @foreach (var r in familias) { <option value="@r.Id">@r.Nombre</option> }
+            </select>
+        </div>
+    </div>
+
+    <div class="kpis kpis-chicos">
+        <div class="kpi"><span class="sub">Con bajo stock</span><span class="mono kpi-num">@(cargando ? "…" : lista.Count.ToString())</span></div>
+        <div class="kpi"><span class="sub">Sin stock</span><span class="mono kpi-num stock-bajo">@(cargando ? "…" : lista.Count(p => p.SinStock).ToString())</span></div>
+        <div class="kpi"><span class="sub">Unidades a pedir</span><span class="mono kpi-num">@(cargando ? "…" : lista.Sum(p => p.APedir).ToString("0.###", Ar))</span></div>
+        <div class="kpi kpi-oscuro"><span class="sub-claro">Costo estimado de reposición</span><span class="mono kpi-num">@(cargando ? "…" : Pesos(lista.Sum(p => p.APedir * p.PrecioCosto)))</span></div>
+    </div>
+
+    <section class="panel tabla-scroll">
+        <table class="tabla">
+            <thead>
+                <tr><th>Código</th><th>Producto</th><th>Familia</th><th class="der">Stock</th><th class="der">Mínimo</th><th class="der">Máximo</th><th class="der">Faltan</th><th class="der">A pedir</th></tr>
+            </thead>
+            <tbody>
+                @if (cargando)
+                {
+                    <FilasEsqueleto Filas="8" Columnas="8" />
+                }
+                else if (lista.Count == 0)
+                {
+                    <tr><td colspan="8" class="sub">No hay productos con bajo stock. 👍</td></tr>
+                }
+                @foreach (var p in Paginador.Cortar(lista, pagina))
+                {
+                    <tr>
+                        <td class="mono">@(string.IsNullOrWhiteSpace(p.Codigo) ? "—" : p.Codigo)</td>
+                        <td class="fuerte">@p.Nombre @if (p.SinStock) { <span class="etiqueta etiqueta-rojo">Sin stock</span> }</td>
+                        <td>@p.Familia</td>
+                        <td class="der mono stock-bajo">@p.Stock.ToString("0.###", Ar)</td>
+                        <td class="der mono">@p.StockMinimo.ToString("0.###", Ar)</td>
+                        <td class="der mono">@(p.StockMaximo > 0 ? p.StockMaximo.ToString("0.###", Ar) : "—")</td>
+                        <td class="der mono">@p.Faltante.ToString("0.###", Ar)</td>
+                        <td class="der mono fuerte">@p.APedir.ToString("0.###", Ar)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <Paginador Total="lista.Count" @bind-Pagina="pagina" Singular="producto" Plural="productos" />
+        <p class="sub">“A pedir” completa hasta el stock máximo si el producto lo tiene cargado; si no, hasta el mínimo.</p>
+    </section>
+</div>
+
+@code {
+    private static readonly CultureInfo Ar = new("es-AR");
+    private static string Pesos(decimal v) => "$ " + v.ToString("N2", Ar);
+
+    private SesionActual sesion;
+    private bool cargando = true;
+    private int pagina = 1;
+    private List<ProductoBajoStock> lista = new();
+    private List<RubroItem> familias = new();
+    private List<Sucursal> sucursales = new();
+    private Guid? sucursalFiltro;
+    private Guid? familiaFiltro;
+
+    private string UrlImprimir =>
+        "/productos/bajo-stock/imprimir?x=1"
+        + (sucursalFiltro != null ? "&sucursal=" + sucursalFiltro : "")
+        + (familiaFiltro != null ? "&familia=" + familiaFiltro : "");
+
+    /// <summary>El listado como CSV (separado por ;, se abre directo con Excel).</summary>
+    private string Csv
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("﻿Código;Producto;Familia;Stock;Mínimo;Máximo;Faltan;A pedir;Costo\n");
+            static string C(string t) => "\"" + (t ?? "").Replace("\"", "\"\"") + "\"";
+            foreach (var p in lista)
+                sb.Append(C(p.Codigo)).Append(';').Append(C(p.Nombre)).Append(';').Append(C(p.Familia)).Append(';')
+                  .Append(p.Stock.ToString("0.###", Ar)).Append(';').Append(p.StockMinimo.ToString("0.###", Ar)).Append(';')
+                  .Append(p.StockMaximo.ToString("0.###", Ar)).Append(';').Append(p.Faltante.ToString("0.###", Ar)).Append(';')
+                  .Append(p.APedir.ToString("0.###", Ar)).Append(';').Append(p.PrecioCosto.ToString("0.00", Ar)).Append('\n');
+            return "data:text/csv;charset=utf-8," + Uri.EscapeDataString(sb.ToString());
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        if (!sesion.TieneModulo(Modulo.Productos)) { Nav.NavigateTo("/sin-permiso"); return; }
+        familias = await ProductoSrv.RubrosAsync(sesion.Cs);
+        try { sucursales = (await SucursalSrv.ListarAsync(sesion.Cs, incluirInactivas: false)).ToList(); }
+        catch (Exception) { sucursales = new(); }
+        // Por defecto, la sucursal del usuario. Los que no son administradores ven solo la suya.
+        if (sesion.SucursalId != Guid.Empty) sucursalFiltro = sesion.SucursalId;
+        if (!sesion.EsAdmin && sucursalFiltro != null) sucursales = sucursales.Where(s => s.Id == sucursalFiltro).ToList();
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        lista = await ProductoSrv.BajoStockAsync(sesion.Cs, sucursalFiltro, familiaFiltro);
+        pagina = 1;
+        cargando = false;
+    }
+}
