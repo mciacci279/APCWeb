@@ -1237,3 +1237,7 @@ h1 { font-weight: 800; }
 }
 .btn-qr { display: inline-flex; align-items: center; gap: 6px; border-color: #009EE3; color: #0078B8; }
 .btn-qr:hover { background: #EAF6FD; }
+/* "con la app de Mercado Pago" bien visible debajo del título */
+.qr-a4-con-mp { position: relative; margin: 4mm 0 0; display: inline-flex; align-items: center; gap: 3mm; height: 15mm; padding: 0 6mm; border-radius: 999px;
+  background: #FFFFFF; box-shadow: 0 0 0 2px #009EE3, 0 8px 22px rgba(0,158,227,.18); font-size: 22px; font-weight: 700; color: #0A1A3D; }
+.qr-a4-con-mp img { height: 10mm; width: auto; display: block; }
