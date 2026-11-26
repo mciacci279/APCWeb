@@ -3,6 +3,7 @@
 @implements IAsyncDisposable
 @using APC.Core.Tenants
 @inject SesionService SesionSrv
+@inject ClienteService ClienteSrv
 @inject CatalogoService Catalogo
 @inject BalanzaService BalanzaSrv
 @inject FacturacionService Facturacion
@@ -914,6 +915,12 @@ else
             }
             factura.FormaPagoId = formaPago.Id;
             resultado = await Facturacion.EmitirAsync(sesion.Tenant, sesion.UsuarioId, factura, fiscal, sesion.Sucursal);
+            // Con o sin CAE: el cliente (traído de ARCA o cargado a mano) queda en el fichero de clientes.
+            if (resultado.FacturaId != null)
+            {
+                try { await ClienteSrv.GuardarDesdeComprobanteAsync(sesion.Cs, factura, resultado.FacturaId.Value); }
+                catch (Exception) { /* no frena la venta */ }
+            }
             if (resultado.FacturaId != null && presupuestoOrigenId != null)
             {
                 await Presupuestos.MarcarFacturadoAsync(sesion.Cs, presupuestoOrigenId.Value);

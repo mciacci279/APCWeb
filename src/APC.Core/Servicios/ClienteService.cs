@@ -126,6 +126,52 @@ public class ClienteService
         return null;
     }
 
+    /// <summary>
+    /// Después de facturar (con o sin CAE): guarda en el fichero de clientes a quien se le facturó, si tiene
+    /// documento y nombre. Si ya existe ese documento, completa o actualiza sus datos (sin borrar lo que no vino);
+    /// si no, lo crea. Deja el comprobante apuntando al cliente. Devuelve el Id del cliente o null.
+    /// </summary>
+    public async Task<Guid?> GuardarDesdeComprobanteAsync(string cs, NuevaFactura f, Guid facturaId)
+    {
+        var doc = new string((f.ClienteDocumento ?? "").Where(char.IsDigit).ToArray());
+        var nombre = f.ClienteNombre?.Trim();
+        if (doc.Length < 7 || string.IsNullOrWhiteSpace(nombre)
+            || nombre.Equals("Consumidor final", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var ivas = await CondicionesIvaAsync(cs);
+        Guid? ivaId = f.Condicion switch
+        {
+            CondicionReceptor.ResponsableInscripto => ivas.FirstOrDefault(i => (i.Nombre ?? "").Contains("inscripto", StringComparison.OrdinalIgnoreCase))?.Id,
+            CondicionReceptor.Monotributo => ivas.FirstOrDefault(i => (i.Nombre ?? "").Contains("monotribut", StringComparison.OrdinalIgnoreCase))?.Id,
+            CondicionReceptor.Exento => ivas.FirstOrDefault(i => (i.Nombre ?? "").Contains("exent", StringComparison.OrdinalIgnoreCase))?.Id,
+            _ => ivas.FirstOrDefault(i => (i.Nombre ?? "").Contains("final", StringComparison.OrdinalIgnoreCase))?.Id
+        };
+
+        var c = f.ClienteId != null ? await ObtenerAsync(cs, f.ClienteId.Value) : null;
+        c ??= await PorDocumentoAsync(cs, doc);
+        if (c == null)
+        {
+            var tipos = await TiposDocumentoAsync(cs);
+            var tipo = doc.Length == 11
+                ? tipos.FirstOrDefault(t => (t.Nombre ?? "").Contains("CUIT", StringComparison.OrdinalIgnoreCase))
+                : tipos.FirstOrDefault(t => (t.Nombre ?? "").Contains("DNI", StringComparison.OrdinalIgnoreCase));
+            c = new ClienteDetalle { TipoDocumentoId = tipo?.Id, NroDocumento = doc };
+        }
+        // El nombre del comprobante manda (razón social, o apellido y nombre juntos).
+        c.Apellido = nombre;
+        c.Nombre = null;
+        if (!string.IsNullOrWhiteSpace(f.ClienteDomicilio)) c.Domicilio = f.ClienteDomicilio.Trim();
+        if (!string.IsNullOrWhiteSpace(f.ClienteLocalidad)) c.Localidad = f.ClienteLocalidad.Trim();
+        if (ivaId != null) c.IvaId = ivaId;
+
+        if (await GuardarAsync(cs, c) != null) return null;
+
+        using var cn = await Db.AbrirAsync(cs);
+        await cn.ExecuteAsync("UPDATE dbo.Factura SET ClienteId = @cli WHERE Id = @fac AND ClienteId IS NULL",
+            new { cli = c.Id, fac = facturaId });
+        return c.Id;
+    }
+
     /// <summary>Borra el cliente, salvo que ya tenga comprobantes: en ese caso no se puede.</summary>
     public async Task<string> EliminarAsync(string cs, Guid id)
     {
