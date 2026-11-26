@@ -1241,3 +1241,11 @@ h1 { font-weight: 800; }
 .qr-a4-con-mp { position: relative; margin: 4mm 0 0; display: inline-flex; align-items: center; gap: 3mm; height: 15mm; padding: 0 6mm; border-radius: 999px;
   background: #FFFFFF; box-shadow: 0 0 0 2px #009EE3, 0 8px 22px rgba(0,158,227,.18); font-size: 22px; font-weight: 700; color: #0A1A3D; }
 .qr-a4-con-mp img { height: 10mm; width: auto; display: block; }
+
+/* Botón "Buscar en ARCA": celeste vivo con lupa, bien visible */
+.btn-arca { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #0EA5E9, #2F7BF5); border: 0; color: #FFFFFF; font-weight: 700;
+  box-shadow: 0 6px 16px rgba(47,123,245,.32); transition: transform .15s, box-shadow .15s, filter .15s; white-space: nowrap; }
+.btn-arca:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(47,123,245,.40); filter: brightness(1.05); color: #FFFFFF; }
+.btn-arca:focus-visible { outline: 3px solid #93C5FD; outline-offset: 2px; }
+.btn-arca:disabled { opacity: .65; cursor: progress; }
+.btn-arca-giro { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #FFFFFF; animation: logo-gira .8s linear infinite; }
