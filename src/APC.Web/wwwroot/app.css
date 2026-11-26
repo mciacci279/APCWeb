@@ -1249,3 +1249,22 @@ h1 { font-weight: 800; }
 .btn-arca:focus-visible { outline: 3px solid #93C5FD; outline-offset: 2px; }
 .btn-arca:disabled { opacity: .65; cursor: progress; }
 .btn-arca-giro { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.4); border-top-color: #FFFFFF; animation: logo-gira .8s linear infinite; }
+
+/* ---------- Datos del cliente: primero buscar (fichero o ARCA), después los datos ---------- */
+.panel.cliente { flex-direction: column; flex-wrap: nowrap; gap: 14px; }
+.cliente-busqueda { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr); gap: 12px; align-items: start;
+  padding-bottom: 14px; border-bottom: 1px dashed var(--borde); }
+.cliente-bloque { margin: 0; }
+.cliente-o { align-self: center; margin-top: 18px; width: 32px; height: 32px; border-radius: 50%; background: var(--fondo); color: var(--texto-2);
+  font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.cliente-arca { padding: 12px; border-radius: 14px; background: #F0F7FF; border: 1px solid #CFE3FB; }
+.cliente-arca-fila { display: flex; gap: 8px; }
+.cliente-arca-fila .input { flex: 1 1 auto; min-width: 0; }
+.cliente-datos { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; }
+.cliente-datos .campo { margin: 0; }
+@media (max-width: 760px) {
+  .cliente-busqueda { grid-template-columns: 1fr; }
+  .cliente-o { margin: 0 auto; }
+  .cliente-datos { grid-template-columns: 1fr; }
+  .cliente-arca-fila { flex-wrap: wrap; }
+}
