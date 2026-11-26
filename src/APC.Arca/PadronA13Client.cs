@@ -96,8 +96,45 @@ namespace APC.Arca
                 return persona;
             }
 
-            return Interpretar(respuesta, persona);
+            persona = Interpretar(respuesta, persona);
+
+            // El padrón A13 trae los datos de identificación pero no los impuestos: la condición frente
+            // al IVA se pide a la constancia de inscripción (ws_sr_constancia_inscripcion). Si el
+            // certificado no está habilitado para ese servicio, se sigue sin ella.
+            if (persona.Encontrada && persona.CondicionIva == null)
+            {
+                try
+                {
+                    var urlA5 = urlPadron.Replace("personaServiceA13", "personaServiceA5");
+                    var ta5 = WsaaAuth.ObtenerTicket(ServicioConstancia, certificadoPath, clavePath, urlWsaa, carpetaCache);
+                    string sobre5 =
+                        "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:a5=\"http://a5.soap.ws.server.puc.sr/\">" +
+                        "<soapenv:Header/><soapenv:Body><a5:getPersona_v2>" +
+                        "<token>" + ta5.Token + "</token>" +
+                        "<sign>" + ta5.Sign + "</sign>" +
+                        "<cuitRepresentada>" + cuitRepresentada + "</cuitRepresentada>" +
+                        "<idPersona>" + cuitConsultado + "</idPersona>" +
+                        "</a5:getPersona_v2></soapenv:Body></soapenv:Envelope>";
+                    using (var contenido = new StringContent(sobre5, Encoding.UTF8, "text/xml"))
+                    {
+                        contenido.Headers.Add("SOAPAction", "\"\"");
+                        var r = await Http.PostAsync(urlA5, contenido);
+                        var xml5 = await r.Content.ReadAsStringAsync();
+                        var doc5 = XDocument.Parse(xml5);
+                        if (Elemento(doc5.Root, "faultstring") == null && Elemento(doc5.Root, "datosGenerales") != null)
+                            persona.CondicionIva = DeducirCondicion(doc5.Root);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Sin la constancia de inscripción: la condición queda sin informar.
+                }
+            }
+            return persona;
         }
+
+        /// <summary>Servicio de la constancia de inscripción (padrón A5): trae los impuestos.</summary>
+        public const string ServicioConstancia = "ws_sr_constancia_inscripcion";
 
         private static PersonaPadron Interpretar(string xml, PersonaPadron persona)
         {
@@ -118,7 +155,34 @@ namespace APC.Arca
             var generales = Elemento(doc.Root, "datosGenerales");
             if (generales == null)
             {
-                persona.Error = "ARCA no devolvió datos para ese CUIT.";
+                // Padrón A13: los datos vienen en <persona>, con uno o más <domicilio> (el FISCAL primero).
+                var p13 = Elemento(doc.Root, "persona");
+                if (p13 == null || (Texto(p13, "razonSocial") == null && Texto(p13, "apellido") == null && Texto(p13, "nombre") == null))
+                {
+                    persona.Error = Elemento(doc.Root, "personaReturn") != null || Elemento(doc.Root, "getPersonaResponse") != null
+                        ? "ARCA no tiene datos para ese CUIT (no está en el padrón)."
+                        : "ARCA respondió algo inesperado: " + Resumen(xml);
+                    return persona;
+                }
+                persona.Encontrada = true;
+                persona.TipoPersona = Texto(p13, "tipoPersona");
+                persona.RazonSocial = Texto(p13, "razonSocial");
+                persona.Apellido = Texto(p13, "apellido");
+                persona.Nombre = Texto(p13, "nombre");
+                persona.EstadoClave = Texto(p13, "estadoClave");
+                var doms = p13.Elements().Where(e => e.Name.LocalName == "domicilio").ToList();
+                var fiscal = doms.FirstOrDefault(d => string.Equals(Texto(d, "tipoDomicilio"), "FISCAL", StringComparison.OrdinalIgnoreCase))
+                             ?? doms.FirstOrDefault();
+                if (fiscal != null)
+                {
+                    persona.Domicilio = Texto(fiscal, "direccion");
+                    persona.Localidad = Texto(fiscal, "localidad") ?? Texto(fiscal, "descripcionProvincia");
+                    persona.CodigoPostal = Texto(fiscal, "codigoPostal") ?? Texto(fiscal, "codPostal");
+                    persona.Provincia = Texto(fiscal, "descripcionProvincia");
+                }
+                // Si la respuesta trae impuestos, se deduce; si no, queda para la constancia de inscripción.
+                persona.CondicionIva = Todos(doc.Root, "idImpuesto").Any() || Elemento(doc.Root, "datosMonotributo") != null
+                    ? DeducirCondicion(doc.Root) : null;
                 return persona;
             }
 
@@ -155,6 +219,14 @@ namespace APC.Arca
             if (impuestos.Contains("30")) return "RESPONSABLE_INSCRIPTO";
             if (impuestos.Contains("32")) return "EXENTO";
             return "CONSUMIDOR_FINAL";
+        }
+
+        /// <summary>Primeros caracteres de una respuesta rara, sin etiquetas, para mostrar en el error.</summary>
+        private static string Resumen(string xml)
+        {
+            var texto = System.Text.RegularExpressions.Regex.Replace(xml ?? "", "<[^>]+>", " ");
+            texto = System.Text.RegularExpressions.Regex.Replace(texto, "\\s+", " ").Trim();
+            return texto.Length > 200 ? texto.Substring(0, 200) + "…" : (texto.Length == 0 ? "(vacío)" : texto);
         }
 
         // El SOAP viene con varios espacios de nombres: buscamos por nombre local.
