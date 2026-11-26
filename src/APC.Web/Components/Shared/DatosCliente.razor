@@ -2,6 +2,7 @@
 @inject SesionService SesionSrv
 @inject ClienteService ClienteSrv
 @inject PadronService Padron
+@inject IJSRuntime JS
 
 <section class="panel cliente" aria-label="Datos del cliente">
     @* 1) Buscar: en el fichero de clientes o en ARCA por CUIT *@
@@ -36,71 +37,79 @@
         <span class="cliente-o" aria-hidden="true">o</span>
 
         <div class="campo cliente-bloque cliente-arca">
-            <label for="cli-doc">CUIT / DNI del cliente</label>
+            <label for="cli-doc">Documento del cliente</label>
             <div class="cliente-arca-fila">
+                <label class="sr-only" for="cli-tipodoc">Tipo de documento</label>
+                <select id="cli-tipodoc" class="input cliente-tipodoc" disabled="@Deshabilitado" @bind="TipoDocSel" @bind:after="Cambio">
+                    <option value="">Tipo</option>
+                    @foreach (var t in tiposDocumento) { <option value="@t.Id">@t.Nombre</option> }
+                </select>
                 <input id="cli-doc" class="input mono" maxlength="13" inputmode="numeric" placeholder="20123456789"
-                       disabled="@Deshabilitado" @bind="Datos.ClienteDocumento" @bind:after="Aviso" @onkeydown="DocKey" />
+                       disabled="@Deshabilitado" @bind="Datos.ClienteDocumento" @bind:after="DocCambio" @onkeydown="DocKey" />
                 <button type="button" class="btn btn-arca" disabled="@(Deshabilitado || consultando)" @onclick="TraerDeArca"
-                        title="Busca el CUIT en el padrón de ARCA y trae razón social, domicilio y condición frente al IVA">
-                    @if (consultando) { <span class="btn-arca-giro" aria-hidden="true"></span> } else { <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg> }
-                    @(consultando ? "Buscando…" : "Buscar en ARCA")
+                        title="Buscar el CUIT en el padrón de ARCA (razón social, domicilio y tipo de clave)" aria-label="Buscar en ARCA">
+                    @if (consultando) { <span class="btn-arca-giro" aria-hidden="true"></span> } else { <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg> }
+                    ARCA
                 </button>
+                @if (ultimaArca != null && (ultimaArca.RespuestaA13 != null || ultimaArca.RespuestaA5 != null))
+                {
+                    <button type="button" class="btn btn-arca-mas" title="Ver respuesta de ARCA..." aria-label="Ver respuesta de ARCA" @onclick="AbrirArca">…</button>
+                }
             </div>
         </div>
     </div>
 
     @if (mensaje != null)
     {
-        <div class="cliente-aviso">
-            <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
-            @if (ultimaArca != null && (ultimaArca.RespuestaA13 != null || ultimaArca.RespuestaA5 != null))
-            {
-                <button type="button" class="btn btn-chico" @onclick="() => verArca = true" title="Ver todo lo que respondió ARCA">Ver respuesta de ARCA…</button>
-            }
-        </div>
+        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
     }
 
-    @if (verArca && ultimaArca != null)
-    {
-        @* Respuesta completa de ARCA, en formato legible (y el XML crudo para copiar) *@
-        <div class="modal-fondo" @onclick="() => verArca = false">
-            <div class="panel modal-caja modal-arca" role="dialog" aria-modal="true" aria-labelledby="arca-tit" @onclick:stopPropagation="true">
-                <div class="modal-cab">
-                    <div>
-                        <h2 id="arca-tit">Respuesta de ARCA</h2>
-                        <span class="sub">CUIT @ultimaArca.Cuit · @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
+    @* Respuesta completa de ARCA. Es un <dialog> nativo: se abre sobre toda la pantalla aunque el panel
+       del cliente tenga animaciones (que con position:fixed lo dejarían encerrado en la sección). *@
+    <dialog @ref="dialogoArca" class="dialogo-arca" aria-labelledby="arca-tit">
+        @if (ultimaArca != null)
+        {
+            <div class="dialogo-arca-cab">
+                <div>
+                    <h2 id="arca-tit">Respuesta de ARCA</h2>
+                    <span class="sub">CUIT @ultimaArca.Cuit · consultado @consultadoA.ToString("dd/MM/yyyy HH:mm")</span>
+                </div>
+                <div class="fila-btns">
+                    <div class="pestanias" role="tablist">
+                        <button type="button" role="tab" aria-selected="@(!verXml ? "true" : "false")" class="pestania @(!verXml ? "activa" : "")" @onclick="() => verXml = false">Datos</button>
+                        <button type="button" role="tab" aria-selected="@(verXml ? "true" : "false")" class="pestania @(verXml ? "activa" : "")" @onclick="() => verXml = true">XML</button>
                     </div>
-                    <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="() => verArca = false">×</button>
+                    <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="CerrarArca">×</button>
                 </div>
-                <div class="pestanias" role="tablist">
-                    <button type="button" role="tab" aria-selected="@(!verXml ? "true" : "false")" class="pestania @(!verXml ? "activa" : "")" @onclick="() => verXml = false">Datos</button>
-                    <button type="button" role="tab" aria-selected="@(verXml ? "true" : "false")" class="pestania @(verXml ? "activa" : "")" @onclick="() => verXml = true">XML</button>
-                </div>
+            </div>
+            <div class="dialogo-arca-cuerpo">
                 @foreach (var (titulo, xml) in Respuestas)
                 {
-                    <h3 class="arca-sec">@titulo</h3>
-                    @if (verXml)
-                    {
-                        <pre class="arca-xml">@Bonito(xml)</pre>
-                    }
-                    else
-                    {
-                        <table class="tabla tabla-chica arca-datos">
-                            <tbody>
-                                @foreach (var f in APC.Arca.PadronA13Client.Legible(xml))
-                                {
-                                    <tr class="@(f.Valor == null ? "arca-grupo" : "")">
-                                        <td style="padding-left: @(8 + f.Nivel * 16)px">@f.Campo</td>
-                                        <td class="mono">@f.Valor</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
+                    <section class="arca-bloque">
+                        <h3 class="arca-sec">@titulo</h3>
+                        @if (verXml)
+                        {
+                            <pre class="arca-xml">@Bonito(xml)</pre>
+                        }
+                        else
+                        {
+                            <table class="tabla tabla-chica arca-datos">
+                                <tbody>
+                                    @foreach (var f in APC.Arca.PadronA13Client.Legible(xml))
+                                    {
+                                        <tr class="@(f.Valor == null ? "arca-grupo" : "")">
+                                            <td style="padding-left: @(8 + f.Nivel * 16)px">@f.Campo</td>
+                                            <td class="mono">@f.Valor</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </section>
                 }
             </div>
-        </div>
-    }
+        }
+    </dialog>
 
     @* 2) Datos de la persona *@
     <div class="cliente-datos">
@@ -148,8 +157,45 @@
     private bool consultando;
     /// <summary>Última consulta a ARCA (para "Ver respuesta de ARCA").</summary>
     private APC.Arca.PersonaPadron ultimaArca;
-    private bool verArca;
+    private DateTime consultadoA;
     private bool verXml;
+    private ElementReference dialogoArca;
+    private List<OpcionItem> tiposDocumento = new();
+
+    private async Task AbrirArca() => await JS.InvokeVoidAsync("apc.abrirDialogo", dialogoArca);
+    private async Task CerrarArca() => await JS.InvokeVoidAsync("apc.cerrarDialogo", dialogoArca);
+
+    /// <summary>El tipo de documento elegido (como texto para el select).</summary>
+    private string TipoDocSel
+    {
+        get => Datos.ClienteTipoDocumentoId?.ToString() ?? "";
+        set
+        {
+            Datos.ClienteTipoDocumentoId = Guid.TryParse(value, out var id) ? id : null;
+            Datos.ClienteTipoDocumento = tiposDocumento.FirstOrDefault(t => t.Id == Datos.ClienteTipoDocumentoId)?.Nombre;
+        }
+    }
+
+    /// <summary>Pone el tipo de documento por nombre ("CUIT", "DNI"…), si existe en la tabla.</summary>
+    private void PonerTipo(string nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+        var t = tiposDocumento.FirstOrDefault(x => string.Equals(x.Nombre?.Trim(), nombre.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? tiposDocumento.FirstOrDefault(x => (x.Nombre ?? "").Contains(nombre.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (t != null) { Datos.ClienteTipoDocumentoId = t.Id; Datos.ClienteTipoDocumento = t.Nombre; }
+    }
+
+    /// <summary>Al escribir el documento: si no hay tipo elegido, se propone por la cantidad de dígitos.</summary>
+    private async Task DocCambio()
+    {
+        if (Datos.ClienteTipoDocumentoId == null)
+        {
+            var n = (Datos.ClienteDocumento ?? "").Count(char.IsDigit);
+            if (n == 11) PonerTipo("CUIT");
+            else if (n is 7 or 8) PonerTipo("DNI");
+        }
+        await Aviso();
+    }
 
     private IEnumerable<(string, string)> Respuestas
     {
@@ -169,7 +215,11 @@
     private string mensaje;
     private bool mensajeOk;
 
-    protected override async Task OnInitializedAsync() => sesion = await SesionSrv.ObtenerAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        try { tiposDocumento = await ClienteSrv.TiposDocumentoAsync(sesion.Cs); } catch (Exception) { tiposDocumento = new(); }
+    }
 
     private async Task BuscarKey(KeyboardEventArgs e)
     {
@@ -186,6 +236,8 @@
         Datos.ClienteDocumento = c.NroDocumento;
         Datos.ClienteDomicilio = c.Domicilio;
         Datos.ClienteLocalidad = c.Localidad;
+        Datos.ClienteTipoDocumentoId = null; Datos.ClienteTipoDocumento = null;
+        PonerTipo(c.TipoDocumento);
         if (AplicaCondicion) Datos.Condicion = Condicion(c.CondicionIva);
 
         texto = "";
@@ -204,12 +256,15 @@
         {
             var p = await Padron.ConsultarAsync(sesion.Tenant, Datos.ClienteDocumento);
             ultimaArca = p;
+            consultadoA = DateTime.Now;
             if (!p.Encontrada) { Mostrar(false, p.Error ?? "ARCA no devolvió datos para ese CUIT."); return; }
 
             Datos.ClienteId = null;
             Datos.ClienteNombre = p.NombreCompleto;
             if (!string.IsNullOrWhiteSpace(p.Domicilio)) Datos.ClienteDomicilio = p.Domicilio;
             if (!string.IsNullOrWhiteSpace(p.Localidad)) Datos.ClienteLocalidad = p.Localidad;
+            // Tipo de documento: el "tipoClave" que informa ARCA (CUIT, CUIL o CDI).
+            PonerTipo(p.TipoClave ?? "CUIT");
             // Si ARCA no informa la condición, queda Consumidor final.
             if (AplicaCondicion) Datos.Condicion = Condicion(p.CondicionIva);
 

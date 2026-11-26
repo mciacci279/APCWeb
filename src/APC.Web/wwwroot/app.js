@@ -44,6 +44,8 @@ window.apc = (function () {
     },
     enfocar: enfocar,
     // Recordar preferencias simples de la pantalla (ej. si el menú quedó plegado).
+    abrirDialogo: function (el) { try { if (el && !el.open) el.showModal(); } catch (e) { } },
+    cerrarDialogo: function (el) { try { if (el && el.open) el.close(); } catch (e) { } },
     guardar: function (clave, valor) { try { localStorage.setItem('apc.' + clave, valor); } catch (e) { } },
     leer: function (clave) { try { return localStorage.getItem('apc.' + clave); } catch (e) { return null; } },
     // Copia un texto al portapapeles (links para mandarle al cliente).

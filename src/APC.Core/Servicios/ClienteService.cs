@@ -155,8 +155,9 @@ public class ClienteService
             var tipo = doc.Length == 11
                 ? tipos.FirstOrDefault(t => (t.Nombre ?? "").Contains("CUIT", StringComparison.OrdinalIgnoreCase))
                 : tipos.FirstOrDefault(t => (t.Nombre ?? "").Contains("DNI", StringComparison.OrdinalIgnoreCase));
-            c = new ClienteDetalle { TipoDocumentoId = tipo?.Id, NroDocumento = doc };
+            c = new ClienteDetalle { TipoDocumentoId = f.ClienteTipoDocumentoId ?? tipo?.Id, NroDocumento = doc };
         }
+        else if (f.ClienteTipoDocumentoId != null) c.TipoDocumentoId = f.ClienteTipoDocumentoId;
         // El nombre del comprobante manda (razón social, o apellido y nombre juntos).
         c.Apellido = nombre;
         c.Nombre = null;

@@ -183,12 +183,12 @@ public class FacturacionService
                     (Id, Fecha, Tipo, MontoTotal, MontoIva, Iva, MontoNoGravado, MontoExento,
                      Descuento, MontoDescuento, Recargo, MontoRecargo, Impresa, Anulada, Observaciones,
                      IvaId, FormaPagoId, ClienteId, UsuarioId, ClienteNombre, ClienteCUIT,
-                     ClienteDomicilio, ClienteLocalidad, Terminal, CantidadRenglones)
+                     ClienteDomicilio, ClienteLocalidad, Terminal, CantidadRenglones, ClienteTipoDocAFIP)
                   VALUES
                     (@Id, GETDATE(), @Tipo, @Total, @Iva, @Alic, @NoGrav, 0,
                      @Desc, @MDesc, @Rec, @MRec, 0, 0, @Obs,
                      @IvaId, @FormaPagoId, @ClienteId, @UsuarioId, @ClienteNombre, @ClienteCuit,
-                     @ClienteDomicilio, @ClienteLocalidad, @Terminal, @Renglones)",
+                     @ClienteDomicilio, @ClienteLocalidad, @Terminal, @Renglones, @TipoDocArca)",
                 new
                 {
                     Id = facturaId, Tipo = letra, Total = total, Iva = totalIva, Alic = alicGeneral,
@@ -197,6 +197,7 @@ public class FacturacionService
                     Obs = f.Observaciones, IvaId = iva.Id, FormaPagoId = fp.Id, f.ClienteId,
                     UsuarioId = usuarioId, ClienteNombre = Recortar(f.ClienteNombre, 50),
                     ClienteCuit = Recortar(f.ClienteDocumento?.Trim(), 13),
+                    TipoDocArca = CodigoTipoDocArca(f.ClienteTipoDocumento),
                     ClienteDomicilio = Recortar(f.ClienteDomicilio, 100),
                     ClienteLocalidad = Recortar(f.ClienteLocalidad, 100),
                     Terminal = puntoVenta, Renglones = f.Renglones.Count
@@ -279,7 +280,8 @@ public class FacturacionService
         using var cn = await Db.AbrirAsync(tenant.ConnectionString);
 
         var fac = await cn.QueryFirstOrDefaultAsync<FacturaCab>(
-            @"SELECT Id, Fecha, Tipo, MontoTotal, IvaId, ClienteCUIT, CAE, Terminal, Numero, ISNULL(Impresa, 0) AS Impresa
+            @"SELECT Id, Fecha, Tipo, MontoTotal, IvaId, ClienteCUIT, CAE, Terminal, Numero, ISNULL(Impresa, 0) AS Impresa,
+                     TRY_CAST(ClienteTipoDocAFIP AS INT) AS ClienteTipoDocAFIP
               FROM dbo.Factura WHERE Id = @id", new { id = facturaId });
         if (fac == null) return Falla("La factura no existe.");
         if (fac.Impresa && string.IsNullOrEmpty(fac.CAE)) return Falla("Es una nota de pedido: no lleva CAE.");
@@ -295,7 +297,8 @@ public class FacturacionService
         var condicion = iva?.Condicion ?? CondicionReceptor.ConsumidorFinal;
         int tipoComp = empresa.EsMonotributo ? 11 : condicion == CondicionReceptor.ResponsableInscripto ? 1 : 6;
 
-        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, fac.ClienteCUIT, fac.MontoTotal, renglones, null, fac.Terminal);
+        var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, fac.ClienteCUIT, fac.MontoTotal, renglones, null, fac.Terminal,
+            fac.ClienteTipoDocAFIP);
         if (!r.Ok)
             return new ResultadoEmision { Ok = false, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = fac.Terminal, Mensaje = r.Mensaje };
 
@@ -507,10 +510,12 @@ public class FacturacionService
 
     private async Task<CaeObtenido> PedirCaeAsync(TenantConfig tenant, IDbConnection cn, EmpresaDatos empresa, int tipoComp,
         CondicionReceptor condicion, string clienteCuit, decimal montoTotal, List<DetalleCalc> renglones,
-        ComprobanteAsociado asociado, int puntoVenta)
+        ComprobanteAsociado asociado, int puntoVenta, int? tipoDocElegido = null)
     {
         var docNum = NormalizarDocumento(clienteCuit);
         int tipoDoc = docNum.Length == 11 ? 80 : (docNum.Length is 7 or 8 ? 96 : 99);
+        // Con 11 dígitos puede ser CUIL o CDI en vez de CUIT, si así se eligió en la factura.
+        if (docNum.Length == 11 && tipoDocElegido is 86 or 87) tipoDoc = tipoDocElegido.Value;
         long nroDoc = tipoDoc == 99 ? 0 : long.Parse(docNum);
 
         var sol = new SolicitudCae
@@ -678,8 +683,21 @@ public class FacturacionService
         return new PngByteQRCode(data).GetGraphic(6);
     }
 
+    /// <summary>Código de tipo de documento de ARCA según el nombre en dbo.TipoDocumento (null si no se sabe).</summary>
+    public static int? CodigoTipoDocArca(string nombre)
+    {
+        var n = (nombre ?? "").ToUpperInvariant();
+        if (n.Contains("CUIT")) return 80;
+        if (n.Contains("CUIL")) return 86;
+        if (n.Contains("CDI")) return 87;
+        if (n.Contains("DNI")) return 96;
+        if (n.Contains("PASAPORTE")) return 94;
+        return null;
+    }
+
     private class FacturaCab
     {
+        public int? ClienteTipoDocAFIP { get; set; }
         public bool Impresa { get; set; }
         public Guid Id { get; set; }
         public DateTime Fecha { get; set; }

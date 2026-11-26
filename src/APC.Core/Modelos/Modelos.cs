@@ -154,6 +154,9 @@ public class NuevaFactura
     public Guid? ClienteId { get; set; }
     public string ClienteNombre { get; set; } = "Consumidor final";
     public string ClienteDocumento { get; set; }
+    /// <summary>Tipo de documento del cliente (fila de dbo.TipoDocumento) y su nombre (CUIT, CUIL, DNI…).</summary>
+    public Guid? ClienteTipoDocumentoId { get; set; }
+    public string ClienteTipoDocumento { get; set; }
     public string ClienteDomicilio { get; set; }
     public string ClienteLocalidad { get; set; }
     public Guid FormaPagoId { get; set; }
