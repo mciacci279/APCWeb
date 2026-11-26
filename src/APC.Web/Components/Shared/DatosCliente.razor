@@ -162,8 +162,19 @@
     private ElementReference dialogoArca;
     private List<OpcionItem> tiposDocumento = new();
 
-    private async Task AbrirArca() => await JS.InvokeVoidAsync("apc.abrirDialogo", dialogoArca);
-    private async Task CerrarArca() => await JS.InvokeVoidAsync("apc.cerrarDialogo", dialogoArca);
+    // Si el navegador tiene guardada una versión vieja de app.js (sin estas funciones), la llamada falla:
+    // se avisa en vez de dejar que el error corte la conexión con el servidor.
+    private async Task AbrirArca()
+    {
+        try { await JS.InvokeVoidAsync("apc.abrirDialogo", dialogoArca); }
+        catch (Exception) { Mostrar(false, "No se pudo abrir la respuesta de ARCA. Recargá la página con Ctrl+F5 y probá de nuevo."); }
+    }
+
+    private async Task CerrarArca()
+    {
+        try { await JS.InvokeVoidAsync("apc.cerrarDialogo", dialogoArca); }
+        catch (Exception) { /* nada que hacer */ }
+    }
 
     /// <summary>El tipo de documento elegido (como texto para el select).</summary>
     private string TipoDocSel
