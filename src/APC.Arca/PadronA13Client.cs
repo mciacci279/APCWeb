@@ -20,6 +20,8 @@ namespace APC.Arca
         public string Apellido { get; set; }
         public string Nombre { get; set; }
         public string EstadoClave { get; set; }
+        /// <summary>Tipo de clave: "CUIT", "CUIL" o "CDI".</summary>
+        public string TipoClave { get; set; }
 
         public string Domicilio { get; set; }
         public string Localidad { get; set; }
@@ -178,6 +180,7 @@ namespace APC.Arca
                 persona.Apellido = Texto(p13, "apellido");
                 persona.Nombre = Texto(p13, "nombre");
                 persona.EstadoClave = Texto(p13, "estadoClave");
+                persona.TipoClave = Texto(p13, "tipoClave");
                 var doms = p13.Elements().Where(e => e.Name.LocalName == "domicilio").ToList();
                 var fiscal = doms.FirstOrDefault(d => string.Equals(Texto(d, "tipoDomicilio"), "FISCAL", StringComparison.OrdinalIgnoreCase))
                              ?? doms.FirstOrDefault();
@@ -200,6 +203,7 @@ namespace APC.Arca
             persona.Apellido = Texto(generales, "apellido");
             persona.Nombre = Texto(generales, "nombre");
             persona.EstadoClave = Texto(generales, "estadoClave");
+            persona.TipoClave = Texto(generales, "tipoClave");
 
             var domicilio = Elemento(generales, "domicilioFiscal");
             if (domicilio != null)

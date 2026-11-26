@@ -1299,3 +1299,20 @@ h1 { font-weight: 800; }
 .arca-datos td:first-child { width: 40%; color: var(--texto-2); }
 .arca-datos tr.arca-grupo td { background: var(--fondo); font-weight: 700; color: var(--texto); }
 .arca-xml { margin: 0; padding: 12px; max-height: 50vh; overflow: auto; border-radius: 10px; background: #0F1B33; color: #DCE6F7; font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+
+/* Documento del cliente: [Tipo][Número][🔍 ARCA][…] */
+.cliente-tipodoc { flex: 0 0 96px; width: 96px; }
+.panel.cliente .btn-arca { height: 36px; padding: 0 11px; gap: 5px; font-size: 13px; }
+.btn-arca-mas { height: 36px; min-width: 36px; padding: 0 8px; border-radius: 9px; border: 1px solid #CFE3FB; background: #F0F7FF; color: #1D5FD1;
+  font: inherit; font-size: 18px; font-weight: 800; line-height: 1; cursor: pointer; }
+.btn-arca-mas:hover { background: #E1EEFF; border-color: #2F7BF5; }
+/* Respuesta de ARCA: diálogo nativo a pantalla completa (capa superior) */
+.dialogo-arca { width: min(1100px, 94vw); height: 88vh; max-height: 88vh; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
+  box-shadow: 0 30px 80px rgba(10,25,45,.45); color: var(--texto); }
+.dialogo-arca[open] { display: flex; flex-direction: column; animation: aparecer .2s ease both; }
+.dialogo-arca::backdrop { background: rgba(10, 26, 61, .6); backdrop-filter: blur(3px); }
+.dialogo-arca-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--borde); flex-wrap: wrap; }
+.dialogo-arca-cab h2 { margin: 0; font-size: 20px; }
+.dialogo-arca-cuerpo { flex: 1; overflow: auto; padding: 8px 20px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+.dialogo-arca .arca-xml { max-height: none; }
+@media (max-width: 760px) { .dialogo-arca { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; } .dialogo-arca-cuerpo { grid-template-columns: 1fr; } }
