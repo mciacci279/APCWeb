@@ -250,6 +250,18 @@ app.MapPost("/cuenta/restablecer", async (HttpContext ctx, IAntiforgery af, Recu
     return Results.Redirect("/ingresar?ok=clave&e=" + Uri.EscapeDataString(empresa ?? ""));
 }).DisableAntiforgery().RequireRateLimiting(PoliticaAcceso);
 
+// Marca de la empresa (nombre y logo) para el aviso de espera al ingresar: con el código que se escribió
+// en el formulario, antes de iniciar sesión. Solo devuelve lo que ya figura en los comprobantes impresos.
+app.MapGet("/cuenta/marca", async (string empresa, TenantRegistry tenants, EmpresaCentralService empresas) =>
+{
+    var cfg = string.IsNullOrWhiteSpace(empresa) ? null : tenants.Buscar(empresa.Trim());
+    if (cfg == null) return Results.NotFound();
+    string logo = null;
+    try { logo = await empresas.LogoDataUriAsync(cfg.Id); } catch (Exception) { logo = null; }
+    var nombre = string.IsNullOrWhiteSpace(cfg.NombreFantasia) ? cfg.Nombre : cfg.NombreFantasia;
+    return Results.Json(new { nombre, logo });
+}).RequireRateLimiting(PoliticaAcceso);
+
 // Sesión de una empresa que fue suspendida mientras el usuario estaba adentro
 app.MapGet("/cuenta/expirada", async (HttpContext ctx) =>
 {

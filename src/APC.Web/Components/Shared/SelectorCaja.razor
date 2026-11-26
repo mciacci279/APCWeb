@@ -4,15 +4,27 @@
 @implements IDisposable
 @inject PuestoCajaService Puestos
 
-<PantallaEspera Id="espera-caja" Visible="tomando != null" Titulo="@($"Abriendo {nombreTomando}…")"
+<PantallaEspera Id="espera-caja" Visible="tomando != null" Titulo="@($"Abriendo {nombreTomando}…")" LogoEmpresa="@LogoEmpresa"
                 Detalle="Reservamos la caja a tu nombre y preparamos todo para que empieces a trabajar." />
 
 <div class="sel-caja-fondo" role="dialog" aria-modal="true" aria-labelledby="sel-caja-tit">
     <div class="sel-caja">
+        @if (LogoEmpresa != null)
+        {
+            @* Con logo de la empresa, Factu360 queda como firma chica arriba a la derecha *@
+            <div class="sel-caja-firma"><LogoFactu360 Tamanio="22" Prefijo="selcajaf" /><span>Factu360</span></div>
+        }
         <header class="sel-caja-cab">
-            <LogoFactu360 Tamanio="52" Prefijo="selcaja" />
+            @if (LogoEmpresa != null)
+            {
+                <span class="sel-caja-placa"><img src="@LogoEmpresa" alt="@(Empresa ?? "Logo de la empresa")" /></span>
+            }
+            else
+            {
+                <LogoFactu360 Tamanio="52" Prefijo="selcaja" />
+            }
             <div>
-                <p class="sel-caja-hola">Hola, @Nombre</p>
+                <p class="sel-caja-hola">Hola, @Nombre@(string.IsNullOrWhiteSpace(Empresa) ? "" : " · " + Empresa)</p>
                 <h1 id="sel-caja-tit">¿En qué caja vas a trabajar?</h1>
                 <p class="sel-caja-sub">@Sucursal · Mientras la uses, nadie más puede tomarla. Al salir del sistema queda libre.</p>
             </div>
@@ -106,6 +118,10 @@
 </div>
 
 @code {
+    /// <summary>Logo de la empresa (data URI) y su nombre; sin logo se ve el de Factu360.</summary>
+    [Parameter] public string LogoEmpresa { get; set; }
+    [Parameter] public string Empresa { get; set; }
+
     [Parameter] public string Cs { get; set; }
     [Parameter] public Guid UsuarioId { get; set; }
     [Parameter] public Guid SucursalId { get; set; }

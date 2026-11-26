@@ -44,6 +44,16 @@ window.apc = (function () {
     },
     enfocar: enfocar,
     // Recordar preferencias simples de la pantalla (ej. si el menú quedó plegado).
+    // Logo de la empresa en el aviso de espera: círculo si es cuadrado/redondo, placa si es horizontal.
+    marcaLista: function (img) {
+      try {
+        var raiz = img.closest('.espera');
+        if (!raiz || !img.naturalWidth) return;
+        var ancho = img.naturalWidth / img.naturalHeight > 1.5;
+        raiz.classList.remove('circulo', 'placa');
+        raiz.classList.add('con-marca', ancho ? 'placa' : 'circulo');
+      } catch (e) { }
+    },
     abrirDialogo: function (el) { try { if (el && !el.open) el.showModal(); } catch (e) { } },
     cerrarDialogo: function (el) { try { if (el && el.open) el.close(); } catch (e) { } },
     guardar: function (clave, valor) { try { localStorage.setItem('apc.' + clave, valor); } catch (e) { } },
@@ -143,6 +153,20 @@ window.addEventListener('load', function () {
     if (!id) return;
     var aviso = document.getElementById(id);
     if (aviso) { aviso.classList.add('visible'); aviso.setAttribute('aria-hidden', 'false'); }
+    // Al ingresar: con el código de empresa se pide su nombre y logo para personalizar el aviso.
+    var empresa = form.querySelector('[name=empresa]');
+    if (aviso && empresa && empresa.value && window.fetch) {
+      fetch('/cuenta/marca?empresa=' + encodeURIComponent(empresa.value.trim()), { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (m) {
+          if (!m) return;
+          var tit = aviso.querySelector('.espera-titulo');
+          if (tit && m.nombre) tit.textContent = 'Ingresando a ' + m.nombre + '…';
+          var img = aviso.querySelector('.espera-marca-img');
+          if (img && m.logo) img.src = m.logo;   // al cargar, apc.marcaLista arma círculo o placa
+        })
+        .catch(function () { });
+    }
     var boton = form.querySelector('[type=submit]');
     if (boton) setTimeout(function () { boton.disabled = true; }, 0);
   });

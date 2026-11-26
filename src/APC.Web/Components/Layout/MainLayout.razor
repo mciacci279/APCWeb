@@ -6,6 +6,7 @@
 @inject IJSRuntime JS
 @inject PuestoCajaService Puestos
 @inject ProductoService ProductosSrv
+@inject EmpresaCentralService EmpresaSrv
 @implements IDisposable
 
 <div class="app @(plegada ? "rail-plegada" : "")">
@@ -199,7 +200,8 @@
             <SelectorCaja Cs="@sesion.Cs" UsuarioId="sesion.UsuarioId" SucursalId="sesion.SucursalId"
                           Nombre="@NombreMostrado" Sucursal="@sesion.Sucursal?.Nombre" Aviso="@avisoCaja"
                           PuedeSeguirSinCaja="sesion.EsAdmin" PuedeVolver="sesion.Caja != null"
-                          OnElegida="CajaElegida" OnSinCaja="EntrarSinCaja" OnCancelar="() => pideCaja = false" />
+                          OnElegida="CajaElegida" OnSinCaja="EntrarSinCaja" OnCancelar="() => pideCaja = false"
+                          LogoEmpresa="@logoEmpresa" Empresa="@NombreEmpresa" />
         }
         else if (!listo)
         {
@@ -300,6 +302,21 @@
         if (modulo != null && !sesion.TieneModulo(modulo)) Nav.NavigateTo("/sin-permiso");
     }
 
+    // ------------------------------------------------------------------ marca de la empresa (selector de caja)
+
+    private string logoEmpresa;
+    private bool logoBuscado;
+    private string NombreEmpresa => sesion?.Tenant == null ? null
+        : string.IsNullOrWhiteSpace(sesion.Tenant.NombreFantasia) ? sesion.Tenant.Nombre : sesion.Tenant.NombreFantasia;
+
+    /// <summary>Logo de la empresa para la pantalla de elegir caja (se busca una vez).</summary>
+    private async Task BuscarLogoAsync()
+    {
+        if (logoBuscado || sesion?.Tenant == null) return;
+        logoBuscado = true;
+        try { logoEmpresa = await EmpresaSrv.LogoDataUriAsync(sesion.Tenant.Id); } catch (Exception) { logoEmpresa = null; }
+    }
+
     // ------------------------------------------------------------------ alerta de bajo stock (menú)
 
     /// <summary>Productos con bajo stock en la sucursal del usuario: número en el botón Productos del menú.</summary>
@@ -331,6 +348,7 @@
     private async Task RevisarCajaAsync()
     {
         if (sesion == null || sesion.EsSuperAdmin || sesion.Sucursal == null || string.IsNullOrEmpty(sesion.Cs)) return;
+        await BuscarLogoAsync();
         try
         {
             if (!await Puestos.ExisteAsync(sesion.Cs)) return;   // sin el script 27 todo sigue como antes

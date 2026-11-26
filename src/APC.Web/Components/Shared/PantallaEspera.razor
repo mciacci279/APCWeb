@@ -7,12 +7,19 @@
             <span class="espera-anillo" aria-hidden="true"></span>
             <LogoFactu360 Tamanio="64" Prefijo="@("esp-" + Id)" />
         </div>
+        @* Logo de la empresa: cuando carga, app.js (apc.marcaLista) elige círculo (cuadrado/redondo) o placa (horizontal) *@
+        <div class="espera-marca" aria-hidden="true">
+            <span class="espera-anillo"></span>
+            <span class="espera-placa-borde"></span>
+            <span class="espera-marca-fondo"><img class="espera-marca-img" alt="" src="@LogoEmpresa" onload="window.apc && apc.marcaLista(this)" /></span>
+        </div>
         <p class="espera-titulo">@Titulo</p>
         @if (!string.IsNullOrEmpty(Detalle))
         {
             <p class="espera-detalle">@Detalle</p>
         }
         <div class="espera-barra" aria-hidden="true"><span></span></div>
+        <div class="espera-firma"><LogoFactu360 Tamanio="20" Prefijo="@("espf-" + Id)" /><span>Factu360</span></div>
     </div>
 </div>
 
@@ -22,4 +29,6 @@
     [Parameter] public string Titulo { get; set; } = "Un momento…";
     [Parameter] public string Detalle { get; set; }
     [Parameter] public bool Visible { get; set; }
+    /// <summary>Logo de la empresa (data URI). En Ingresar lo pone app.js después de pedirlo con el código.</summary>
+    [Parameter] public string LogoEmpresa { get; set; }
 }
