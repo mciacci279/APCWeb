@@ -14,6 +14,7 @@
 @inject APC.Core.Tenants.TenantRegistry Tenants
 @inject MercadoPagoService MpSrv
 @inject SucursalService SucursalSrv
+@inject EmpresaCentralService EmpresaSrv
 
 <PageTitle>Facturar · Factu360</PageTitle>
 
@@ -167,7 +168,21 @@ else
     </main>
 
     <aside class="ticket" aria-label="Cobro">
-        <div class="t-fila sub-claro"><span>@sesion.Nombre</span><EstadoArcaIndicador /></div>
+        <div class="t-fila t-marca">
+            @* Logo de la empresa en una placa blanca; sin logo, nombre y sucursal *@
+            @if (logoEmpresa != null)
+            {
+                <span class="t-marca-placa"><img src="@logoEmpresa" alt="@NombreEmpresa" title="@NombreEmpresa" /></span>
+            }
+            else
+            {
+                <span class="t-marca-nombre">
+                    <strong>@NombreEmpresa</strong>
+                    @if (sesion.Sucursal != null) { <span>@sesion.Sucursal.Nombre</span> }
+                </span>
+            }
+            <EstadoArcaIndicador />
+        </div>
 
         @if (resultado != null && resultado.Ok)
         {
@@ -646,6 +661,10 @@ else
     /// <summary>Sucursales donde el dueño factura solo: no se les pide abrir la caja (script 16).</summary>
     private bool ExigeCaja => sesion?.Sucursal?.ExigeCaja ?? true;
 
+    /// <summary>Logo de la empresa (data URI) para el panel de cobro; null si no tiene.</summary>
+    private string logoEmpresa;
+    private string NombreEmpresa => string.IsNullOrWhiteSpace(sesion?.Tenant?.NombreFantasia) ? sesion?.Tenant?.Nombre : sesion.Tenant.NombreFantasia;
+
     private string EstadoCaja =>
         turno != null ? (turno.EsDeCaja && turno.FechaApertura.Date != DateTime.Today ? "Caja abierta " + turno.FechaApertura.ToString("dd/MM HH:mm") : "Caja abierta " + turno.FechaApertura.ToString("HH:mm"))
         : ExigeCaja ? "Caja cerrada" : "Sin caja";
@@ -658,6 +677,7 @@ else
         try
         {
             sesion = await SesionSrv.ObtenerAsync();
+            try { logoEmpresa = await EmpresaSrv.LogoDataUriAsync(sesion.Tenant.Id); } catch (Exception) { logoEmpresa = null; }
             balanza = await BalanzaSrv.ConfigAsync(sesion.Cs);
             // Lo que ve cada rol lo configura CM Tech en Empresas → Módulos.
             if (!sesion.TieneModulo(Modulo.Facturar)) { Nav.NavigateTo("/sin-permiso"); return; }
