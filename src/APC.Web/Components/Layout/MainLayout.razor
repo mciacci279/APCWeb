@@ -194,7 +194,16 @@
         {
             <p class="aviso-abono" role="status">@avisoAbono</p>
         }
-        @if (pideCaja)
+        @if (!RendererInfo.IsInteractive)
+        {
+            @* Primera carga (prerender): la pantalla todavía no responde a los clics. Se muestra un "Conectando…"
+               en vez del selector de caja o la página, así no se elige nada que después se pierda. *@
+            <div class="page-pad conectando" aria-busy="true">
+                <p class="sub"><span class="btn-arca-giro conectando-giro" aria-hidden="true"></span> Conectando…</p>
+                <table class="tabla"><tbody><FilasEsqueleto /></tbody></table>
+            </div>
+        }
+        else if (pideCaja)
         {
             @* La sucursal tiene varias cajas: hasta que elija una, no se muestra la pantalla *@
             <SelectorCaja Cs="@sesion.Cs" UsuarioId="sesion.UsuarioId" SucursalId="sesion.SucursalId"

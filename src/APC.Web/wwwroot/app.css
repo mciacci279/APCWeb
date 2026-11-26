@@ -1352,3 +1352,16 @@ h1 { font-weight: 800; }
   .sel-caja-placa { height: 76px; } .sel-caja-placa img { max-height: 52px; }
   .sel-caja-firma { position: static; align-self: flex-end; }
 }
+
+/* Estado de los servicios de ARCA (arriba a la derecha en Facturar) */
+.arca-estado { display: inline-flex; align-items: center; gap: 7px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  white-space: nowrap; cursor: help; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); }
+.arca-estado-punto { width: 9px; height: 9px; border-radius: 50%; background: #94A3B8; flex: none; }
+.arca-estado.ok { color: #BBF7D0; }
+.arca-estado.ok .arca-estado-punto { background: #22C55E; animation: latido-verde 1.8s ease-out infinite; }
+.arca-estado.caido { color: #FECACA; border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.14); }
+.arca-estado.caido .arca-estado-punto { background: #EF4444; animation: latido-rojo 1.2s ease-out infinite; }
+@keyframes latido-rojo { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.65); } 100% { box-shadow: 0 0 0 9px rgba(239,68,68,0); } }
+/* Primera carga: "Conectando…" */
+.conectando p { display: flex; align-items: center; gap: 8px; }
+.conectando-giro { border-color: rgba(47,123,245,.25); border-top-color: var(--azul-vivo); }

@@ -1,0 +1,48 @@
+@* Punto con el estado de los servicios de ARCA del ambiente de la empresa. Lee el último chequeo del
+   servidor (ArcaEstadoService, uno por minuto para todos): no consulta a ARCA por su cuenta. *@
+@implements IDisposable
+@inject ArcaEstadoService ArcaEstado
+@inject SesionService SesionSrv
+
+<span class="arca-estado @Clase" role="status" aria-live="polite" title="@Tooltip">
+    <span class="arca-estado-punto" aria-hidden="true"></span>
+    @Texto
+</span>
+
+@code {
+    private SesionActual sesion;
+    private EstadoArca estado = new();
+    private Timer timer;
+
+    private string Clase => estado.Ok == null ? "esperando" : estado.Ok == true ? "ok" : "caido";
+    private string Texto => estado.Ok == null ? "Servicios ARCA · consultando…"
+                          : estado.Ok == true ? "Servicios ARCA · OK" : "Servicios ARCA · Fuera de servicio";
+    private string Tooltip
+    {
+        get
+        {
+            var ambiente = sesion?.Tenant?.EsProduccion == true ? "producción" : "homologación";
+            var cada = (int)ArcaEstadoService.Intervalo.TotalSeconds;
+            var cuando = estado.Consultado != null ? $"Último chequeo: {estado.Consultado:HH:mm:ss}." : "Todavía sin chequear.";
+            var detalle = estado.Ok == false
+                ? (estado.Error != null ? $" Motivo: {estado.Error}." : $" Aplicación: {estado.AppServer} · Base: {estado.DbServer} · Autenticación: {estado.AuthServer}.")
+                : "";
+            return $"Factura electrónica de ARCA ({ambiente}). {cuando}{detalle} El estado se actualiza solo cada {cada} segundos.";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        sesion = await SesionSrv.ObtenerAsync();
+        Leer();
+        // Relee el estado guardado cada 30 s (el servidor consulta a ARCA una vez por minuto).
+        timer = new Timer(async _ =>
+        {
+            try { await InvokeAsync(() => { Leer(); StateHasChanged(); }); } catch (Exception) { }
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void Leer() => estado = ArcaEstado.Estado(sesion?.Tenant?.EsProduccion == true);
+
+    public void Dispose() => timer?.Dispose();
+}
