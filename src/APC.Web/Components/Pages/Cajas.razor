@@ -133,7 +133,16 @@
                         }
 
                         <div class="fila-btns">
-                            @if (c.Ocupada)
+                            @if (PuedePasarme(c))
+                            {
+                                @* El supervisor o administrador se cambia a sí mismo de caja *@
+                                <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado" @onclick="() => Pasarme(c)">Pasarme a esta caja</button>
+                            }
+                            else if (c.UsuarioId == sesion.UsuarioId && c.Ocupada)
+                            {
+                                <span class="etiqueta etiqueta-verde">Estás en esta caja</span>
+                            }
+                            @if (c.Ocupada && c.UsuarioId != sesion.UsuarioId)
                             {
                                 @if (confirmarLiberar == c.Id)
                                 {
@@ -279,6 +288,30 @@
     private int pagina = 1;
 
     private Timer refresco;
+
+    /// <summary>Se puede pasar a una caja libre y activa de su propia sucursal (no a la que ya está).</summary>
+    private bool PuedePasarme(PuestoCaja c) =>
+        (sesion.EsSupervisor || sesion.EsAdmin) && c.Activa && !c.Ocupada
+        && c.SucursalId == sesion.SucursalId && sesion.Caja?.CajaId != c.Id;
+
+    private async Task Pasarme(PuestoCaja c)
+    {
+        if (ocupado) return;
+        ocupado = true;
+        try
+        {
+            var (s, err) = await Puestos.TomarAsync(sesion.Cs, c.Id, sesion.UsuarioId);
+            if (err != null) { mensajeOk = false; mensaje = err; await CargarCajas(); return; }
+            sesion.Caja = s;
+            sesion.SinCaja = false;
+            mensajeOk = true;
+            mensaje = $"Ahora estás en {c.Titulo}.";
+            // Se navega a la misma pantalla para que el menú muestre la caja nueva.
+            Nav.NavigateTo("/cajas?en=" + c.Id.ToString("N")[..6]);
+            await CargarCajas();
+        }
+        finally { ocupado = false; }
+    }
 
     private Sucursal SucursalElegida => sucursales.FirstOrDefault(s => s.Id.ToString() == sucursalTexto) ?? sesion?.Sucursal;
 

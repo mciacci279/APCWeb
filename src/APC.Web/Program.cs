@@ -117,6 +117,9 @@ builder.Services.AddSingleton<FacturaAbonoService>();
 builder.Services.AddSingleton<TicketService>();
 builder.Services.AddSingleton<ProductoService>();
 builder.Services.AddSingleton<FamiliaService>();
+// Estado de ARCA: un chequeo por minuto para todo el servidor (FEDummy), las pantallas leen el último.
+builder.Services.AddSingleton<APC.Web.Servicios.ArcaEstadoService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<APC.Web.Servicios.ArcaEstadoService>());
 builder.Services.AddSingleton<ImportadorProductosService>();
 builder.Services.AddScoped<SesionService>();
 
