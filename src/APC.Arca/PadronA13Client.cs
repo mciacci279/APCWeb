@@ -26,6 +26,11 @@ namespace APC.Arca
         public string CodigoPostal { get; set; }
         public string Provincia { get; set; }
 
+        /// <summary>Respuesta tal cual de ARCA (padrón A13), para mostrarla en "Ver respuesta de ARCA".</summary>
+        public string RespuestaA13 { get; set; }
+        /// <summary>Respuesta de la constancia de inscripción (A5), si se pudo consultar.</summary>
+        public string RespuestaA5 { get; set; }
+
         /// <summary>"RESPONSABLE_INSCRIPTO", "MONOTRIBUTO", "EXENTO" o "CONSUMIDOR_FINAL".</summary>
         public string CondicionIva { get; set; }
 
@@ -96,6 +101,7 @@ namespace APC.Arca
                 return persona;
             }
 
+            persona.RespuestaA13 = respuesta;
             persona = Interpretar(respuesta, persona);
 
             // El padrón A13 trae los datos de identificación pero no los impuestos: la condición frente
@@ -120,14 +126,16 @@ namespace APC.Arca
                         contenido.Headers.Add("SOAPAction", "\"\"");
                         var r = await Http.PostAsync(urlA5, contenido);
                         var xml5 = await r.Content.ReadAsStringAsync();
+                        persona.RespuestaA5 = xml5;
                         var doc5 = XDocument.Parse(xml5);
                         if (Elemento(doc5.Root, "faultstring") == null && Elemento(doc5.Root, "datosGenerales") != null)
                             persona.CondicionIva = DeducirCondicion(doc5.Root);
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     // Sin la constancia de inscripción: la condición queda sin informar.
+                    if (persona.RespuestaA5 == null) persona.RespuestaA5 = "No se pudo consultar la constancia de inscripción (ws_sr_constancia_inscripcion): " + ex.Message;
                 }
             }
             return persona;
@@ -219,6 +227,30 @@ namespace APC.Arca
             if (impuestos.Contains("30")) return "RESPONSABLE_INSCRIPTO";
             if (impuestos.Contains("32")) return "EXENTO";
             return "CONSUMIDOR_FINAL";
+        }
+
+        /// <summary>
+        /// La respuesta de ARCA como filas legibles (sección / campo / valor), sin el sobre SOAP ni el token.
+        /// </summary>
+        public static System.Collections.Generic.List<(int Nivel, string Campo, string Valor)> Legible(string xml)
+        {
+            var filas = new System.Collections.Generic.List<(int, string, string)>();
+            XDocument doc;
+            try { doc = XDocument.Parse(xml ?? ""); }
+            catch (Exception) { filas.Add((0, "Respuesta", xml)); return filas; }
+            var cuerpo = doc.Root?.Descendants().FirstOrDefault(e => e.Name.LocalName == "Body") ?? doc.Root;
+            void Recorrer(XElement e, int nivel)
+            {
+                foreach (var h in e.Elements())
+                {
+                    var nombre = h.Name.LocalName;
+                    if (nombre == "token" || nombre == "sign") continue;
+                    if (h.HasElements) { filas.Add((nivel, nombre, null)); Recorrer(h, nivel + 1); }
+                    else filas.Add((nivel, nombre, h.Value?.Trim()));
+                }
+            }
+            if (cuerpo != null) Recorrer(cuerpo, 0);
+            return filas;
         }
 
         /// <summary>Primeros caracteres de una respuesta rara, sin etiquetas, para mostrar en el error.</summary>

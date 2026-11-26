@@ -51,7 +51,55 @@
 
     @if (mensaje != null)
     {
-        <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+        <div class="cliente-aviso">
+            <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+            @if (ultimaArca != null && (ultimaArca.RespuestaA13 != null || ultimaArca.RespuestaA5 != null))
+            {
+                <button type="button" class="btn btn-chico" @onclick="() => verArca = true" title="Ver todo lo que respondió ARCA">Ver respuesta de ARCA…</button>
+            }
+        </div>
+    }
+
+    @if (verArca && ultimaArca != null)
+    {
+        @* Respuesta completa de ARCA, en formato legible (y el XML crudo para copiar) *@
+        <div class="modal-fondo" @onclick="() => verArca = false">
+            <div class="panel modal-caja modal-arca" role="dialog" aria-modal="true" aria-labelledby="arca-tit" @onclick:stopPropagation="true">
+                <div class="modal-cab">
+                    <div>
+                        <h2 id="arca-tit">Respuesta de ARCA</h2>
+                        <span class="sub">CUIT @ultimaArca.Cuit · @DateTime.Now.ToString("dd/MM/yyyy HH:mm")</span>
+                    </div>
+                    <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="() => verArca = false">×</button>
+                </div>
+                <div class="pestanias" role="tablist">
+                    <button type="button" role="tab" aria-selected="@(!verXml ? "true" : "false")" class="pestania @(!verXml ? "activa" : "")" @onclick="() => verXml = false">Datos</button>
+                    <button type="button" role="tab" aria-selected="@(verXml ? "true" : "false")" class="pestania @(verXml ? "activa" : "")" @onclick="() => verXml = true">XML</button>
+                </div>
+                @foreach (var (titulo, xml) in Respuestas)
+                {
+                    <h3 class="arca-sec">@titulo</h3>
+                    @if (verXml)
+                    {
+                        <pre class="arca-xml">@Bonito(xml)</pre>
+                    }
+                    else
+                    {
+                        <table class="tabla tabla-chica arca-datos">
+                            <tbody>
+                                @foreach (var f in APC.Arca.PadronA13Client.Legible(xml))
+                                {
+                                    <tr class="@(f.Valor == null ? "arca-grupo" : "")">
+                                        <td style="padding-left: @(8 + f.Nivel * 16)px">@f.Campo</td>
+                                        <td class="mono">@f.Valor</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        </div>
     }
 
     @* 2) Datos de la persona *@
@@ -64,7 +112,7 @@
         @if (AplicaCondicion)
         {
             <div class="campo">
-                <label for="cli-iva">Condición frente al IVA</label>
+                <label for="cli-iva">Condición IVA</label>
                 <select id="cli-iva" class="input" disabled="@Deshabilitado" @bind="Datos.Condicion" @bind:after="Cambio">
                     <option value="@CondicionReceptor.ConsumidorFinal">Consumidor final</option>
                     <option value="@CondicionReceptor.ResponsableInscripto">Responsable inscripto</option>
@@ -98,6 +146,26 @@
     private List<ClienteItem> resultados = new();
     private bool sinResultados;
     private bool consultando;
+    /// <summary>Última consulta a ARCA (para "Ver respuesta de ARCA").</summary>
+    private APC.Arca.PersonaPadron ultimaArca;
+    private bool verArca;
+    private bool verXml;
+
+    private IEnumerable<(string, string)> Respuestas
+    {
+        get
+        {
+            if (ultimaArca?.RespuestaA13 != null) yield return ("Padrón A13 (ws_sr_padron_a13)", ultimaArca.RespuestaA13);
+            if (ultimaArca?.RespuestaA5 != null) yield return ("Constancia de inscripción (ws_sr_constancia_inscripcion)", ultimaArca.RespuestaA5);
+        }
+    }
+
+    /// <summary>XML con sangría para leer; si no es XML, el texto tal cual.</summary>
+    private static string Bonito(string xml)
+    {
+        try { return System.Xml.Linq.XDocument.Parse(xml).ToString(); }
+        catch (Exception) { return xml; }
+    }
     private string mensaje;
     private bool mensajeOk;
 
@@ -135,6 +203,7 @@
         try
         {
             var p = await Padron.ConsultarAsync(sesion.Tenant, Datos.ClienteDocumento);
+            ultimaArca = p;
             if (!p.Encontrada) { Mostrar(false, p.Error ?? "ARCA no devolvió datos para ese CUIT."); return; }
 
             Datos.ClienteId = null;
@@ -146,7 +215,7 @@
 
             var avisos = new List<string>();
             if (AplicaCondicion && p.CondicionIva == null)
-                avisos.Add("ARCA no informó la condición frente al IVA: quedó Consumidor final, revisala");
+                avisos.Add("ARCA no informó la condición IVA: quedó Consumidor final, revisala");
             if (!string.IsNullOrWhiteSpace(p.EstadoClave) && !p.EstadoClave.Equals("ACTIVO", StringComparison.OrdinalIgnoreCase))
                 avisos.Add("el CUIT figura " + p.EstadoClave.ToLowerInvariant());
             Mostrar(avisos.Count == 0, "Datos traídos de ARCA: " + p.NombreCompleto + (avisos.Count > 0 ? ". Atención: " + string.Join("; ", avisos) + "." : ""));
