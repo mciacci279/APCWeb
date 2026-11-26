@@ -1316,3 +1316,39 @@ h1 { font-weight: 800; }
 .dialogo-arca-cuerpo { flex: 1; overflow: auto; padding: 8px 20px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; align-items: start; }
 .dialogo-arca .arca-xml { max-height: none; }
 @media (max-width: 760px) { .dialogo-arca { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; } .dialogo-arca-cuerpo { grid-template-columns: 1fr; } }
+
+/* ---------- Logo de la empresa en el aviso de espera ---------- */
+.espera-marca { display: none; position: relative; align-items: center; justify-content: center; }
+.espera-firma { display: none; margin-top: 8px; padding-top: 12px; width: 100%; border-top: 1px solid rgba(255,255,255,.12);
+  align-items: center; justify-content: center; gap: 8px; color: #9FB0CE; font-size: 13px; font-weight: 600; }
+.espera.con-marca .espera-logo { display: none; }
+.espera.con-marca .espera-marca, .espera.con-marca .espera-firma { display: flex; }
+.espera.con-marca .espera-caja { max-width: 440px; }
+.espera-marca-fondo { position: relative; background: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+.espera-marca-img { display: block; object-fit: contain; }
+/* Logo cuadrado o redondo: círculo blanco con el anillo girando alrededor */
+.espera.circulo .espera-marca { width: 132px; height: 132px; }
+.espera.circulo .espera-marca .espera-anillo { display: block; }
+.espera.circulo .espera-placa-borde { display: none; }
+.espera.circulo .espera-marca-fondo { width: 112px; height: 112px; border-radius: 50%; }
+.espera.circulo .espera-marca-img { width: 78px; height: 78px; }
+/* Logo horizontal: placa blanca con borde animado */
+.espera.placa .espera-marca { padding: 4px; border-radius: 22px; overflow: hidden; }
+.espera.placa .espera-marca .espera-anillo { display: none; }
+.espera-placa-borde { display: none; position: absolute; left: 50%; top: 50%; width: 420px; height: 420px; margin: -210px 0 0 -210px;
+  background: conic-gradient(from 0deg, var(--naranja), var(--azul-vivo) 30%, rgba(47,123,245,0) 55%, var(--naranja)); animation: logo-gira 1.1s linear infinite; }
+.espera.placa .espera-placa-borde { display: block; }
+.espera.placa .espera-marca-fondo { width: 248px; height: 92px; border-radius: 18px; }
+.espera.placa .espera-marca-img { max-width: 212px; max-height: 64px; }
+@media (prefers-reduced-motion: reduce) { .espera-placa-borde { animation: none; } }
+
+/* ---------- Logo de la empresa en "¿En qué caja vas a trabajar?" ---------- */
+.sel-caja-firma { position: fixed; top: 24px; right: 32px; display: flex; align-items: center; gap: 8px; color: #9FB0CE; font-size: 13px; font-weight: 600; }
+.sel-caja-placa { flex: none; height: 96px; min-width: 96px; max-width: 240px; padding: 12px 18px; box-sizing: border-box; border-radius: 20px; background: #FFFFFF;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 34px rgba(0,0,0,.30); animation: aparecer .4s var(--ease) both; }
+.sel-caja-placa img { max-width: 204px; max-height: 72px; width: auto; height: auto; display: block; object-fit: contain; }
+@media (max-width: 640px) {
+  .sel-caja-cab { flex-direction: column; align-items: flex-start; }
+  .sel-caja-placa { height: 76px; } .sel-caja-placa img { max-height: 52px; }
+  .sel-caja-firma { position: static; align-self: flex-end; }
+}
