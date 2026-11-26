@@ -9,7 +9,7 @@
         <div class="campo cliente-bloque">
             <label for="cli-buscar">Buscar en tus clientes</label>
             <div class="buscador-cliente">
-                <input id="cli-buscar" class="input" autocomplete="off" placeholder="Nombre o documento y Enter"
+                <input id="cli-buscar" class="input" autocomplete="off" placeholder="Nombre o documento + Enter"
                        disabled="@Deshabilitado" @bind="texto" @bind:event="oninput" @onkeydown="BuscarKey" />
                 @if (resultados.Count > 0)
                 {
@@ -46,7 +46,6 @@
                     @(consultando ? "Buscando…" : "Buscar en ARCA")
                 </button>
             </div>
-            <span class="sub">Con el CUIT trae razón social, domicilio y condición frente al IVA.</span>
         </div>
     </div>
 
@@ -145,7 +144,12 @@
             // Si ARCA no informa la condición, queda Consumidor final.
             if (AplicaCondicion) Datos.Condicion = Condicion(p.CondicionIva);
 
-            Mostrar(true, "Datos traídos de ARCA: " + p.NombreCompleto);
+            var avisos = new List<string>();
+            if (AplicaCondicion && p.CondicionIva == null)
+                avisos.Add("ARCA no informó la condición frente al IVA: quedó Consumidor final, revisala");
+            if (!string.IsNullOrWhiteSpace(p.EstadoClave) && !p.EstadoClave.Equals("ACTIVO", StringComparison.OrdinalIgnoreCase))
+                avisos.Add("el CUIT figura " + p.EstadoClave.ToLowerInvariant());
+            Mostrar(avisos.Count == 0, "Datos traídos de ARCA: " + p.NombreCompleto + (avisos.Count > 0 ? ". Atención: " + string.Join("; ", avisos) + "." : ""));
             await OnCambio.InvokeAsync();
         }
         catch (Exception ex)
