@@ -613,7 +613,7 @@ else
     private Guid? presupuestoOrigenId;
     private string presupuestoOrigen;
 
-    private string Letra => empresa.EsMonotributo ? "C" : factura.Condicion == CondicionReceptor.ResponsableInscripto ? "A" : "B";
+    private string Letra => empresa.EsMonotributo ? "C" : factura.Condicion.RecibeFacturaA() ? "A" : "B";
     private decimal vuelto => pagaCon - totales.Total;
     /// <summary>"Paga con" y vuelto ocultos por ahora; poner en true para volver a mostrarlos.</summary>
     private const bool MostrarPagaCon = false;

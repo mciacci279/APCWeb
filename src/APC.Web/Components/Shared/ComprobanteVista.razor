@@ -78,6 +78,10 @@ else if (EsTicket)
             {
                 <div class="tk-fila"><span>No gravado</span><span>@c.MontoNoGravado.Value.ToString("N2", Ar)</span></div>
             }
+            @if (LeyendaMonotributo)
+            {
+                <div class="tk-sep" style="font-size:.85em">@TextoLeyendaMonotributo</div>
+            }
         }
         <div class="tk-fila tk-total"><span>TOTAL</span><span>@c.MontoTotal.ToString("N2", Ar)</span></div>
 
@@ -219,6 +223,10 @@ else
                     <div class="fa-ley-fila"><span>IVA Contenido: $</span><span>@c.MontoIva.ToString("N2", Ar)</span></div>
                     <div class="fa-ley-fila"><span>Otros Impuestos Nacionales Indirectos: $</span><span>0,00</span></div>
                 }
+                @if (LeyendaMonotributo)
+                {
+                    <div class="fa-ley">@TextoLeyendaMonotributo</div>
+                }
             </div>
             <div class="fa-totales">
                 @if (EsA)
@@ -323,6 +331,11 @@ else
     }
     private decimal NetoGravado => c.MontoTotal - c.MontoIva - (c.MontoNoGravado ?? 0);
     private bool EsA => c.Letra == "A";
+    /// <summary>Factura A a un monotributista: leyenda obligatoria (RG 5003, Ley 27.618).</summary>
+    private bool LeyendaMonotributo => EsA && !c.EsNotaCredito
+        && (c.ClienteCondicionIva ?? "").Contains("MONOTRIBUT", StringComparison.OrdinalIgnoreCase);
+    private const string TextoLeyendaMonotributo =
+        "El crédito fiscal discriminado en el presente comprobante sólo podrá ser computado a efectos del Régimen de Sostenimiento e Inclusión Fiscal para Pequeños Contribuyentes de la Ley N° 27.618.";
 
     /// <summary>En la factura A los precios van sin IVA (se discrimina abajo); en B y C, con IVA incluido.</summary>
     private decimal PrecioUnitario(RenglonImpresion r) =>

@@ -133,6 +133,16 @@ public enum CondicionReceptor
     NoResponsable
 }
 
+public static class CondicionReceptorExt
+{
+    /// <summary>
+    /// Un emisor Responsable Inscripto debe emitir Factura A a Responsables Inscriptos y a Monotributistas
+    /// (ARCA rechaza la Factura B a monotributistas con el error 10243).
+    /// </summary>
+    public static bool RecibeFacturaA(this CondicionReceptor c) =>
+        c == CondicionReceptor.ResponsableInscripto || c == CondicionReceptor.Monotributo;
+}
+
 public class RenglonCarrito
 {
     /// <summary>Identificador del renglón en pantalla (para enfocar sus campos).</summary>
