@@ -4,6 +4,7 @@
 @inject EmpresaCentralService EmpresaSrv
 @inject MigracionService Migraciones
 @inject SesionService SesionSrv
+@inject IJSRuntime JS
 
 <PageTitle>Base de datos · Factu360</PageTitle>
 
@@ -14,6 +15,7 @@
             <span class="sub">Panel de CM Tech · @scripts.Count scripts en la carpeta</span>
         </div>
         <div class="fila-btns">
+            <button type="button" class="btn" disabled="@(scripts.Count == 0)" @onclick="AbrirCatalogo">Ver scripts (@scripts.Count)</button>
             <button type="button" class="btn" disabled="@ocupado" @onclick="Cargar">Actualizar</button>
             @if (Atrasadas.Count > 0)
             {
@@ -82,7 +84,7 @@
 
                         <tr class="@(EsSistema(b) ? "fila-sistema" : "") @(b.Accesible ? "" : "fila-mal")">
                             <td>
-                                <button type="button" class="link-fila" @onclick="() => Abrir(b)">@b.Nombre</button>
+                                <button type="button" class="link-fila" @onclick="() => AbrirBase(b, false)">@b.Nombre</button>
                                 @if (b.EsCentral) { <span class="sub"> · empresas, usuarios y abonos</span> }
                                 else if (b.EsPlantilla) { <span class="sub"> · de acá se copian las bases nuevas</span> }
                                 else if (b.Codigo != null) { <span class="sub mono"> · @b.Codigo</span> }
@@ -100,7 +102,17 @@
                                 }
                                 else
                                 {
-                                    <span class="texto-error">faltan @b.Pendientes</span>
+                                    @* Cuáles faltan: chips con el número; clic abre el detalle *@
+                                    <button type="button" class="pendientes-btn" @onclick="() => AbrirBase(b, true)" title="Ver cuáles faltan y su contenido">
+                                        <span class="texto-error">faltan @b.Pendientes</span>
+                                        <span class="pendientes-chips">
+                                            @foreach (var p in b.Scripts.Where(x => !x.Corrido).Take(6))
+                                            {
+                                                <span class="chip-script">@p.Script.Numero.ToString("00")</span>
+                                            }
+                                            @if (b.Pendientes > 6) { <span class="chip-script">+@(b.Pendientes - 6)</span> }
+                                        </span>
+                                    </button>
                                 }
                             </td>
                             <td class="sub">
@@ -124,63 +136,6 @@
                             </td>
                         </tr>
 
-                        @if (abierta == b.Nombre)
-                        {
-                            <tr class="fila-detalle">
-                                <td colspan="5">
-                                    @if (!b.Accesible)
-                                    {
-                                        <p class="alerta alerta-error">@b.Error</p>
-                                    }
-                                    else
-                                    {
-                                        <table class="tabla tabla-chica">
-                                            <thead>
-                                                <tr><th class="der">Nº</th><th>Script</th><th>Estado</th><th></th></tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var s in b.Scripts)
-                                                {
-                                                    <tr>
-                                                        <td class="der mono">@s.Script.Numero.ToString("00")</td>
-                                                        <td>
-                                                            @s.Script.Titulo
-                                                            <span class="sub mono"> · @s.Script.Nombre</span>
-                                                        </td>
-                                                        <td>
-                                                            @if (s.Corrido)
-                                                            {
-                                                                <span class="texto-ok">@s.Fecha?.ToString("dd/MM/yyyy HH:mm")</span>
-                                                                @if (s.Quien != null) { <span class="sub"> · @s.Quien</span> }
-                                                            }
-                                                            else
-                                                            {
-                                                                <span class="texto-error">pendiente</span>
-                                                            }
-                                                        </td>
-                                                        <td class="der">
-                                                            @if (s.Corrido)
-                                                            {
-                                                                <button type="button" class="btn btn-chico" disabled="@ocupado"
-                                                                        @onclick="() => Olvidar(b, s)">Marcar pendiente</button>
-                                                            }
-                                                            else
-                                                            {
-                                                                <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado"
-                                                                        @onclick="() => Correr(b, s)">Correr</button>
-                                                                <button type="button" class="btn btn-chico" disabled="@ocupado"
-                                                                        @onclick="() => Marcar(b, s)" title="Ya estaba corrido de antes: solo anotarlo">Ya estaba</button>
-                                                            }
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                        <p class="sub">Los scripts son idempotentes: correr uno que ya estaba no rompe nada. «Ya estaba» solo lo anota, sin ejecutarlo.</p>
-                                    }
-                                </td>
-                            </tr>
-                        }
                     }
                 </tbody>
             </table>
@@ -191,12 +146,217 @@
             «Poner al día» saltea las empresas suspendidas; si igual querés correrle los scripts a una, usá el botón de su fila.
         </p>
     }
+
+    @* ---------- Ventana: scripts de una base ---------- *@
+    <dialog @ref="dlgBase" class="dialogo-bd" aria-labelledby="bd-base-tit">
+        @if (modalBase != null)
+        {
+            var b = modalBase;
+            var lista = soloPendientes ? b.Scripts.Where(x => !x.Corrido).ToList() : b.Scripts.OrderBy(x => x.Corrido).ThenBy(x => x.Script.Numero).ToList();
+            <div class="dialogo-bd-cab">
+                <div>
+                    <h2 id="bd-base-tit">@b.Nombre</h2>
+                    <span class="sub">@(b.Base ?? "—") · @(b.Accesible ? (b.AlDia ? $"al día ({b.Total} de {b.Total})" : $"faltan {b.Pendientes} de {b.Total}") : "sin conexión")</span>
+                </div>
+                <div class="fila-btns">
+                    @if (b.Accesible && !b.AlDia)
+                    {
+                        <div class="pestanias" role="tablist">
+                            <button type="button" role="tab" aria-selected="@(soloPendientes ? "true" : "false")" class="pestania @(soloPendientes ? "activa" : "")" @onclick="() => soloPendientes = true">Pendientes (@b.Pendientes)</button>
+                            <button type="button" role="tab" aria-selected="@(!soloPendientes ? "true" : "false")" class="pestania @(!soloPendientes ? "activa" : "")" @onclick="() => soloPendientes = false">Todos (@b.Total)</button>
+                        </div>
+                    }
+                    <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="() => Cerrar(dlgBase)">×</button>
+                </div>
+            </div>
+            <div class="dialogo-bd-cuerpo">
+                @if (mensaje != null)
+                {
+                    <p class="alerta @(mensajeOk ? "alerta-ok" : "alerta-error")" role="status">@mensaje</p>
+                }
+                @if (!b.Accesible)
+                {
+                    <p class="alerta alerta-error">@b.Error</p>
+                }
+                else if (lista.Count == 0)
+                {
+                    <p class="alerta alerta-ok">No le falta ningún script.</p>
+                }
+                else
+                {
+                    <ul class="bd-scripts">
+                        @foreach (var sc in lista)
+                        {
+                            <li class="@(sc.Corrido ? "corrido" : "pendiente")">
+                                <span class="bd-num mono">@sc.Script.Numero.ToString("00")</span>
+                                <span class="bd-info">
+                                    <strong>@sc.Script.Titulo</strong>
+                                    <span class="sub mono">@sc.Script.Nombre</span>
+                                    @if (sc.Corrido)
+                                    {
+                                        <span class="texto-ok">Corrido @sc.Fecha?.ToString("dd/MM/yyyy HH:mm")@(sc.Quien != null ? " · " + sc.Quien : "")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="texto-error">Pendiente</span>
+                                    }
+                                </span>
+                                <span class="fila-btns">
+                                    <button type="button" class="btn btn-chico" @onclick="() => VerScript(sc.Script, b)">Ver contenido</button>
+                                    @if (sc.Corrido)
+                                    {
+                                        <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => Olvidar(b, sc)">Marcar pendiente</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado" @onclick="() => Correr(b, sc)">Correr</button>
+                                        <button type="button" class="btn btn-chico" disabled="@ocupado" @onclick="() => Marcar(b, sc)" title="Ya estaba corrido de antes: solo anotarlo">Ya estaba</button>
+                                    }
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div class="dialogo-bd-pie">
+                <span class="sub">Los scripts son idempotentes: correr uno que ya estaba no rompe nada. «Ya estaba» solo lo anota, sin ejecutarlo.</span>
+                @if (b.Accesible && !b.AlDia)
+                {
+                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="() => CorrerPendientes(b)">@(ocupado ? "Corriendo…" : $"Correr los {b.Pendientes} pendientes")</button>
+                }
+            </div>
+        }
+    </dialog>
+
+    @* ---------- Ventana: todos los scripts de la carpeta ---------- *@
+    <dialog @ref="dlgCatalogo" class="dialogo-bd" aria-labelledby="bd-cat-tit">
+        <div class="dialogo-bd-cab">
+            <div>
+                <h2 id="bd-cat-tit">Scripts de la carpeta</h2>
+                <span class="sub mono">@Migraciones.Carpeta</span>
+            </div>
+            <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="() => Cerrar(dlgCatalogo)">×</button>
+        </div>
+        <div class="dialogo-bd-cuerpo">
+            <ul class="bd-scripts">
+                @foreach (var sc in scripts.OrderByDescending(x => x.Numero))
+                {
+                    var faltan = BasesQueLeFaltan(sc);
+                    <li class="@(faltan.Count > 0 ? "pendiente" : "corrido")">
+                        <span class="bd-num mono">@sc.Numero.ToString("00")</span>
+                        <span class="bd-info">
+                            <strong>@sc.Titulo</strong>
+                            <span class="sub mono">@sc.Nombre · @(sc.ParaCentral ? "base central" : "cada empresa")</span>
+                            @if (faltan.Count > 0)
+                            {
+                                <span class="texto-error" title="@string.Join(", ", faltan.Select(x => x.Nombre))">Falta en @faltan.Count @(faltan.Count == 1 ? "base" : "bases"): @string.Join(", ", faltan.Take(3).Select(x => x.Nombre))@(faltan.Count > 3 ? "…" : "")</span>
+                            }
+                            else
+                            {
+                                <span class="texto-ok">Corrido en todas</span>
+                            }
+                        </span>
+                        <span class="fila-btns"><button type="button" class="btn btn-chico" @onclick="() => VerScript(sc, null)">Ver contenido</button></span>
+                    </li>
+                }
+            </ul>
+        </div>
+    </dialog>
+
+    @* ---------- Ventana: contenido de un script ---------- *@
+    <dialog @ref="dlgPrevia" class="dialogo-bd dialogo-sql" aria-labelledby="bd-sql-tit">
+        @if (previa != null)
+        {
+            var enBase = previaBase?.Scripts.FirstOrDefault(x => x.Script.Nombre == previa.Nombre);
+            <div class="dialogo-bd-cab">
+                <div>
+                    <h2 id="bd-sql-tit"><span class="mono">@previa.Numero.ToString("00")</span> · @previa.Titulo</h2>
+                    <span class="sub mono">@previa.Nombre · @(previa.ParaCentral ? "va en la base central" : "va en la base de cada empresa") · @Lineas líneas · @Lotes lote(s) separados por GO</span>
+                </div>
+                <div class="fila-btns">
+                    <button type="button" class="btn btn-chico" @onclick="Copiar">@(copiado ? "¡Copiado!" : "Copiar")</button>
+                    @if (previaBase != null && enBase != null && !enBase.Corrido && previaBase.Accesible)
+                    {
+                        <button type="button" class="btn btn-chico btn-primario" disabled="@ocupado" @onclick="() => CorrerDesdePrevia(previaBase, enBase)">Correr en @previaBase.Nombre</button>
+                    }
+                    <button type="button" class="modal-cerrar" aria-label="Cerrar" @onclick="() => Cerrar(dlgPrevia)">×</button>
+                </div>
+            </div>
+            <div class="dialogo-bd-cuerpo">
+                @if (previaTexto == null)
+                {
+                    <p class="alerta alerta-error">No se pudo leer el archivo.</p>
+                }
+                else
+                {
+                    <pre class="sql-vista"><code>@SqlResaltado.Html(previaTexto)</code></pre>
+                }
+            </div>
+        }
+    </dialog>
 </div>
 
 @code {
     private List<ScriptSql> scripts = new();
     private List<EstadoBase> bases = new();
-    private string abierta;
+    private ElementReference dlgBase, dlgCatalogo, dlgPrevia;
+    private EstadoBase modalBase;
+    private bool soloPendientes = true;
+    private ScriptSql previa;
+    private EstadoBase previaBase;
+    private string previaTexto;
+    private bool copiado;
+
+    private int Lineas => previaTexto == null ? 0 : previaTexto.Split('\n').Length;
+    private int Lotes => previaTexto == null ? 0 : MigracionService.PartirEnLotes(previaTexto).Count;
+
+    /// <summary>Bases (de su destino) a las que les falta ese script.</summary>
+    private List<EstadoBase> BasesQueLeFaltan(ScriptSql sc) =>
+        bases.Where(b => b.Accesible && b.EsCentral == sc.ParaCentral && b.Scripts.Any(x => x.Script.Nombre == sc.Nombre && !x.Corrido)).ToList();
+
+    private async Task Abrir(ElementReference el)
+    {
+        try { await JS.InvokeVoidAsync("apc.abrirDialogo", el); }
+        catch (Exception) { Aviso(false, "No se pudo abrir la ventana: recargá la página (Ctrl+F5)."); }
+    }
+
+    private async Task Cerrar(ElementReference el)
+    {
+        try { await JS.InvokeVoidAsync("apc.cerrarDialogo", el); } catch (Exception) { }
+    }
+
+    private async Task AbrirBase(EstadoBase b, bool pendientes)
+    {
+        modalBase = b;
+        soloPendientes = pendientes && b.Accesible && !b.AlDia;
+        mensaje = null;
+        StateHasChanged();
+        await Abrir(dlgBase);
+    }
+
+    private async Task AbrirCatalogo() { StateHasChanged(); await Abrir(dlgCatalogo); }
+
+    private async Task VerScript(ScriptSql sc, EstadoBase b)
+    {
+        previa = sc;
+        previaBase = b;
+        previaTexto = Migraciones.Contenido(sc);
+        copiado = false;
+        StateHasChanged();
+        await Abrir(dlgPrevia);
+    }
+
+    private async Task Copiar()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", previaTexto ?? ""); copiado = true; }
+        catch (Exception) { copiado = false; }
+    }
+
+    private async Task CorrerDesdePrevia(EstadoBase b, ScriptEnBase sc)
+    {
+        await Correr(b, sc);
+        previaBase = modalBase;
+    }
     private bool cargando = true;
     private bool ocupado;
     private string mensaje;
@@ -237,8 +397,6 @@
         }
         finally { cargando = false; }
     }
-
-    private void Abrir(EstadoBase b) => abierta = abierta == b.Nombre ? null : b.Nombre;
 
     private async Task Correr(EstadoBase b, ScriptEnBase s)
     {
@@ -319,8 +477,12 @@
         nuevo.EmpresaId = b.EmpresaId;
         nuevo.Codigo = b.Codigo;
         nuevo.EsPlantilla = b.EsPlantilla;
+        nuevo.Habilitada = b.Habilitada;
+        nuevo.Estado = b.Estado;
         var i = bases.FindIndex(x => x.Nombre == b.Nombre);
         if (i >= 0) bases[i] = nuevo;
+        if (modalBase?.Nombre == b.Nombre) modalBase = nuevo;
+        if (previaBase?.Nombre == b.Nombre) previaBase = nuevo;
     }
 
     private void Aviso(bool ok, string texto) { mensajeOk = ok; mensaje = texto; }

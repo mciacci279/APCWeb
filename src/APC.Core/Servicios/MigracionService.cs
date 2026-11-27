@@ -56,6 +56,18 @@ public class MigracionService
         return lista.OrderBy(x => x.Numero).ThenBy(x => x.Nombre).ToList();
     }
 
+    /// <summary>Texto completo de un script, para previsualizarlo (hasta 512 KB).</summary>
+    public string Contenido(ScriptSql script)
+    {
+        try
+        {
+            var info = new FileInfo(script.Ruta);
+            if (!info.Exists) return null;
+            return info.Length > 512 * 1024 ? Leer(script.Ruta, 512 * 1024) + "\n-- … (archivo recortado para la vista previa)" : File.ReadAllText(script.Ruta);
+        }
+        catch (IOException) { return null; }
+    }
+
     private static bool EsCentral(string destino, string archivo) =>
         destino != null
             ? destino.Equals("central", StringComparison.OrdinalIgnoreCase)
