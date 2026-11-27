@@ -204,7 +204,8 @@ public class FacturaAbonoService
             {
                 new()
                 {
-                    Producto = string.IsNullOrWhiteSpace(c.Concepto) ? "Abono APC Web · " + Cobro.TextoDePeriodo(c.Periodo) : c.Concepto,
+                    Producto = string.IsNullOrWhiteSpace(c.Concepto) ? "Abono APC Web · " + Cobro.TextoDePeriodo(c.Periodo)
+                             : DescripcionConFechas.Reemplazar(c.Concepto, c.FechaEmision ?? DateTime.Now),
                     CantidadRenglon = 1,
                     PU = c.Monto,
                     MontoRenglon = c.Monto

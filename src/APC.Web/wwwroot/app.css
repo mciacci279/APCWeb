@@ -1374,3 +1374,9 @@ h1 { font-weight: 800; }
 .t-marca-nombre { display: flex; flex-direction: column; min-width: 0; }
 .t-marca-nombre strong { font-size: 15px; font-weight: 800; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
 .t-marca-nombre span { font-size: 12px; color: #9FB0CE; }
+
+/* Variables de fecha en la descripción del producto */
+.ayuda-variables { display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.5; }
+.ayuda-variables code { padding: 1px 5px; border-radius: 5px; background: var(--fondo); font-size: 12px; color: var(--texto); }
+.ayuda-previa { display: block; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: #EEF5FF; font-size: 13px; color: var(--texto); }
+.r-variables { color: var(--azul-vivo); cursor: help; font-size: 12px; }
