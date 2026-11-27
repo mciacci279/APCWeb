@@ -1386,3 +1386,44 @@ h1 { font-weight: 800; }
 .contador { align-self: flex-end; font-size: 12px; color: var(--texto-2); }
 .contador.cerca { color: #B4470B; font-weight: 700; }
 .desc-multilinea, .tk-desc, .r-nombre { white-space: pre-line; }
+
+/* ---------- Base de datos (central): pendientes y vista previa de scripts ---------- */
+.pendientes-btn { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px 6px; margin: -4px -6px; border: 0; border-radius: 8px;
+  background: none; font: inherit; cursor: pointer; }
+.pendientes-btn:hover { background: #FFF1F0; }
+.pendientes-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.chip-script { min-width: 26px; padding: 1px 6px; border-radius: 999px; background: #FDE8E7; color: #B42318; font: 700 11.5px/18px ui-monospace, Consolas, monospace; text-align: center; }
+.dialogo-bd { width: min(980px, 94vw); max-height: 90vh; padding: 0; border: 0; border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(10,25,45,.45); color: var(--texto); }
+.dialogo-bd[open] { display: flex; flex-direction: column; animation: aparecer .2s ease both; }
+.dialogo-bd::backdrop { background: rgba(10, 26, 61, .55); backdrop-filter: blur(3px); }
+.dialogo-sql { width: min(1200px, 96vw); height: 90vh; }
+.dialogo-bd-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 20px; border-bottom: 1px solid var(--borde); }
+.dialogo-bd-cab h2 { margin: 0 0 2px; font-size: 20px; }
+.dialogo-bd-cuerpo { flex: 1; overflow: auto; padding: 14px 20px; }
+.dialogo-bd-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--borde); background: var(--fondo); }
+.bd-scripts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.bd-scripts li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--borde); background: #fff; animation: aparecer .25s ease both; }
+.bd-scripts li.pendiente { border-left: 4px solid #E5484D; }
+.bd-scripts li.corrido { border-left: 4px solid #22C55E; }
+.bd-num { width: 40px; height: 40px; border-radius: 10px; background: var(--fondo); display: flex; align-items: center; justify-content: center; font-weight: 800; }
+.bd-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bd-info .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 700px) { .bd-scripts li { grid-template-columns: 40px 1fr; } .bd-scripts li > .fila-btns { grid-column: 1 / -1; } }
+/* Vista previa de SQL con números de línea */
+.sql-vista { margin: 0; padding: 14px 0; border-radius: 12px; background: #0F1B33; color: #DCE6F7; font: 13px/1.55 ui-monospace, Consolas, "Cascadia Code", monospace; overflow: auto; counter-reset: linea; }
+.sql-vista code { display: block; font: inherit; }
+.sql-l { display: block; padding: 0 16px 0 0; white-space: pre; }
+.sql-l::before { counter-increment: linea; content: counter(linea); display: inline-block; width: 46px; margin-right: 14px; padding-right: 8px; text-align: right; color: #5B6B88; border-right: 1px solid #22304D; user-select: none; }
+.sql-c { color: #7F8EA8; font-style: italic; }
+.sql-k { color: #7CB7FF; font-weight: 700; }
+.sql-s { color: #FFC27A; }
+.sql-n { color: #C4A7FF; }
+.sql-v { color: #7EE0C3; }
+.sql-go { color: #F26B1D; font-weight: 800; }
+/* Elegir qué scripts correr */
+.bd-check { position: relative; cursor: pointer; flex-direction: column; gap: 0; }
+.bd-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--azul-vivo); cursor: pointer; }
+.bd-check .mono { font-size: 11px; line-height: 1; }
+.bd-scripts li.elegido { background: #F3F8FF; border-color: #CFE3FB; }
+.bd-scripts li.pendiente:not(.elegido) { opacity: .75; }
+.pendientes-nombre { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
