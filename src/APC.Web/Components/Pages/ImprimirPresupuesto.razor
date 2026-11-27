@@ -12,6 +12,82 @@
 {
     <p class="page-pad">Presupuesto no encontrado.</p>
 }
+else if (EsTicket)
+{
+    @* ---------------- Ticket 80 mm, como el de las facturas ---------------- *@
+    <div class="impresion ticket-80" data-autoprint="true">
+        @if (logo != null)
+        {
+            <img class="imp-logo" src="@logo" alt="@titular" />
+        }
+        else
+        {
+            <div class="tk-razon">@titular</div>
+        }
+        @if (logo != null || !string.Equals(titular, razon, StringComparison.OrdinalIgnoreCase))
+        {
+            <div class="tk-dato tk-razon-social"><span>Razón social:</span><span>@razon</span></div>
+        }
+        @if (!string.IsNullOrWhiteSpace(empresa.Domicilio)) { <div>@empresa.Domicilio</div> }
+        <div class="tk-dato"><span>CUIT Nro:</span><span>@FormatoCuit(empresa.Cuit)</span></div>
+        @if (!string.IsNullOrWhiteSpace(empresa.Telefono1)) { <div class="tk-dato"><span>Tel.:</span><span>@empresa.Telefono1</span></div> }
+
+        <hr class="tk-linea" />
+        <div class="tk-comprobante">
+            <div class="tk-fila">
+                <strong>PRESUPUESTO</strong>
+                <strong>Nº: @p.NumeroCompleto</strong>
+            </div>
+            <div class="tk-fila tk-der"><span>No válido como factura</span><span>Fecha: @p.Fecha.ToString("dd-MM-yyyy")</span></div>
+            <div class="tk-der">Hora: @p.Fecha.ToString("HH:mm:ss")</div>
+        </div>
+
+        <hr class="tk-linea" />
+        <div>Forma Pago: @p.FormaPago</div>
+        <hr class="tk-linea" />
+        <div>@cli.Nombre</div>
+        @if (!string.IsNullOrWhiteSpace(cli.Documento)) { <div>CUIT/DNI: @cli.Documento</div> }
+        @if (!string.IsNullOrWhiteSpace(cli.Domicilio)) { <div>@cli.Domicilio@(string.IsNullOrWhiteSpace(cli.Localidad) ? "" : " - " + cli.Localidad)</div> }
+        <hr class="tk-linea" />
+
+        <div class="tk-renglones">
+            @foreach (var r in p.Renglones)
+            {
+                <div>@r.CantidadRenglon.ToString("N3", Ar) x @r.Pu.ToString("N2", Ar)@(r.DescuentoRenglon == 0 ? "" : "  (" + AjusteTexto(r.DescuentoRenglon) + ")")</div>
+                <div class="tk-fila">
+                    <span class="tk-desc">@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@DescripcionConFechas.Reemplazar(r.Producto, p.Fecha)</span>
+                    <span>@r.MontoRenglon.ToString("N2", Ar)</span>
+                </div>
+            }
+        </div>
+
+        @if (p.MontoDescuento > 0) { <div class="tk-fila tk-sep"><span>Descuentos</span><span>−@p.MontoDescuento.ToString("N2", Ar)</span></div> }
+        @if (p.MontoRecargo > 0) { <div class="tk-fila"><span>Recargos</span><span>+@p.MontoRecargo.ToString("N2", Ar)</span></div> }
+        <div class="tk-fila tk-total"><span>TOTAL</span><span>@p.MontoTotal.ToString("N2", Ar)</span></div>
+
+        <hr class="tk-linea" />
+        <div class="tk-pie-datos">
+            <span>Operador:</span>
+            <span>@p.Usuario</span>
+            <strong class="tk-espacio">PRESUPUESTO · NO VÁLIDO COMO FACTURA</strong>
+            <span>Precios sujetos a modificación sin previo aviso.</span>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(cli.Observaciones))
+        {
+            <hr class="tk-linea" />
+            <div class="tk-obs">@cli.Observaciones</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(leyenda))
+        {
+            <div class="tk-gracias">@leyenda</div>
+        }
+
+        <div class="no-imprimir imp-acciones">
+            <button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button>
+            <a class="btn" href="/imprimir/presupuesto/@Id?formato=a4">Ver en A4</a>
+        </div>
+    </div>
+}
 else
 {
     <div class="impresion hoja-a4" data-autoprint="true">
@@ -104,6 +180,7 @@ else
 
         <div class="no-imprimir imp-acciones">
             <button type="button" class="btn btn-primario" onclick="window.print()">Imprimir</button>
+            <a class="btn" href="/imprimir/presupuesto/@Id?formato=ticket">Ver ticket</a>
         </div>
     </div>
 }
@@ -112,6 +189,11 @@ else
     private static readonly CultureInfo Ar = new("es-AR");
 
     [Parameter] public Guid Id { get; set; }
+    /// <summary>formato=ticket: ticket 80 mm. Sin formato (o a4): hoja A4.</summary>
+    [SupplyParameterFromQuery(Name = "formato")] public string Formato { get; set; }
+
+    private bool EsTicket => string.Equals(Formato, "ticket", StringComparison.OrdinalIgnoreCase);
+    private string leyenda;
 
     private PresupuestoImpresion p;
     private PresupuestoCliente cli;
@@ -133,6 +215,7 @@ else
         logo = await EmpresaSrv.LogoDataUriAsync(s.Tenant.Id);
         razonSocial = s.Tenant.Nombre;
         fantasia = s.Tenant.NombreFantasia;
+        leyenda = s.Sucursal?.LeyendaTicket is { Length: > 0 } propia ? propia : s.Tenant.LeyendaTicket;
     }
 
     /// <summary>Descuento del renglón; en negativo es un incremento (DetallePresupuesto solo tiene DescuentoRenglon).</summary>

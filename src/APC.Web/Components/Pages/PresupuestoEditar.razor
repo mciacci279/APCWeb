@@ -192,12 +192,14 @@ else
         <div class="t-spacer"></div>
         @if (!soloLectura)
         {
-            <button type="button" class="btn-presupuesto" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: true))">@(guardando ? "Guardando…" : "Guardar e imprimir A4  ·  F9")</button>
+            <button type="button" class="btn-presupuesto" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: true, ticket: true))">@(guardando ? "Guardando…" : "Guardar e imprimir ticket  ·  F8")</button>
+            <button type="button" class="btn-emitir-sec" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: true))">Guardar e imprimir A4  ·  F9</button>
             <button type="button" class="btn-emitir-sec" disabled="@(!PuedeGuardar)" @onclick="@(() => Guardar(imprimir: false))">Guardar sin imprimir  ·  Ctrl+F12</button>
         }
         @if (idActual != null)
         {
-            <button type="button" class="btn-emitir-sec" @onclick="Imprimir">Imprimir A4</button>
+            <button type="button" class="btn-emitir-sec" @onclick="() => Imprimir()">Imprimir A4</button>
+            <button type="button" class="btn-emitir-sec" @onclick="() => Imprimir(true)">Imprimir ticket</button>
             @if (!soloLectura)
             {
                 <button type="button" class="btn-emitir-sec" @onclick="PasarAFactura">Pasar a factura</button>
@@ -299,10 +301,10 @@ else
         }
     }
 
-    // Atajos (app.js): F9 guarda e imprime, Ctrl+F12 guarda sin imprimir; las teclas de factura no hacen nada acá.
+    // Atajos (app.js): F8 guarda e imprime ticket, F9 guarda e imprime A4, Ctrl+F12 guarda sin imprimir; las teclas de factura no hacen nada acá.
     [JSInvokable] public Task AtajoFacturaA4() => AtajoGuardar(true);
+    [JSInvokable] public Task AtajoFacturaTicket() => AtajoGuardar(true, ticket: true);
     [JSInvokable] public Task AtajoPresupuesto() => AtajoGuardar(false);
-    [JSInvokable] public void AtajoFacturaTicket() { }
     [JSInvokable] public void AtajoPedidoA4() { }
     [JSInvokable] public void AtajoPedidoTicket() { }
     [JSInvokable] public void AtajoPedidoSinImprimir() { }
@@ -311,9 +313,9 @@ else
     [JSInvokable] public void AtajoCancelar() { }
     [JSInvokable] public void AtajoConsulta() { }
 
-    private async Task AtajoGuardar(bool imprimir)
+    private async Task AtajoGuardar(bool imprimir, bool ticket = false)
     {
-        if (PuedeGuardar) await Guardar(imprimir);
+        if (PuedeGuardar) await Guardar(imprimir, ticket);
         StateHasChanged();
     }
 
@@ -437,7 +439,7 @@ else
     private void Quitar(RenglonCarrito r) => datos.Renglones.Remove(r);
     private void ToggleCliente() => verCliente = !verCliente;
 
-    private async Task Guardar(bool imprimir)
+    private async Task Guardar(bool imprimir, bool ticket = false)
     {
         if (!PuedeGuardar) return;
         guardando = true;
@@ -450,7 +452,7 @@ else
             if (err != null) { error = err; return; }
             idActual = id;
             guardado = numero;
-            if (imprimir) await Imprimir();
+            if (imprimir) await Imprimir(ticket);
         }
         catch (Exception ex)
         {
@@ -462,7 +464,8 @@ else
         }
     }
 
-    private async Task Imprimir() => await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{idActual}");
+    private async Task Imprimir(bool ticket = false) =>
+        await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{idActual}" + (ticket ? "?formato=ticket" : ""));
 
     private void PasarAFactura() => Nav.NavigateTo($"/?presupuesto={idActual}");
 

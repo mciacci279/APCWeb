@@ -1427,3 +1427,6 @@ h1 { font-weight: 800; }
 .bd-scripts li.elegido { background: #F3F8FF; border-color: #CFE3FB; }
 .bd-scripts li.pendiente:not(.elegido) { opacity: .75; }
 .pendientes-nombre { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+/* Leyenda Ley 27.618 (Factura A a monotributistas) en el ticket */
+.tk-ley-mono { font-size: .85em; line-height: 1.25; }

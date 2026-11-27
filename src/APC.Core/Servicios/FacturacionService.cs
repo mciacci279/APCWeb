@@ -130,7 +130,7 @@ public class FacturacionService
         var param = await ParametrosAsync(tenant.ConnectionString);
 
         var doc = NormalizarDocumento(f.ClienteDocumento);
-        if (!empresa.EsMonotributo && f.Condicion == CondicionReceptor.ResponsableInscripto && doc.Length != 11)
+        if (!empresa.EsMonotributo && f.Condicion.RecibeFacturaA() && doc.Length != 11)
             return Falla("Para Factura A el cliente debe tener CUIT (11 dígitos).");
 
         Guid facturaId;
@@ -144,7 +144,9 @@ public class FacturacionService
             if (fp == null) return Falla("La forma de pago no existe.");
             if (fp.EsCtaCte) return Falla("La cuenta corriente no está disponible en la versión web.");
 
-            string letra = empresa.EsMonotributo ? "C" : (string.IsNullOrWhiteSpace(iva.LetraComprobante) ? "B" : iva.LetraComprobante.Trim());
+            string letra = empresa.EsMonotributo ? "C"
+                : f.Condicion.RecibeFacturaA() ? "A"
+                : (string.IsNullOrWhiteSpace(iva.LetraComprobante) ? "B" : iva.LetraComprobante.Trim());
 
             using var tx = cn.BeginTransaction();
             facturaId = Guid.NewGuid();
@@ -295,7 +297,11 @@ public class FacturacionService
 
         var iva = await IvaCondicionAsync(cn, null, fac.IvaId);
         var condicion = iva?.Condicion ?? CondicionReceptor.ConsumidorFinal;
-        int tipoComp = empresa.EsMonotributo ? 11 : condicion == CondicionReceptor.ResponsableInscripto ? 1 : 6;
+        int tipoComp = empresa.EsMonotributo ? 11 : condicion.RecibeFacturaA() ? 1 : 6;
+        string letra = tipoComp switch { 1 => "A", 11 => "C", _ => "B" };
+        if (tipoComp == 1 && NormalizarDocumento(fac.ClienteCUIT).Length != 11)
+            return new ResultadoEmision { Ok = false, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = fac.Terminal,
+                Mensaje = "Para Factura A el cliente debe tener CUIT (11 dígitos)." };
 
         var r = await PedirCaeAsync(tenant, cn, empresa, tipoComp, condicion, fac.ClienteCUIT, fac.MontoTotal, renglones, null, fac.Terminal,
             fac.ClienteTipoDocAFIP);
@@ -304,21 +310,21 @@ public class FacturacionService
 
         await cn.ExecuteAsync(
             @"UPDATE dbo.Factura SET
-                Terminal = @pv, Numero = @nro, TipoComprobanteAFIP = @tipo, Impresa = 1, FechaImpresion = GETDATE(),
+                Tipo = @letra, Terminal = @pv, Numero = @nro, TipoComprobanteAFIP = @tipo, Impresa = 1, FechaImpresion = GETDATE(),
                 CAE = @cae, CAEVencimiento = @vto, ClienteTipoDocAFIP = @tipoDoc,
                 QRParametros = @qrJson, QRURLAFIP = @qrUrl, QRCode = @qrPng,
                 MontoIvaTipoAfip4 = @i4, MontoIvaTipoAfip5 = @i5, MontoIvaTipoAfip6 = @i6
               WHERE Id = @id",
             new
             {
-                id = facturaId, pv = fac.Terminal, nro = (int)r.Numero, tipo = tipoComp,
+                id = facturaId, letra, pv = fac.Terminal, nro = (int)r.Numero, tipo = tipoComp,
                 cae = r.Cae, vto = r.CaeVencimiento, tipoDoc = r.TipoDoc, qrJson = r.QrJson, qrUrl = r.QrUrl,
                 qrPng = r.QrPng, i4 = r.Iva4, i5 = r.Iva5, i6 = r.Iva6
             });
 
         return new ResultadoEmision
         {
-            Ok = true, FacturaId = facturaId, Letra = fac.Tipo, PuntoVenta = fac.Terminal,
+            Ok = true, FacturaId = facturaId, Letra = letra, PuntoVenta = fac.Terminal,
             Numero = r.Numero, Cae = r.Cae
         };
     }
