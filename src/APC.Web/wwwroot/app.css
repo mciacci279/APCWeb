@@ -1420,3 +1420,9 @@ h1 { font-weight: 800; }
 .sql-n { color: #C4A7FF; }
 .sql-v { color: #7EE0C3; }
 .sql-go { color: #F26B1D; font-weight: 800; }
+/* Elegir qué scripts correr */
+.bd-check { position: relative; cursor: pointer; flex-direction: column; gap: 0; }
+.bd-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--azul-vivo); cursor: pointer; }
+.bd-check .mono { font-size: 11px; line-height: 1; }
+.bd-scripts li.elegido { background: #F3F8FF; border-color: #CFE3FB; }
+.bd-scripts li.pendiente:not(.elegido) { opacity: .75; }

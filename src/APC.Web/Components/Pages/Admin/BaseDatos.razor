@@ -187,8 +187,20 @@
                     <ul class="bd-scripts">
                         @foreach (var sc in lista)
                         {
-                            <li class="@(sc.Corrido ? "corrido" : "pendiente")">
-                                <span class="bd-num mono">@sc.Script.Numero.ToString("00")</span>
+                            <li class="@(sc.Corrido ? "corrido" : "pendiente") @(!sc.Corrido && seleccion.Contains(sc.Script.Nombre) ? "elegido" : "")">
+                                @if (sc.Corrido)
+                                {
+                                    <span class="bd-num mono">@sc.Script.Numero.ToString("00")</span>
+                                }
+                                else
+                                {
+                                    @* Tildar los que se van a correr *@
+                                    <label class="bd-num bd-check" title="Incluir en «Correr seleccionados»">
+                                        <input type="checkbox" checked="@seleccion.Contains(sc.Script.Nombre)" @onchange="e => Elegir(sc.Script.Nombre, e)"
+                                               aria-label="Correr @sc.Script.Nombre" />
+                                        <span class="mono">@sc.Script.Numero.ToString("00")</span>
+                                    </label>
+                                }
                                 <span class="bd-info">
                                     <strong>@sc.Script.Titulo</strong>
                                     <span class="sub mono">@sc.Script.Nombre</span>
@@ -219,10 +231,21 @@
                 }
             </div>
             <div class="dialogo-bd-pie">
-                <span class="sub">Los scripts son idempotentes: correr uno que ya estaba no rompe nada. «Ya estaba» solo lo anota, sin ejecutarlo.</span>
                 @if (b.Accesible && !b.AlDia)
                 {
-                    <button type="button" class="btn btn-primario" disabled="@ocupado" @onclick="() => CorrerPendientes(b)">@(ocupado ? "Corriendo…" : $"Correr los {b.Pendientes} pendientes")</button>
+                    var elegidos = Elegidos(b).Count;
+                    <div class="fila-btns">
+                        <button type="button" class="btn btn-chico" @onclick="() => ElegirTodos(b, true)">Tildar todos</button>
+                        <button type="button" class="btn btn-chico" @onclick="() => ElegirTodos(b, false)">Destildar todos</button>
+                        <span class="sub">@elegidos de @b.Pendientes elegidos · se corren en orden y se frena si uno falla</span>
+                    </div>
+                    <button type="button" class="btn btn-primario" disabled="@(ocupado || elegidos == 0)" @onclick="() => CorrerSeleccionados(b)">
+                        @(ocupado ? "Corriendo…" : elegidos == b.Pendientes ? $"Correr los {elegidos} pendientes" : $"Correr {elegidos} seleccionado{(elegidos == 1 ? "" : "s")}")
+                    </button>
+                }
+                else
+                {
+                    <span class="sub">Los scripts son idempotentes: correr uno que ya estaba no rompe nada. «Ya estaba» solo lo anota, sin ejecutarlo.</span>
                 }
             </div>
         }
@@ -302,6 +325,50 @@
     private ElementReference dlgBase, dlgCatalogo, dlgPrevia;
     private EstadoBase modalBase;
     private bool soloPendientes = true;
+    /// <summary>Scripts pendientes tildados para correr (por nombre de archivo).</summary>
+    private HashSet<string> seleccion = new(StringComparer.OrdinalIgnoreCase);
+
+    private List<ScriptEnBase> Elegidos(EstadoBase b) =>
+        b.Scripts.Where(x => !x.Corrido && seleccion.Contains(x.Script.Nombre)).OrderBy(x => x.Script.Numero).ToList();
+
+    private void Elegir(string nombre, ChangeEventArgs e)
+    {
+        if (e.Value is bool si && si) seleccion.Add(nombre); else seleccion.Remove(nombre);
+    }
+
+    private void ElegirTodos(EstadoBase b, bool todos)
+    {
+        seleccion.Clear();
+        if (todos) foreach (var x in b.Scripts.Where(x => !x.Corrido)) seleccion.Add(x.Script.Nombre);
+    }
+
+    /// <summary>Corre los tildados, en orden de número; si uno falla, se frena ahí (los siguientes pueden depender de él).</summary>
+    private async Task CorrerSeleccionados(EstadoBase b)
+    {
+        var lista = Elegidos(b);
+        if (lista.Count == 0) return;
+        ocupado = true;
+        StateHasChanged();
+        try
+        {
+            int corridos = 0;
+            foreach (var sc in lista)
+            {
+                var error = await Migraciones.CorrerAsync(b.ConnectionString, sc.Script, quien);
+                if (error != null)
+                {
+                    Aviso(false, $"{b.Nombre}: se corrieron {corridos} y se frenó en {sc.Script.Nombre}: {error}");
+                    await Refrescar(b);
+                    return;
+                }
+                corridos++;
+                seleccion.Remove(sc.Script.Nombre);
+            }
+            Aviso(true, $"{b.Nombre}: {corridos} script(s) corridos.");
+            await Refrescar(b);
+        }
+        finally { ocupado = false; }
+    }
     private ScriptSql previa;
     private EstadoBase previaBase;
     private string previaTexto;
@@ -329,6 +396,7 @@
     {
         modalBase = b;
         soloPendientes = pendientes && b.Accesible && !b.AlDia;
+        ElegirTodos(b, true);   // de entrada, todos los pendientes tildados
         mensaje = null;
         StateHasChanged();
         await Abrir(dlgBase);
