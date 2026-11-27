@@ -1426,3 +1426,4 @@ h1 { font-weight: 800; }
 .bd-check .mono { font-size: 11px; line-height: 1; }
 .bd-scripts li.elegido { background: #F3F8FF; border-color: #CFE3FB; }
 .bd-scripts li.pendiente:not(.elegido) { opacity: .75; }
+.pendientes-nombre { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }

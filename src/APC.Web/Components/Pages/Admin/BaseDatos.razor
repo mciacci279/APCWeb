@@ -108,10 +108,15 @@
                                         <span class="pendientes-chips">
                                             @foreach (var p in b.Scripts.Where(x => !x.Corrido).Take(6))
                                             {
-                                                <span class="chip-script">@p.Script.Numero.ToString("00")</span>
+                                                <span class="chip-script" title="@p.Script.Titulo · @p.Script.Nombre">@p.Script.Numero.ToString("00")</span>
                                             }
                                             @if (b.Pendientes > 6) { <span class="chip-script">+@(b.Pendientes - 6)</span> }
                                         </span>
+                                        @{ var primero = b.Scripts.FirstOrDefault(x => !x.Corrido); }
+                                        @if (primero != null)
+                                        {
+                                            <span class="sub pendientes-nombre">@primero.Script.Titulo@(b.Pendientes > 1 ? $" y {b.Pendientes - 1} más" : "")</span>
+                                        }
                                     </button>
                                 }
                             </td>
