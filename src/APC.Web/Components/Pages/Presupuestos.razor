@@ -55,6 +55,7 @@
                         <td class="acciones">
                             <a class="btn btn-chico" href="/presupuestos/@p.Id">@(p.Cancelado || p.Facturado ? "Ver" : "Editar")</a>
                             <button type="button" class="btn btn-chico" @onclick="() => Imprimir(p.Id)">A4</button>
+                            <button type="button" class="btn btn-chico" @onclick="() => Imprimir(p.Id, true)">Ticket</button>
                             @if (!p.Cancelado && !p.Facturado)
                             {
                                 <button type="button" class="btn btn-chico btn-primario" @onclick="() => Facturar(p.Id)">Pasar a factura</button>
@@ -94,7 +95,8 @@
         pagina = 1;
     }
 
-    private async Task Imprimir(Guid id) => await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{id}");
+    private async Task Imprimir(Guid id, bool ticket = false) =>
+        await JS.InvokeVoidAsync("apc.imprimir", $"/imprimir/presupuesto/{id}" + (ticket ? "?formato=ticket" : ""));
 
     private void Facturar(Guid id) => Nav.NavigateTo($"/?presupuesto={id}");
 
