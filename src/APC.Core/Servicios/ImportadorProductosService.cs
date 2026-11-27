@@ -114,7 +114,7 @@ public class ImportadorProductosService
             leidas.Add(new FilaImportacion
             {
                 Codigo = Recortar(codigo, 100),
-                Descripcion = Recortar(Texto(Col(fila, "DESCRIPCION")), 100),
+                Descripcion = Recortar(Texto(Col(fila, "DESCRIPCION")), 200),
                 Cantidad = Decimal(Col(fila, "CANTIDAD")),
                 PrecioCosto = Decimal(Col(fila, "PRECIOCOSTO")),
                 PrecioVenta1 = Decimal(Col(fila, "PRECIOVENTA1")),
@@ -167,6 +167,8 @@ public class ImportadorProductosService
     public async Task<ResultadoImportacion> ImportarAsync(string cs, Guid usuarioId, List<FilaImportacion> filas,
         bool sobreescribirDescripcion, bool reemplazarStock)
     {
+        // La descripción admite 100 caracteres de fábrica y 200 con el script 30.
+        var largoDescripcion = await ProductoService.LargoDescripcionAsync(cs);
         if (filas == null || filas.Count == 0) return new ResultadoImportacion { Error = "No hay filas para importar." };
 
         var dt = new DataTable();
@@ -181,7 +183,7 @@ public class ImportadorProductosService
         dt.Columns.Add("IvaDiferenciado", typeof(bool));
         dt.Columns.Add("Familia", typeof(string));
         foreach (var f in filas)
-            dt.Rows.Add(f.Codigo, string.IsNullOrWhiteSpace(f.Descripcion) ? f.Codigo : f.Descripcion, f.Cantidad, f.PrecioCosto,
+            dt.Rows.Add(f.Codigo, Recortar(string.IsNullOrWhiteSpace(f.Descripcion) ? f.Codigo : f.Descripcion, largoDescripcion), f.Cantidad, f.PrecioCosto,
                 f.PrecioVenta1, f.PrecioVenta2, f.PrecioVenta3, f.Activo, f.IvaDiferenciado,
                 string.IsNullOrWhiteSpace(f.Familia) ? DBNull.Value : f.Familia);
 
@@ -193,7 +195,7 @@ public class ImportadorProductosService
                 @"CREATE TABLE #ImportProductos
                   (
                       Codigo          NVARCHAR(100)  NOT NULL PRIMARY KEY,
-                      Descripcion     NVARCHAR(100)  NOT NULL,
+                      Descripcion     NVARCHAR(200)  NOT NULL,
                       Cantidad        DECIMAL(18, 3) NOT NULL,
                       PrecioCosto     DECIMAL(18, 4) NOT NULL,
                       PrecioVenta1    DECIMAL(18, 4) NOT NULL,

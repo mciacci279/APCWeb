@@ -77,7 +77,7 @@ public class ProductoService
     /// <param name="sucursalId">Sucursal a la que entra el stock inicial. Null = sin sucursales.</param>
     public async Task<string> CrearAsync(string cs, Guid usuarioId, ProductoDetalle p, Guid? sucursalId = null)
     {
-        var err = Validar(p);
+        var err = Validar(p, await LargoDescripcionAsync(cs));
         if (err != null) return err;
         using var cn = await Db.AbrirAsync(cs);
         if (await CodigoDuplicadoAsync(cn, p.Codigo, null)) return "Ya existe un producto con ese código.";
@@ -114,7 +114,7 @@ public class ProductoService
     /// </summary>
     public async Task<string> ActualizarDatosAsync(string cs, ProductoDetalle p)
     {
-        var err = Validar(p);
+        var err = Validar(p, await LargoDescripcionAsync(cs));
         if (err != null) return err;
         using var cn = await Db.AbrirAsync(cs);
         if (await CodigoDuplicadoAsync(cn, p.Codigo, p.Id)) return "Ya existe otro producto con ese código.";
@@ -241,6 +241,19 @@ public class ProductoService
         return (n, null);
     }
 
+    /// <summary>
+    /// Cuántos caracteres admite la descripción (Producto.Nombre) en esta base: 100 de fábrica, 200 con el
+    /// script 30. Se usa para el límite del campo y la validación.
+    /// </summary>
+    public static async Task<int> LargoDescripcionAsync(string cs)
+    {
+        using var cn = await Db.AbrirAsync(cs);
+        var largo = await cn.ExecuteScalarAsync<int?>(
+            @"SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+              WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Producto' AND COLUMN_NAME = 'Nombre'");
+        return largo is null or <= 0 ? 200 : Math.Min(largo.Value, 200);
+    }
+
     // ------------------------------------------------------------ bajo stock
 
     /// <summary>
@@ -325,10 +338,11 @@ public class ProductoService
             new { c = codigo.Trim(), id = excepto }) > 0;
     }
 
-    private static string Validar(ProductoDetalle p)
+    private static string Validar(ProductoDetalle p, int largo)
     {
         if (string.IsNullOrWhiteSpace(p.Nombre)) return "Falta la descripción del producto.";
-        if (p.Nombre.Trim().Length > 100) return "La descripción no puede superar los 100 caracteres.";
+        if (p.Nombre.Trim().Length > largo)
+            return $"La descripción no puede superar los {largo} caracteres." + (largo < 200 ? " Para llegar a 200, corré el script 30 en la base de la empresa." : "");
         if (p.Codigo?.Trim().Length > 100) return "El código no puede superar los 100 caracteres.";
         if (p.IvaDiferenciado && p.IvaExento) return "Un producto no puede ser IVA diferenciado y exento a la vez.";
         if (p.PrecioCosto < 0 || p.PrecioVenta1 < 0) return "Los precios no pueden ser negativos.";
