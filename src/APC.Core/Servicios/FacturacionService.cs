@@ -625,6 +625,8 @@ public class FacturacionService
                      {(esNotaCredito ? "CAST(0 AS DECIMAL(18,2))" : "ISNULL(d.MontoDescuentoRenglon, 0)")} AS MontoDescuentoRenglon
               FROM {detalle} d JOIN dbo.Producto p ON p.Id = d.ProductoId
               WHERE d.{fk} = @id ORDER BY d.Renglon", new { id })).ToList();
+        // {mesletras}, {añonumero}, etc. en la descripción: con la fecha del comprobante (igual al reimprimir).
+        foreach (var r in c.Renglones) r.Producto = DescripcionConFechas.Reemplazar(r.Producto, c.Fecha);
         return c;
     }
 

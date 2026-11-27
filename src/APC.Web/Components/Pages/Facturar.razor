@@ -107,7 +107,7 @@ else
             {
                 <div class="renglon @(r == ultimoAgregado ? "activo" : "")" @key="r.Clave">
                     <div class="r-info">
-                        <span class="r-nombre">@r.Producto.Nombre</span>
+                        <span class="r-nombre" title="@(DescripcionConFechas.TieneVariables(r.Producto.Nombre) ? $"Descripción cargada: {r.Producto.Nombre}. Las variables de fecha se reemplazan con la fecha del comprobante." : null)">@DescripcionConFechas.Reemplazar(r.Producto.Nombre, DateTime.Today)@if (DescripcionConFechas.TieneVariables(r.Producto.Nombre)) {<span class="r-variables" aria-hidden="true"> ⓘ</span>}</span>
                         <span class="sub">@r.Producto.Codigo · @EtiquetaIva(r.Producto)</span>
                     </div>
                     <div class="cantidad">

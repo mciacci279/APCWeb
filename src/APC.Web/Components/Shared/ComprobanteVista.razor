@@ -199,7 +199,7 @@ else
                 @foreach (var r in c.Renglones)
                 {
                     <tr>
-                        <td>@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@r.Producto</td>
+                        <td class="desc-multilinea">@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@r.Producto</td>
                         <td class="der">@PrecioUnitario(r).ToString("N2", Ar)</td>
                         <td class="der">@r.CantidadRenglon.ToString("N3", Ar)</td>
                         <td class="der">@r.MontoDescuentoRenglon.ToString("N2", Ar)</td>

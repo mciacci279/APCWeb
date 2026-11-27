@@ -71,7 +71,7 @@ else
                 @foreach (var r in p.Renglones)
                 {
                     <tr>
-                        <td>@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@r.Producto</td>
+                        <td class="desc-multilinea">@(string.IsNullOrWhiteSpace(r.Codigo) ? "" : $"({r.Codigo}) ")@DescripcionConFechas.Reemplazar(r.Producto, p.Fecha)</td>
                         <td class="der">@r.Pu.ToString("N2", Ar)</td>
                         <td class="der">@r.CantidadRenglon.ToString("N3", Ar)</td>
                         <td class="der">@AjusteTexto(r.DescuentoRenglon)</td>

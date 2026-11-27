@@ -119,7 +119,19 @@
 
                     @if (modo == Modo.Nuevo || pestania == 0)
                     {
-                        <div class="campo"><label for="p-nombre">Descripción</label><input id="p-nombre" class="input" maxlength="100" @bind="edit.Nombre" disabled="@(!esAdmin)" /></div>
+                        <div class="campo">
+                            <label for="p-nombre">Descripción</label>
+                            <textarea id="p-nombre" class="input input-desc" rows="3" maxlength="@largoDescripcion" @bind="edit.Nombre" @bind:event="oninput" disabled="@(!esAdmin)"
+                                      title="@DescripcionConFechas.Ayuda" aria-describedby="p-nombre-ayuda"></textarea>
+                            <span class="contador @((edit.Nombre?.Length ?? 0) > largoDescripcion - 10 ? "cerca" : "")" aria-live="polite">@(edit.Nombre?.Length ?? 0) / @largoDescripcion</span>
+                            <span id="p-nombre-ayuda" class="sub ayuda-variables">
+                                Variables: <code>{mesletras}</code> <code>{mesnumero}</code> <code>{añoletras}</code> <code>{añonumero}</code>. Se reemplazan con la fecha del comprobante.
+                            </span>
+                            @if (DescripcionConFechas.TieneVariables(edit.Nombre))
+                            {
+                                <span class="ayuda-previa">Hoy saldría: <strong>@DescripcionConFechas.Reemplazar(edit.Nombre, DateTime.Today)</strong></span>
+                            }
+                        </div>
                         <div class="campo"><label for="p-codigo">Código</label><input id="p-codigo" class="input mono" maxlength="100" @bind="edit.Codigo" disabled="@(!esAdmin)" /></div>
                         <div class="campo">
                             <label for="p-rubro">Familia</label>
@@ -437,6 +449,8 @@
     private bool confirmarMasivo;
     /// <summary>Productos con bajo stock (alerta).</summary>
     private int bajoStock;
+    /// <summary>Caracteres que admite la descripción en esta base (100, o 200 con el script 30).</summary>
+    private int largoDescripcion = 100;
 
     /// <summary>Familia que viene en el link (desde la pantalla Familias).</summary>
     [SupplyParameterFromQuery(Name = "familia")] public Guid? FamiliaInicial { get; set; }
@@ -469,6 +483,7 @@
         esAdmin = sesion.EsAdmin;
         listas = await ProductoSrv.ListasAsync(sesion.Cs);
         rubros = await ProductoSrv.RubrosAsync(sesion.Cs);
+        try { largoDescripcion = await ProductoService.LargoDescripcionAsync(sesion.Cs); } catch (Exception) { largoDescripcion = 100; }
         if (FamiliaInicial != null && rubros.Any(r => r.Id == FamiliaInicial)) filtroRubro = FamiliaInicial;
         await Buscar();
         cargando = false;
